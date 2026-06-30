@@ -90,3 +90,25 @@ pnpm dev            # vite dev server (for example/playground)
   test where the logic is deterministic.
 - Keep `index.ts` the single source of truth for the public API.
 - Don't add persistence / undo / UI to the SDK — that's the consumer's job.
+
+## Tests & docs are part of "done" (not optional)
+
+Every milestone and every functional change must land with tests and docs in
+the same change. A stub is not "implemented" until both exist.
+
+- **Tests per milestone.** Each milestone in [`todo/`](todo/) ships with tests
+  that cover its acceptance criteria (验收标准). Add/extend tests under
+  `tests/` (vitest) before marking the milestone done; a milestone with no
+  passing tests for its new behavior is not complete. For GPU/render paths that
+  can't run in a headless unit test, cover the deterministic logic (reconcile,
+  timing, budgets, idempotence of `render(t)`) and note what is verified
+  manually in the `example/`.
+- **Docs update with the code.** Any implementation, signature, or behavior
+  change must update the relevant docs **in the same commit**: at minimum
+  [`docs/architecture.md`](docs/architecture.md) when structure/contracts/public
+  surface change, the milestone file's status line + the progress table in
+  [`todo/README.md`](todo/README.md), and the module-status markers in the
+  [Layout](#layout) section above (e.g. `🚧 → ✅`). Don't leave docs describing
+  the old skeleton after the behavior has changed.
+- **Definition of done for a change:** code + tests + docs all updated, and
+  `pnpm typecheck` and `pnpm test` pass.
