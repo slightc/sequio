@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>video-editor-canvas · milestone 01 playground</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #0b0b0e;
+        color: #e6e6ea;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 32px;
+      }
+      h1 { font-size: 16px; font-weight: 600; opacity: 0.8; }
+      #stage canvas { border-radius: 8px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); }
+      .controls { display: flex; align-items: center; gap: 12px; width: 640px; }
+      #scrub { flex: 1; }
+      button {
+        background: #2b6cff;
+        color: white;
+        border: 0;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      #time { font-variant-numeric: tabular-nums; opacity: 0.7; min-width: 90px; }
+    </style>
+  </head>
+  <body>
+    <h1>single-clip preview · play / pause / seek · auto-stop at end</h1>
+    <div id="stage"></div>
+    <div class="controls">
+      <button id="play">▶ Play</button>
+      <input id="scrub" type="range" min="0" max="4" step="0.01" value="0" />
+      <span id="time">0.00s / 4s</span>
+    </div>
+    <script type="module" src="/example/main.ts"></script>
+  </body>
+</html>

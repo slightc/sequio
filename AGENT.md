@@ -42,7 +42,7 @@ src/
   animation/   Easing, AnimatableProperty, Transform2D       ✅ implemented
   media/       MediaSource + Video/Image/Audio, FrameCache   🚧 cache done, decode TODO
   texture/     TextureManager (GPU budget + LRU)             🚧 budget done, upload TODO
-  compositor/  Compositor, Track, Clip(s), Reconciler        🚧 graph done, render core TODO
+  compositor/  Compositor, Track, Clip(s), Reconciler        🚧 graph + render core done, multitrack/effects TODO
   effects/     Effect, EffectRegistry, Transition            🚧 abstractions only
   audio/       AudioEngine                                   🚧 interface only
   export/      Exporter                                      🚧 interface only

@@ -33,7 +33,7 @@
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
 | 媒体源 | `src/media/` | 🚧 接口已定；FrameCache 已实现，解码待实现 |
 | 纹理显存 | `src/texture/` | 🚧 预算/LRU 骨架已实现，upload 待实现 |
-| 合成图 | `src/compositor/` | 🚧 对象图/Reconciler 已实现，渲染核心待接 PixiJS |
+| 合成图 | `src/compositor/` | 🚧 对象图/Reconciler 已实现；渲染核心已接 PixiJS（`init()` 建 renderer、`renderSync`/`renderToTexture` 落地），多轨/特效合成细节待后续里程碑 |
 | 特效转场 | `src/effects/` | 🚧 抽象基类已定，内置效果待实现 |
 | 音频引擎 | `src/audio/` | 🚧 接口已定，实现待开始 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
@@ -51,6 +51,27 @@
 
 `RealtimeClock`（预览，rAF 驱动）与 `FixedStepClock`（导出，`tick()` 逐帧确定性推进）
 共享同一控制面，切换预览/导出只是换时钟，渲染核心不变（契约 #3）。
+
+### Compositor 生命周期（同步构造 / 异步建 renderer）
+
+`new Compositor(options)` 是**同步**的：只建对象图、reconciler 和一块（可能离屏的）
+canvas，因此对象图可以在没有 GPU 的环境里构建与单测。GPU renderer 由
+`await compositor.init()` **异步**创建（WebGPU 优先，WebGL 兜底，PixiJS v8 的
+`autoDetectRenderer`）。`init()` 之前 `renderSync(t)` 仍会 reconcile 场景图（确定性逻辑
+可测），只是不出像素；`renderToTexture(t)` 在未 `init()` 时直接抛错。典型接线：
+
+```ts
+const c = new Compositor({ width, height, timebase });
+await c.init();
+document.body.append(c.view);
+const clock = new RealtimeClock();
+clock.duration = timelineDuration;
+clock.onTick((t) => c.renderPreview(t)); // 预览循环
+clock.play();
+```
+
+`renderToTexture(t)` 返回的 `RenderTexture` 由调用方拥有并负责 `destroy()`（契约 #4）。
+完整可运行示例见 [`example/`](../example/)（`pnpm dev`）。
 
 ## 核心契约（决定底座成败的几点）
 
