@@ -34,9 +34,11 @@ export { Transform2D } from './animation/transform2d';
 // ── Media ─────────────────────────────────────────────────────────────────
 export { MediaSource, VisualSource, type SourceMetadata } from './media/media-source';
 export { VideoSource, type VideoSourceOptions } from './media/video-source';
+export { type DecodedFrame, type VideoDecoderBackend } from './media/video-decoder';
+export { MediabunnyVideoDecoder, type VideoInput } from './media/mediabunny-decoder';
 export { ImageSource, type ImageSourceOptions } from './media/image-source';
 export { AudioSource, type AudioSourceOptions } from './media/audio-source';
-export { FrameCache } from './media/frame-cache';
+export { FrameCache, type Closable } from './media/frame-cache';
 
 // ── Texture ─────────────────────────────────────────────────────────────────
 export { TextureManager } from './texture/texture-manager';

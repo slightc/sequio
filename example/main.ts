@@ -1,13 +1,13 @@
 /**
- * Milestone 01 playground: single-clip preview wired to a RealtimeClock.
+ * Milestone 01 + 02 playground: single-clip preview wired to a RealtimeClock.
  *
  * Demonstrates the core contract #1/#2 loop end-to-end:
  *   clock.onTick(t) → compositor.renderPreview(t) → reconcile + draw.
  *
- * The SDK's real decoders (VideoSource / ImageSource) land in later
- * milestones, so this example supplies its own placeholder VisualSource that
- * returns a generated gradient texture — enough to verify play / pause / seek
- * and auto-stop on the screen.
+ * Two sources:
+ *   - default: a generated gradient (no decode) — verifies play/pause/seek.
+ *   - "Load video": a real file decoded via VideoSource (Mediabunny + WebCodecs)
+ *     — verifies the milestone 02 decode path in a WebCodecs-capable browser.
  */
 import { Texture } from 'pixi.js';
 import {
@@ -15,6 +15,9 @@ import {
   ImageClip,
   RealtimeClock,
   Timebase,
+  VideoClip,
+  VideoSource,
+  VisualClip,
   VisualSource,
   VisualTrack,
   type SourceMetadata,
@@ -23,7 +26,6 @@ import {
 const WIDTH = 640;
 const HEIGHT = 360;
 const FPS = 30;
-const DURATION = 4; // seconds
 
 /** A placeholder source: one generated gradient texture for all times. */
 class TestTextureSource extends VisualSource {
@@ -75,40 +77,36 @@ async function main(): Promise<void> {
   await compositor.init();
   document.getElementById('stage')!.append(compositor.view);
 
-  // Build the object graph: one image clip that slides across the frame so the
-  // motion makes the clock visibly drive render(t).
-  const source = new TestTextureSource();
-  await source.load();
-
-  const clip = new ImageClip(source);
-  clip.start = 0;
-  clip.end = DURATION;
-  clip.transform.position.setKeyframes([
-    { time: 0, value: [80, HEIGHT / 2] },
-    { time: DURATION, value: [WIDTH - 80, HEIGHT / 2] },
-  ]);
-  clip.transform.rotation.setKeyframes([
-    { time: 0, value: 0 },
-    { time: DURATION, value: Math.PI * 2 },
-  ]);
-
-  const track = new VisualTrack();
-  track.add(clip);
-  compositor.addTrack(track);
-
-  // Drive preview off a realtime clock. Auto-stops at DURATION (contract:
-  // video-element-style play/pause/seek + ended).
   const clock = new RealtimeClock();
-  clock.duration = DURATION;
+  const track = new VisualTrack();
+  compositor.addTrack(track);
 
   const scrub = document.getElementById('scrub') as HTMLInputElement;
   const playBtn = document.getElementById('play') as HTMLButtonElement;
   const label = document.getElementById('time') as HTMLSpanElement;
+  const file = document.getElementById('file') as HTMLInputElement;
+
+  let current: VisualClip | null = null;
+  let currentSource: { dispose(): void } | null = null;
+
+  /** Swap the single clip on the track and reset the clock to its duration. */
+  function setClip(clip: VisualClip, source: { dispose(): void }, duration: number): void {
+    clock.pause();
+    if (current) track.remove(current);
+    currentSource?.dispose();
+    current = clip;
+    currentSource = source;
+    track.add(clip);
+    clock.duration = duration;
+    scrub.max = String(duration);
+    playBtn.textContent = '▶ Play';
+    clock.seek(0);
+  }
 
   clock.onTick((t) => {
     compositor.renderPreview(t);
     scrub.value = String(t);
-    label.textContent = `${t.toFixed(2)}s / ${DURATION}s`;
+    label.textContent = `${t.toFixed(2)}s / ${clock.duration.toFixed(2)}s`;
   });
   clock.onEnded(() => {
     playBtn.textContent = '▶ Play';
@@ -130,8 +128,37 @@ async function main(): Promise<void> {
     clock.seek(Number(scrub.value));
   });
 
-  // Paint the first frame.
-  clock.seek(0);
+  // Default demo: gradient sprite sliding + rotating across the frame.
+  {
+    const duration = 4;
+    const source = new TestTextureSource();
+    await source.load();
+    const clip = new ImageClip(source);
+    clip.start = 0;
+    clip.end = duration;
+    clip.transform.position.setKeyframes([
+      { time: 0, value: [80, HEIGHT / 2] },
+      { time: duration, value: [WIDTH - 80, HEIGHT / 2] },
+    ]);
+    clip.transform.rotation.setKeyframes([
+      { time: 0, value: 0 },
+      { time: duration, value: Math.PI * 2 },
+    ]);
+    setClip(clip, source, duration);
+  }
+
+  // Real decode path: load a user-picked video via Mediabunny + WebCodecs.
+  file.addEventListener('change', async () => {
+    const f = file.files?.[0];
+    if (!f) return;
+    const source = new VideoSource({ src: f });
+    const meta = await source.load();
+    const clip = new VideoClip(source);
+    clip.start = 0;
+    clip.end = meta.duration;
+    clip.transform.position.setStatic([WIDTH / 2, HEIGHT / 2]);
+    setClip(clip, source, meta.duration);
+  });
 }
 
 main().catch((err) => {

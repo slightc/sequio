@@ -38,4 +38,22 @@ describe('FrameCache', () => {
     expect(f.close).toHaveBeenCalled();
     expect(cache.size).toBe(0);
   });
+
+  it('notifies onEvict before closing, on eviction / overwrite / dispose', () => {
+    const onEvict = vi.fn();
+    const cache = new FrameCache(1, onEvict);
+    const f1 = fakeFrame();
+    const f2 = fakeFrame();
+    cache.put(1, f1);
+    cache.put(2, f2); // evicts f1 (budget 1)
+    expect(onEvict).toHaveBeenCalledWith(1, f1);
+    expect(f1.close).toHaveBeenCalled();
+
+    const f2b = fakeFrame();
+    cache.put(2, f2b); // overwrite -> evicts the old f2
+    expect(onEvict).toHaveBeenCalledWith(2, f2);
+
+    cache.dispose(); // evicts remaining f2b
+    expect(onEvict).toHaveBeenCalledWith(2, f2b);
+  });
 });

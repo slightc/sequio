@@ -1,21 +1,36 @@
 import type { Disposable } from '../core/disposable';
 
+/** Anything the cache can own and release (WebCodecs `VideoFrame`, a decoded
+ *  sample wrapper, …). */
+export interface Closable {
+  close(): void;
+}
+
+/** Notified just before a cached entry is closed (eviction / overwrite /
+ *  dispose), so dependent resources — e.g. a derived GPU texture — can be torn
+ *  down in lockstep with the frame they reference. */
+export type EvictListener<T> = (frameIdx: number, frame: T) => void;
+
 /**
- * Ring-buffer + LRU cache of decoded {@link VideoFrame}s, keyed by frame index.
- * Bounded by a frame budget; eviction closes frames to free decoder memory.
+ * Ring-buffer + LRU cache of decoded frames, keyed by frame index. Bounded by a
+ * frame budget; eviction closes frames to free decoder memory.
  *
  * This is internal: the budget here (with {@link TextureManager}'s GPU budget)
  * is what keeps multi-track 4K playback from exhausting memory (SDK contract #4).
  */
-export class FrameCache implements Disposable {
-  private readonly map = new Map<number, VideoFrame>();
+export class FrameCache<T extends Closable = VideoFrame> implements Disposable {
+  private readonly map = new Map<number, T>();
   private budget: number;
 
-  constructor(maxFrames = 60) {
+  constructor(
+    maxFrames = 60,
+    /** Called before each entry is closed; use it to release derived resources. */
+    private readonly onEvict?: EvictListener<T>,
+  ) {
     this.budget = maxFrames;
   }
 
-  get(frameIdx: number): VideoFrame | null {
+  get(frameIdx: number): T | null {
     const frame = this.map.get(frameIdx);
     if (!frame) return null;
     // Touch for LRU recency: re-insert to move to the end.
@@ -24,10 +39,9 @@ export class FrameCache implements Disposable {
     return frame;
   }
 
-  put(frameIdx: number, frame: VideoFrame): void {
+  put(frameIdx: number, frame: T): void {
     if (this.map.has(frameIdx)) {
-      this.map.get(frameIdx)?.close();
-      this.map.delete(frameIdx);
+      this.release(frameIdx);
     }
     this.map.set(frameIdx, frame);
     this.evictToBudget();
@@ -46,17 +60,24 @@ export class FrameCache implements Disposable {
     return this.map.size;
   }
 
+  private release(frameIdx: number): void {
+    const frame = this.map.get(frameIdx);
+    if (!frame) return;
+    this.map.delete(frameIdx);
+    this.onEvict?.(frameIdx, frame);
+    frame.close();
+  }
+
   private evictToBudget(): void {
     while (this.map.size > this.budget) {
       const oldest = this.map.keys().next().value;
       if (oldest === undefined) break;
-      this.map.get(oldest)?.close();
-      this.map.delete(oldest);
+      this.release(oldest);
     }
   }
 
   dispose(): void {
-    for (const frame of this.map.values()) frame.close();
+    for (const idx of [...this.map.keys()]) this.release(idx);
     this.map.clear();
   }
 }

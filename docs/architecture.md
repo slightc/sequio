@@ -31,7 +31,7 @@
 |---|---|---|
 | 时间与时钟 | `src/time/` | ✅ Timebase / RealtimeClock / FixedStepClock 已实现（视频元素式控制面：play / pause / seek + 到 `duration` 自动停止）|
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
-| 媒体源 | `src/media/` | 🚧 接口已定；FrameCache 已实现，解码待实现 |
+| 媒体源 | `src/media/` | 🚧 `VideoSource` 解码已接 Mediabunny（sink + FrameCache + 方向预读）；Image / Audio 解码待实现 |
 | 纹理显存 | `src/texture/` | 🚧 预算/LRU 骨架已实现，upload 待实现 |
 | 合成图 | `src/compositor/` | 🚧 对象图/Reconciler 已实现；渲染核心已接 PixiJS（`init()` 建 renderer、`renderSync`/`renderToTexture` 落地），多轨/特效合成细节待后续里程碑 |
 | 特效转场 | `src/effects/` | 🚧 抽象基类已定，内置效果待实现 |
@@ -87,6 +87,21 @@ clock.play();
   是轨道层与分组层共用的扁平 diff 入口。group 失活时其子树整体卸载。
 - **单一父级**：一个 clip 只能挂在一个父级（一条轨道或一个 group）下。
 - `render(t)` 仍是 (对象图, t) 的纯函数：同一 t 重复 reconcile 复用已挂载子树（契约 #2）。
+
+### VideoSource 解码管线（Mediabunny）
+
+`VideoSource` 把「解码」藏在 `VideoDecoderBackend` 接口后面，默认实现
+`MediabunnyVideoDecoder`（动态 `import('mediabunny')`：`Input` + `VideoSampleSink`）。
+
+- `prepare(t)`（异步）：`decode(t)` 取「≤t 最近一帧」入 `FrameCache`，并按播放方向
+  fire-and-forget 预读 `lookahead` 帧;`getTextureAt(t)`（同步）读 cache，命中建/复用
+  `Texture`，miss 返回 `null`（预览复用上一帧）—— 契约 #1。
+- 帧按 `round(t * fps)` 索引（**假设 CFR**，VFR 精确化是后续细化）。
+- `FrameCache` 的 `onEvict` 钩子把派生 `Texture` 的销毁与帧的关闭绑定，显存随解码内存
+  回收（契约 #4）。
+- 把后端做成接口的副作用：编解码编排逻辑（keying / 预读方向 / 缓存命中 / dispose）可在
+  headless 下用 fake backend 单测；真实 WebCodecs 解码由 `example/`「Load video」手验
+  （注：CI 环境的 headless Chromium 不带 WebCodecs，需在支持的浏览器里验）。
 
 ## 核心契约（决定底座成败的几点）
 

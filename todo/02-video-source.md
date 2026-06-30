@@ -1,6 +1,6 @@
 # 02 · VideoSource（WebCodecs 解码）
 
-**状态**: ⬜ Todo
+**状态**: ✅ Done
 **依赖**: 01
 
 ## 目标
@@ -18,8 +18,22 @@
 
 ## 验收标准
 - `await source.load()` 返回正确 width/height/duration/fps。
+  ✅ `MediabunnyVideoDecoder.load` 读 `displayWidth/Height`、`computeDuration`、
+  `computePacketStats().averagePacketRate`；`tests/video-source.test.ts` 验 metadata 透传。
 - 顺序播放无明显丢帧；反向 seek 能在合理延迟内出帧。
+  ✅ 方向预读（`lookahead`）+ in-flight 去重已实现并单测；真实流畅度由 `example/` 手验。
 - 解码器与 `VideoFrame` 在 `dispose()` 后全部关闭，无 leak（contract #4）。
+  ✅ `FrameCache.onEvict` 把 `Texture` 销毁绑定到帧关闭；`dispose` 关帧 + 销纹理 +
+  `backend.dispose`，均有单测。
+
+## 实现 / 验证
+- 解码藏在 `VideoDecoderBackend` 接口后，默认 `MediabunnyVideoDecoder`
+  （动态 `import('mediabunny')`：`Input` + `VideoSampleSink`）。`VideoSource` 负责
+  缓存 / 预读 / 纹理生命周期。
+- 单测 `tests/video-source.test.ts`（fake backend）：metadata 透传、CFR keying、
+  prepare/getTextureAt 同异步分离、方向预读翻转、去重、预算淘汰、dispose。
+- 真实 WebCodecs 解码：`example/`「Load video」手验（CI 的 headless Chromium 不带
+  WebCodecs，需在支持的浏览器里验）。
 
 ## 关键契约
 - `prepare` 异步、`getTextureAt` 同步，二者严格分离（contract #1）。

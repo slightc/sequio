@@ -9,7 +9,7 @@
 |---|---|---|---|
 | 0 | 项目骨架 / 工具链 | [00-project-scaffold.md](00-project-scaffold.md) | ✅ Done |
 | 1 | 时间 + 时钟 + Compositor 渲染核心 + 单路视频上屏 | [01-skeleton.md](01-skeleton.md) | ✅ Done |
-| 2 | VideoSource（WebCodecs 解码） | [02-video-source.md](02-video-source.md) | ⬜ Todo |
+| 2 | VideoSource（WebCodecs 解码） | [02-video-source.md](02-video-source.md) | ✅ Done |
 | 3 | TextureManager + FrameCache 预算 | [03-texture-frame-budget.md](03-texture-frame-budget.md) | ⬜ Todo |
 | 4 | Reconciler + 多轨叠层 + Transform | [04-reconciler-multitrack.md](04-reconciler-multitrack.md) | ⬜ Todo |
 | 5 | Image / Text / Shape clips | [05-image-text-shape.md](05-image-text-shape.md) | ⬜ Todo |
