@@ -7,7 +7,8 @@
 实现 `AudioEngine`：按时间线精确排程音频，处理变速/淡变/增益自动化，并支持离线导出渲染。
 
 ## 范围
-- `AudioSource.load`：fetch + `decodeAudioData` → `AudioBuffer`，填充 metadata。
+- `AudioSource.load`：用 Mediabunny `Input` 读容器、`AudioBufferSink.getBuffer(t)`
+  直接拿到 Web Audio 的 `AudioBuffer`（替代手接 `decodeAudioData`），填充 metadata。
 - `schedule(clip, source)`：用 Web Audio 在正确时间起播；处理 `speed`（time remap）、
   `gain` 自动化、`fadeIn` / `fadeOut`。
 - `seek` / `play` / `pause`：与时钟对齐，保证音画同步。

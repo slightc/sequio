@@ -47,6 +47,7 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
-    "@evomap/evolver": "^1.89.20"
+    "@evomap/evolver": "^1.89.20",
+    "mediabunny": "^1.49.0"
   }
 }

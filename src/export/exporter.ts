@@ -18,7 +18,8 @@ export interface ExportOptions {
  *
  * Pipeline per frame:
  *   await compositor.prepare(t) → renderToTexture(t) → readback → VideoFrame →
- *   VideoEncoder.encode. Audio: audio.renderOffline() → encode → mux.
+ *   Mediabunny video encode. Audio: audio.renderOffline() → encode → Mediabunny
+ *   Output (Mp4OutputFormat / WebMOutputFormat).
  */
 export class Exporter {
   private cancelled = false;
@@ -30,9 +31,9 @@ export class Exporter {
 
   async export(_opts: ExportOptions, _onProgress?: (p: number) => void): Promise<Blob> {
     this.cancelled = false;
-    // TODO(export): FixedStepClock loop + WebCodecs VideoEncoder + muxer
-    // (mp4-muxer / webm-muxer). See todo/07-exporter.md.
-    throw new Error('Exporter.export not implemented — see todo/07-exporter.md');
+    // TODO(export): FixedStepClock loop + Mediabunny encode + Output muxer.
+    // See todo/08-exporter.md.
+    throw new Error('Exporter.export not implemented — see todo/08-exporter.md');
   }
 
   cancel(): void {

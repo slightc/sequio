@@ -12,11 +12,12 @@ export interface VideoSourceOptions {
 }
 
 /**
- * Hardware-accelerated video decode via WebCodecs.
+ * Hardware-accelerated video decode via WebCodecs, driven by Mediabunny.
  *
  * Pipeline (to be implemented in the decode milestone):
- *   demux (mp4box.js) → VideoDecoder → FrameCache (ring + LRU + directional
- *   lookahead). Seek = find nearest keyframe → decode forward to target.
+ *   Mediabunny Input + VideoSampleSink → FrameCache (ring + LRU + directional
+ *   lookahead). getSample(t) returns the nearest frame at-or-before t (the sink
+ *   handles keyframe seeking + WebCodecs decode); samples() pre-reads ahead.
  *
  * Until implemented, methods throw so callers fail loudly rather than render
  * silent black frames.
@@ -30,13 +31,14 @@ export class VideoSource extends VisualSource {
   }
 
   async load(): Promise<SourceMetadata> {
-    // TODO(decode): demux container, read track config, populate metadata.
+    // TODO(decode): open a Mediabunny Input, read the primary video track's
+    // config, populate metadata (width/height/duration/fps).
     throw new Error('VideoSource.load not implemented — see todo/02-video-source.md');
   }
 
   async prepare(_sourceTime: number): Promise<void> {
-    // TODO(decode): ensure frame at sourceTime decoded into `this.cache`,
-    // kicking off directional lookahead.
+    // TODO(decode): VideoSampleSink.getSample(sourceTime) → cache the frame,
+    // kicking off directional lookahead via samples().
     throw new Error('VideoSource.prepare not implemented — see todo/02-video-source.md');
   }
 

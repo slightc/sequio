@@ -107,13 +107,17 @@ clock.play();
 | 类别 | 内容 |
 |---|---|
 | **公开**（使用者直接用） | `Compositor`、`Track` / `VisualTrack` / `AudioTrack`、各 `Clip` 子类（含 `GroupClip` 子合成）、`Effect` / `EffectRegistry`、`Transition`、`Transform2D` / `AnimatableProperty`、`MediaSource` 子类、`Clock` 实现、`AudioEngine`、`Exporter`、`Timebase` |
-| **内部**（不暴露或仅高级扩展） | `Reconciler`、`FrameCache`、`TextureManager`、`Demuxer`、`Muxer` 适配器 |
+| **内部**（不暴露或仅高级扩展） | `Reconciler`、`FrameCache`、`TextureManager`、Mediabunny 读写适配层（解码 sink / 封装 output） |
 
 ## 推荐技术选型
 
 - **渲染**：PixiJS v8（可选 WebGPU 后端）；需要真 3D 再叠 Three.js（共享 context）。
-- **解码 / 编码**：WebCodecs + `mp4box.js`（demux）+ `mp4-muxer` / `webm-muxer`（mux）；
-  `ffmpeg.wasm` 兜底。
+- **解码 / 编码 / 封装**：[Mediabunny](https://mediabunny.dev)（零依赖 TS，封装 WebCodecs）
+  统一 demux / 解码 / mux / 编码——读侧 `Input` + `VideoSampleSink` / `AudioBufferSink`，
+  写侧 `Output` + `Mp4OutputFormat`（fast-start / fragmented）/ `WebMOutputFormat`。
+  取代原 `mp4box.js` + `mp4-muxer` / `webm-muxer` 组合。视频编解码依赖 WebCodecs
+  硬件支持、**无纯软件兜底**；WebCodecs 不支持的冷门编码暂不承诺（可选 `ffmpeg.wasm`
+  兜底见 [backlog](../todo/backlog.md)）。许可证 MPL-2.0（文件级弱 copyleft，作依赖不影响本 SDK 的 MIT）。
 - **音频**：Web Audio API + `OfflineAudioContext`。
 
 ## 搭建顺序

@@ -3,8 +3,8 @@
  * editors on top of PixiJS.
  *
  * Public surface only. Internal helpers (Reconciler, FrameCache,
- * TextureManager, demuxers, muxers) are exported for advanced extension but
- * are not part of the stable API.
+ * TextureManager, Mediabunny read/write adapters) are exported for advanced
+ * extension but are not part of the stable API.
  */
 
 // ── Core ──────────────────────────────────────────────────────────────────

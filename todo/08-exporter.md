@@ -9,9 +9,10 @@
 
 ## 范围
 - 逐帧循环：`for t`：`await compositor.prepare(t)`（等齐）→ `renderToTexture(t)`
-  → readback 成 `VideoFrame` → `VideoEncoder.encode`。
-- 音频：`audio.renderOffline(duration)` → 编码 → muxer 封装。
-- Muxer 适配器：`mp4-muxer` / `webm-muxer`。
+  → readback 成 `VideoFrame` → Mediabunny 视频编码（封装 WebCodecs `VideoEncoder`）。
+- 音频：`audio.renderOffline(duration)` → 编码 → Mediabunny `Output` 封装。
+- 封装：Mediabunny `Output` + `Mp4OutputFormat`（fast-start / fragmented）/
+  `WebMOutputFormat`，取代 `mp4-muxer` / `webm-muxer`。
 - `ExportOptions`（分辨率/fps/codec/bitrate/range）、`onProgress`、`cancel()`。
 
 ## 验收标准
