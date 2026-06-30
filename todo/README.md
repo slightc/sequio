@@ -16,6 +16,7 @@
 | 6 | AudioEngine 音画同步 | [06-audio-engine.md](06-audio-engine.md) | ⬜ Todo |
 | 7 | Effects + EffectRegistry + Transition | [07-effects-transitions.md](07-effects-transitions.md) | ⬜ Todo |
 | 8 | Exporter（FixedStep + 编码封装） | [08-exporter.md](08-exporter.md) | ⬜ Todo |
+| 9 | GroupClip 子合成（嵌套分组） | [09-group-clip.md](09-group-clip.md) | ✅ Done |
 
 状态约定：`⬜ Todo` / `🚧 In progress` / `✅ Done` / `🅿️ Blocked`。
 

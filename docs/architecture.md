@@ -73,6 +73,21 @@ clock.play();
 `renderToTexture(t)` 返回的 `RenderTexture` 由调用方拥有并负责 `destroy()`（契约 #4）。
 完整可运行示例见 [`example/`](../example/)（`pnpm dev`）。
 
+### 分组 / 子合成（GroupClip）
+
+`GroupClip` 本身是一个 `VisualClip`，可放在轨道上或嵌进另一个 `GroupClip`，把一组
+子 clip 当作一个整体来变换。它的子 clip mount 进 group 自己的 PixiJS `Container`，
+因此 group 的 `transform` / `opacity` / `blendMode` / `effects`（滤镜链）/ 动画会被整个
+子树**原生继承**——这正是用嵌套 `Container` 表达分组的价值。
+
+- **时间按偏移相对**：子 clip 在 group 局部时间 `lt = t - group.start` 上判活；group
+  自身的动画在主时间线 `t` 上求值，子 clip 在 `lt` 上求值。嵌套时偏移逐层叠加。
+- **递归 reconcile**：每个 `GroupClip` 持有一个内部 `Reconciler`，在 `update(t)` 里把
+  活跃子 clip diff 进自己的 container；`Reconciler.reconcileClips(activeClips, t, stage)`
+  是轨道层与分组层共用的扁平 diff 入口。group 失活时其子树整体卸载。
+- **单一父级**：一个 clip 只能挂在一个父级（一条轨道或一个 group）下。
+- `render(t)` 仍是 (对象图, t) 的纯函数：同一 t 重复 reconcile 复用已挂载子树（契约 #2）。
+
 ## 核心契约（决定底座成败的几点）
 
 1. **异步 prepare 与同步 render 必须分离**。视频解码是异步的：预览时
@@ -91,7 +106,7 @@ clock.play();
 
 | 类别 | 内容 |
 |---|---|
-| **公开**（使用者直接用） | `Compositor`、`Track` / `VisualTrack` / `AudioTrack`、各 `Clip` 子类、`Effect` / `EffectRegistry`、`Transition`、`Transform2D` / `AnimatableProperty`、`MediaSource` 子类、`Clock` 实现、`AudioEngine`、`Exporter`、`Timebase` |
+| **公开**（使用者直接用） | `Compositor`、`Track` / `VisualTrack` / `AudioTrack`、各 `Clip` 子类（含 `GroupClip` 子合成）、`Effect` / `EffectRegistry`、`Transition`、`Transform2D` / `AnimatableProperty`、`MediaSource` 子类、`Clock` 实现、`AudioEngine`、`Exporter`、`Timebase` |
 | **内部**（不暴露或仅高级扩展） | `Reconciler`、`FrameCache`、`TextureManager`、`Demuxer`、`Muxer` 适配器 |
 
 ## 推荐技术选型

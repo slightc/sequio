@@ -46,6 +46,7 @@ export { Compositor, type CompositorOptions } from './compositor/compositor';
 export { Track, VisualTrack, AudioTrack } from './compositor/track';
 export { Clip, VisualClip, AudioClip } from './compositor/clip';
 export { VideoClip, ImageClip, TextClip, ShapeClip, type TextStyleLike } from './compositor/clips';
+export { GroupClip } from './compositor/group-clip';
 export { Reconciler } from './compositor/reconciler';
 
 // ── Effects & Transitions ────────────────────────────────────────────────────
