@@ -29,7 +29,7 @@
 
 | 模块 | 源码 | 状态 |
 |---|---|---|
-| 时间与时钟 | `src/time/` | ✅ Timebase / RealtimeClock / FixedStepClock 已实现 |
+| 时间与时钟 | `src/time/` | ✅ Timebase / RealtimeClock / FixedStepClock 已实现（视频元素式控制面：play / pause / seek + 到 `duration` 自动停止）|
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
 | 媒体源 | `src/media/` | 🚧 接口已定；FrameCache 已实现，解码待实现 |
 | 纹理显存 | `src/texture/` | 🚧 预算/LRU 骨架已实现，upload 待实现 |
@@ -37,6 +37,20 @@
 | 特效转场 | `src/effects/` | 🚧 抽象基类已定，内置效果待实现 |
 | 音频引擎 | `src/audio/` | 🚧 接口已定，实现待开始 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
+
+### 时钟控制面（对齐 `HTMLMediaElement`）
+
+`Clock` 的控制接口刻意对齐 video element，方便上层直接套用播放器交互：
+
+- `play()` 开始播放；若当前已 `ended`，从 0 重新开始（同 media element）。
+- `pause()` 暂停，`currentTime` 保留。
+- `seek(t)` 跳帧到绝对时间（秒），自动 clamp 到 `[0, duration]`。
+- `duration` 为播放终点（默认 `Infinity` 表示开放、不自动停）；播放到达 `duration`
+  时自动 `pause()` 并触发 `onEnded`，`ended` 置为 `true`。
+- `onTick(t)` 订阅每帧时间；上层据此 `compositor.renderPreview(t)`。
+
+`RealtimeClock`（预览，rAF 驱动）与 `FixedStepClock`（导出，`tick()` 逐帧确定性推进）
+共享同一控制面，切换预览/导出只是换时钟，渲染核心不变（契约 #3）。
 
 ## 核心契约（决定底座成败的几点）
 
