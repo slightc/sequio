@@ -45,5 +45,8 @@
     "vite": "^6.0.0",
     "vite-plugin-dts": "^4.4.0",
     "vitest": "^2.1.0"
+  },
+  "dependencies": {
+    "@evomap/evolver": "^1.89.20"
   }
 }
