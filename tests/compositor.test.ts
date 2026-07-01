@@ -219,6 +219,30 @@ describe('Reconciler', () => {
     expect(detach).toHaveBeenCalledWith(trackC);
   });
 
+  it('tiles adjacent clips at a fractional-frame boundary with no overlap or gap', () => {
+    const r = new Reconciler();
+    const stage = new Container();
+    const track = new VisualTrack();
+    const a = new TestClip(0, 10.5, 'a'); // [0, 10.5)
+    const b = new TestClip(10.5, 20, 'b'); // [10.5, 20)
+    track.add(a);
+    track.add(b);
+
+    const labelsAt = (t: number): string[] => {
+      r.reconcile([track], t, stage);
+      return clipLabels(stage.children[0] as Container);
+    };
+
+    // Exactly one clip active on each side of, and at, the shared boundary —
+    // never both (overlap) and never none (gap). end is exclusive, so t=10.5
+    // belongs to clip b.
+    expect(labelsAt(10.4)).toEqual(['a']);
+    expect(labelsAt(10.5)).toEqual(['b']);
+    expect(labelsAt(10.6)).toEqual(['b']);
+    expect(a.unmountCount).toBe(1); // a cleanly torn down at the swap
+    expect(b.mountCount).toBe(1);
+  });
+
   it('skips disabled tracks', () => {
     const r = new Reconciler();
     const stage = new Container();
