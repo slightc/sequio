@@ -33,9 +33,9 @@
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
 | 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
-| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）已实现；转场待后续里程碑 |
-| 特效转场 | `src/effects/` | 🚧 抽象基类已定，内置效果待实现 |
-| 音频引擎 | `src/audio/` | 🚧 接口已定，实现待开始 |
+| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）+ 轨道内重叠驱动转场（`track.addTransition`）已实现 |
+| 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
+| 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
 
 ### 时钟控制面（对齐 `HTMLMediaElement`）
@@ -115,6 +115,25 @@ clock.play();
 - **边界值实践**：让 `clip2.start === clip1.end`（共用同一数值，别分别算）以免浮点 sub-epsilon
   的缝/叠；边界尽量用 `Timebase.toSeconds(frame)` 对齐到帧。
 
+### 音频排程与导出（AudioEngine）
+
+`AudioSource.load` 用 Mediabunny `Input` + `AudioBufferSink` 把整轨解码成一个
+`AudioBuffer`。`AudioEngine` 把 `AudioClip` 排到 Web Audio 图上:
+
+- **纯排程核心**(`src/audio/scheduling.ts`,可单测):`clipPlaybackAt(clip, playhead)`
+  算出 `when`(相对起播时刻)/`offset`(入缓冲)/`duration`(消耗缓冲秒)/`playbackRate`;
+  `speed` 即 `playbackRate`——**变调变速**(时间线 `[playStart,end)` 以速率 s 消耗缓冲
+  `[offset, offset+span*s)`,实播 span 秒)。`gainEventsAt` 把 `gain` 自动化与
+  `fadeIn`/`fadeOut` 合成一串增益事件(首个 setValueAtTime、其余 linearRamp)。
+- **预览**:`play(playhead)` / `pause()` / `seek(playhead)`——每个 clip 建
+  `AudioBufferSourceNode → GainNode → destination`,`src.start(when, offset, duration)`。
+  与视觉时钟对齐由上层同时驱动;Web Audio 采样级精确,漂移小。
+- **导出**:`renderOffline(duration)` 用 `OfflineAudioContext` 建**同一套**图渲染整轨混音,
+  故离线混音与预览一致(契约 #3)。
+- 校验:`tests/audio-scheduling.test.ts` + `tests/audio-engine.test.ts`(假 context 记录
+  节点参数);e2e `pnpm verify:audio`——真实 `OfflineAudioContext` 渲染带 fade+gain 的正弦,
+  断言 `midRms≈0.5×0.707`、fade 段更弱;并用 MediaRecorder 录一段 Opus 经 `AudioSource` 解回。
+
 ### 文字与字体加载（TextClip / FontManager）
 
 `TextClip` 用 `PIXI.Text` 渲染;`fontSize` 可关键帧动画,`text`/`fontFamily`/`fill` 为可设
@@ -137,6 +156,83 @@ clock.play();
 同样去重、计入 `ready()`。它只是 `load` 的便捷封装,走相同的 `document.fonts` 机制。
 （渲染校验见 `pnpm verify:font`:用自托管的 Pacifico 走同一路径上屏——本沙盒浏览器无外网,
 但 Google css2 端点经代理 curl 可达。）
+
+### 特效与转场（Effect / Transition）
+
+**`Effect`** 包一个 `PIXI.Filter`，参数是 `AnimatableProperty`。关键设计是
+**filter 惰性创建**——filter 需要 GPU/DOM 上下文，所以基类只在首次 `attach()` 时才调
+`createFilter()`。因此一个 Effect 可以在无渲染器的环境里被构造、参数被关键帧动画（也正
+因此纯逻辑能在 headless 单测里覆盖）。`attach/detach` 维护目标 `Container.filters` 链，
+`updateAt(t)` 把 `t` 时刻的值写进 filter（uniform / 矩阵）。写 filter 与算值分离：内置效果
+都暴露纯函数 `valuesAt(t)`，先测值、再测“值→filter”的写入。
+
+- 内置 **`ColorEffect`**（`ColorMatrixFilter`：亮度/对比度/饱和度，各 `1`=不变，
+  `updateAt` 里 `reset()` 后 `brightness/contrast/saturate` 叠加）与 **`BlurEffect`**
+  （`BlurFilter`，`strength` 可动画）。`registerBuiltins(registry)` 把 `color`/`blur`
+  按类型幂等注册进 `EffectRegistry`；消费者可 `register` 自定义类型。
+- **三级作用域，同一套 attach/update/detach 机制**，区别只是 filter 挂到哪个 `Container`：
+  - **clip 级**（`clip.effects`）：`VisualClip.applyCommon` 每帧调 `syncEffects(obj,t)`——把
+    新加进的 effect `attach` 一次（`attachedEffects` 集合去重）、对全部 `updateAt(t)`、把已
+    移除的 `detach`；`obj` 换新（re-mount）时清空并重挂。只影响该 clip。
+  - **轨道级**（`track.effects`）：`Reconciler.syncTrackEffects` 挂到轨道 `Container`（调整层，
+    见「多轨叠层」），影响该轨道全部 clip。
+  - **全局**（`compositor.effects`）：`Compositor.syncStageEffects` 挂到 root `stage`，影响
+    **整帧合成结果**——主调色 / 全局模糊 / 整帧 warp。`renderSync` 与 `renderToTexture` 都
+    渲染同一个 stage，所以全局效果在预览与导出一致（契约 #3）。同一 effect 实例只应属于一个
+    作用域（它只持有一个 filter、一次挂一个目标）。warp 的作用范围是目标 `Container` 的包围盒，
+    整帧 warp 需内容铺满帧（见 warp 小节的 caveat）。
+- **`Transition`**（轨道内、重叠驱动）：`transition.between(A, B)` 绑定相邻两 clip(顺序=方向
+  `from→to`),`track.addTransition(transition)` 挂到轨道。**转场窗口 = 两 clip 的重叠区间**
+  `[max(starts), min(ends))`,由 `windowAt()` 每帧从 clip 现算(不缓存,所以移动/裁剪 clip 会
+  实时更新窗口,`render(t)` 仍是纯函数);`progressAt(t)` 把窗口映射成 0→1(半开、clamp)。
+  想要 N 帧转场就让两 clip 重叠 N 帧(`durationFrames` 只是作者提示)。
+  - **渲染管线**:`Reconciler` 在窗口内把 A、B **各自离屏渲成一张帧尺寸 `RenderTexture`**——
+    做法是**渲染整个轨道容器、但只留目标 clip 可见**(`renderIsolated`,临时屏蔽轨道滤镜),
+    走的是和最终上屏完全相同的路径,所以 clip 落位精确、且对 unmount/remount(循环重播)稳健
+    (直接把带父级/带变换的 clip 容器渲到 target 在 remount 后会错位)。再调
+    `transition.render(renderer, texA, texB, progress)` 混合,结果贴到一个 Sprite、把两个 clip
+    隐藏;窗口外照常直渲。需要 GPU 上下文(`RenderContext`:renderer + 帧尺寸 + 分辨率),由
+    `Compositor.renderSync`/`renderToTexture` 传入——所以预览与导出一致(契约 #3)。无 renderer
+    的 headless 环境下转场跳过,两 clip 直接叠。
+  - 内置 **`CrossfadeTransition`**:`render(renderer, from, to, progress)` 把 `from` 铺满、`to` 以
+    `alpha=progress` 叠加(`out = from*(1-p) + to*p`);纯函数 `crossfadeAlpha(p)` 做 clamp。返回的
+    `RenderTexture` 由 transition 自己复用/持有(`dispose` 释放),调用方不得销毁。
+- 校验:`tests/effects.test.ts`（`valuesAt`、惰性创建、写矩阵、注册幂等、clip 接线的
+  attach/update/detach 次数、`crossfadeAlpha` clamp）+ `tests/transition.test.ts`（`between`、
+  `windowAt` 取重叠且随 clip 移动实时变、`activeAt` 半开、`progressAt` clamp、`track.addTransition`）
+  + `tests/compositor.test.ts`（全局 `compositor.effects` 挂 stage：一次 attach、每帧 update、
+  移除后 detach）+ e2e `pnpm verify:effects`——真实 WebGL 上用 `ColorEffect` 压暗白块、
+  `BlurEffect` 让红块边缘外溢、全局 desaturate 让红/蓝两 clip 同时变灰、`CrossfadeTransition`
+  独立混红→蓝、以及**轨道转场**(红 A `[0,2)` + 蓝 B `[1,3)`,`t=1.5` 重叠中点混成 `(128,0,127)`,
+  `t=0.5` 全红、`t=2.5` 全蓝)。
+
+**Warp 效果（透视 / 扭曲 / 畸变）**——`Transform2D` 只能做仿射（平移/缩放/旋转），
+warp 处理的是仿射做不到的几何形变，都通过自写 `GlProgram` 片元着色器采样源纹理实现。
+关键约定：着色器把 `vTextureCoord` 用系统 uniform `uInputClamp` 归一化成 clip 自身
+bounds 上的 `[0,1]` 坐标，distort 后再映回采样——**所以 warp 的作用范围是 clip 的包围盒**
+（贴合形状的 clip 会把外溢裁掉；要整帧 warp 就让 clip 铺满帧）。纯几何数学与着色器分离，
+可脱离 GPU 单测：
+
+- **`PerspectiveEffect`（透视/corner-pin）**：四角（TL/TR/BR/BL，`[0,1]`，可动画）定义目标
+  四边形。纯函数 `squareToQuad`（Heckbert 闭式解，单位方→四边形的 3×3 单应）+ `invert3x3`
+  求 dest→source 单应，`perspectiveSampleMatrix` 打包成列主序上传；着色器做 `uMatrix*vec3(uv,1)`
+  透视除法采样，落在四边形外的输出透明。默认单位方=恒等；向外拉出 bounds 的 corner-pin
+  （padding）留作后续。
+- **`BulgeEffect`（畸变/fisheye）**：绕 `center` 在 `radius` 内做径向放大（`strength>0` 凸起）/
+  收缩（`<0` 挤压），`aspect` 修正保持圆形；纯函数 `bulgeSourceUv` 是着色器的 CPU 参照，
+  单测「凸起→采样点更靠近中心（放大）」。
+- **`DisplacementEffect`（扭曲）**：薄封装 Pixi 内置 `DisplacementFilter`，用一张位移贴图
+  （R/G 通道 = 横/纵偏移）驱动，`strength` 可动画；无贴图时用中性灰 `(0.5,0.5)`→零位移。
+  适合波纹/热浪/动态扭曲。
+- 校验:`tests/effects-warp.test.ts`（单应恒等/角点映射/`M·M⁻¹=I`/列主序、bulge 放大与挤压、
+  各 effect `valuesAt`/`matrixAt`、注册五个内置）+ e2e `pnpm verify:effects` warp 段——真实
+  WebGL 上 bulge 把圆盘外一个黑点放大成白、perspective 把整帧白矩形顶角切成透明而中心保持、
+  displacement 让红蓝分界沿行位移。
+
+尚未落地（后续里程碑）:`ChromaKeyEffect` / `LUTEffect`（需自定义采样着色器/贴图）、
+向外 corner-pin 的 padding、warp 的 WGSL（WebGPU）变体、其它转场类型(`WipeTransition` 等,
+基类与轨道驱动已就位,只差各自的 `render`)、以及转场输出的 HiDPI 分辨率(当前离屏混合按
+resolution 1)。
 
 ### 分组 / 子合成（GroupClip）
 

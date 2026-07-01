@@ -85,7 +85,9 @@ function clipLabels(container: Container): string[] {
 /** A track effect that records attach/detach/update wiring (no real filter). */
 class TestEffect extends Effect {
   params = {} as Effect['params'];
-  protected filter = {} as never;
+  protected override createFilter() {
+    return {} as never;
+  }
   updateAt = vi.fn();
 }
 
@@ -277,6 +279,31 @@ describe('Compositor', () => {
 
     expect(clip.mountCount).toBe(1); // same graph + t → same display tree
     expect(c.isDirty).toBe(false); // a draw clears the dirty flag
+  });
+
+  it('applies global effects to the whole composite (adjustment over the stage)', () => {
+    const c = makeCompositor();
+    const track = new VisualTrack();
+    track.add(new TestClip(0, 5));
+    c.addTrack(track);
+
+    const fx = new TestEffect();
+    const attach = vi.spyOn(fx, 'attach').mockImplementation(() => {});
+    const detach = vi.spyOn(fx, 'detach').mockImplementation(() => {});
+    c.effects.push(fx);
+
+    c.renderSync(0.5);
+    expect(attach).toHaveBeenCalledTimes(1); // attached to the stage once
+    const stage = attach.mock.calls[0]![0];
+    expect(fx.updateAt).toHaveBeenCalledWith(0.5);
+
+    c.renderSync(0.6);
+    expect(attach).toHaveBeenCalledTimes(1); // reused, not re-attached
+    expect(fx.updateAt).toHaveBeenLastCalledWith(0.6); // updated every frame
+
+    c.effects.length = 0; // remove the global effect
+    c.renderSync(0.7);
+    expect(detach).toHaveBeenCalledWith(stage);
   });
 
   it('mutations mark the compositor dirty (contract #5)', () => {

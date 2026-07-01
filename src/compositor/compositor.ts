@@ -1,7 +1,8 @@
 import { autoDetectRenderer, Container, type Renderer, RenderTexture } from 'pixi.js';
 import type { Disposable } from '../core/disposable';
+import type { Effect } from '../effects/effect';
 import type { Timebase } from '../time/timebase';
-import { Reconciler } from './reconciler';
+import { Reconciler, type RenderContext } from './reconciler';
 import type { Track } from './track';
 import type { VisualClip } from './clip';
 import { GroupClip } from './group-clip';
@@ -61,6 +62,14 @@ export class Compositor implements Disposable {
   private readonly stage = new Container();
   private readonly tracks: Track[] = [];
   private readonly reconciler = new Reconciler();
+  /**
+   * Global effects (an adjustment layer over the whole composite). Applied to
+   * the root stage, so they affect every track's pixels together — a master
+   * colour grade, blur or warp. Preview and export share this pass (contract #3).
+   * Mutate freely; the change repaints on the next {@link renderSync}.
+   */
+  readonly effects: Effect[] = [];
+  private readonly attachedEffects = new Set<Effect>();
   /** Shared GPU texture pool; every video source under this compositor uses it. */
   readonly textures: TextureManager;
   /** Backing-store scale (HiDPI). */
@@ -190,9 +199,21 @@ export class Compositor implements Disposable {
    * (SDK contract #2). Draws pixels only once {@link init} has resolved.
    */
   renderSync(t: number): void {
-    this.reconciler.reconcile(this.tracks, t, this.stage);
+    this.reconciler.reconcile(this.tracks, t, this.stage, this.renderContext());
+    this.syncStageEffects(t);
     this.renderer?.render({ container: this.stage });
     this.dirty = false;
+  }
+
+  /** The GPU context transitions need for offscreen passes (null before init). */
+  private renderContext(): RenderContext | undefined {
+    if (!this.renderer) return undefined;
+    return {
+      renderer: this.renderer,
+      width: this.options.width,
+      height: this.options.height,
+      resolution: this.resolution,
+    };
   }
 
   /**
@@ -203,7 +224,8 @@ export class Compositor implements Disposable {
     if (!this.renderer) {
       throw new Error('Compositor.renderToTexture requires init() first — see todo/01-skeleton.md');
     }
-    this.reconciler.reconcile(this.tracks, t, this.stage);
+    this.reconciler.reconcile(this.tracks, t, this.stage, this.renderContext());
+    this.syncStageEffects(t);
     const target = RenderTexture.create({
       width: this.options.width,
       height: this.options.height,
@@ -211,6 +233,23 @@ export class Compositor implements Disposable {
     });
     this.renderer.render({ container: this.stage, target });
     return target;
+  }
+
+  /** Attach newly-added global effects to the stage, update all, detach removed. */
+  private syncStageEffects(t: number): void {
+    for (const effect of this.effects) {
+      if (!this.attachedEffects.has(effect)) {
+        effect.attach(this.stage);
+        this.attachedEffects.add(effect);
+      }
+      effect.updateAt(t);
+    }
+    for (const effect of [...this.attachedEffects]) {
+      if (!this.effects.includes(effect)) {
+        effect.detach(this.stage);
+        this.attachedEffects.delete(effect);
+      }
+    }
   }
 
   /** Preview: best-effort prepare + immediate renderSync (may drop frames). */
@@ -236,6 +275,8 @@ export class Compositor implements Disposable {
   }
 
   dispose(): void {
+    for (const effect of this.attachedEffects) effect.detach(this.stage);
+    this.attachedEffects.clear();
     this.reconciler.clear(this.stage);
     this.tracks.length = 0;
     this.textures.dispose();

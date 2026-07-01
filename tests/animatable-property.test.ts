@@ -49,4 +49,31 @@ describe('AnimatableProperty', () => {
     ]);
     expect(p.valueAt(1)).toBe(5);
   });
+
+  it('setStatic clears keyframes so the constant value wins (toggle animation off)', () => {
+    const p = new AnimatableProperty(1);
+    p.setKeyframes([
+      { time: 0, value: 0 },
+      { time: 1, value: 2 },
+    ]);
+    expect(p.valueAt(0.5)).toBe(1);
+    expect(p.animated).toBe(true);
+
+    p.setStatic(1); // back to a constant
+    expect(p.animated).toBe(false);
+    expect(p.valueAt(0)).toBe(1);
+    expect(p.valueAt(0.5)).toBe(1);
+    expect(p.valueAt(1)).toBe(1);
+  });
+
+  it('clearKeyframes falls back to the current static value', () => {
+    const p = new AnimatableProperty(7);
+    p.setKeyframes([
+      { time: 0, value: 0 },
+      { time: 1, value: 10 },
+    ]);
+    p.clearKeyframes();
+    expect(p.valueAt(0.5)).toBe(7);
+    expect(p.animated).toBe(false);
+  });
 });
