@@ -7,7 +7,7 @@
  * for a decoded video (object-fit: cover). Mutations don't auto-repaint (SDK
  * contract #5), so every control change calls renderPreview explicitly.
  */
-import { Texture } from 'pixi.js';
+import { CanvasSource, Texture } from 'pixi.js';
 import type { BLEND_MODES } from 'pixi.js';
 import {
   Compositor,
@@ -38,18 +38,26 @@ const BLEND_MODES_LIST: BLEND_MODES[] = [
   'darken',
 ];
 
-/** A source wrapping a single, pre-generated texture. */
-class CanvasSource extends VisualSource {
+/**
+ * A source wrapping a single, drawn-on-canvas texture. The canvas is rendered at
+ * `devicePixelRatio` and the texture tagged with that resolution, so generated
+ * art (e.g. the circle's hard edge) stays crisp on HiDPI screens instead of
+ * being upscaled from a 1x bitmap.
+ */
+class DrawnSource extends VisualSource {
   private texture: Texture | null = null;
   constructor(private readonly draw: (ctx: CanvasRenderingContext2D) => void, private readonly w = W, private readonly h = H) {
     super();
   }
   async load(): Promise<SourceMetadata> {
+    const ss = globalThis.devicePixelRatio || 1;
     const canvas = document.createElement('canvas');
-    canvas.width = this.w;
-    canvas.height = this.h;
-    this.draw(canvas.getContext('2d')!);
-    this.texture = Texture.from(canvas);
+    canvas.width = Math.round(this.w * ss);
+    canvas.height = Math.round(this.h * ss);
+    const ctx = canvas.getContext('2d')!;
+    ctx.scale(ss, ss); // draw in logical coordinates
+    this.draw(ctx);
+    this.texture = new Texture({ source: new CanvasSource({ resource: canvas, resolution: ss }) });
     this.metadata = { width: this.w, height: this.h, duration: Infinity, hasAudio: false };
     return this.metadata;
   }
@@ -101,14 +109,14 @@ async function main(): Promise<void> {
   const render = () => compositor.renderPreview(clock.currentTime);
 
   // ── Build three tracks, bottom → top ──────────────────────────────────────
-  const bgSource = new CanvasSource((ctx) => {
+  const bgSource = new DrawnSource((ctx) => {
     const g = ctx.createLinearGradient(0, 0, W, H);
     g.addColorStop(0, '#ff8a00');
     g.addColorStop(1, '#2b6cff');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   });
-  const circleSource = new CanvasSource((ctx) => {
+  const circleSource = new DrawnSource((ctx) => {
     ctx.clearRect(0, 0, 120, 120);
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
@@ -117,7 +125,7 @@ async function main(): Promise<void> {
     ctx.fillStyle = '#e11d48';
     ctx.fillRect(52, 4, 16, 112);
   }, 120, 120);
-  const tintSource = new CanvasSource((ctx) => {
+  const tintSource = new DrawnSource((ctx) => {
     ctx.fillStyle = '#12b3a8';
     ctx.fillRect(0, 0, W, H);
   });
