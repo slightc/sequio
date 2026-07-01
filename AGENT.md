@@ -44,7 +44,7 @@ src/
   texture/     TextureManager (GPU budget + LRU)             ✅ implemented
   text/        FontManager (web-font loading)                ✅ implemented
   compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips done, transitions TODO
-  effects/     Effect, EffectRegistry, Transition            🚧 abstractions only
+  effects/     Effect, EffectRegistry, Transition            🚧 color/blur effects + crossfade done, chroma/LUT/wipe TODO
   audio/       AudioEngine + scheduling                      ✅ implemented (Web Audio + OfflineAudioContext)
   export/      Exporter                                      🚧 interface only
   index.ts     public barrel
@@ -85,6 +85,7 @@ pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
 pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen
 pnpm verify:font    # Puppeteer e2e: custom/Google web-font renders in a TextClip
 pnpm verify:audio   # Puppeteer e2e: AudioEngine offline mix + AudioSource decode
+pnpm verify:effects # Puppeteer e2e: color/blur effect on a clip + crossfade blend
 ```
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's

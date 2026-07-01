@@ -33,6 +33,8 @@ export abstract class VisualClip extends Clip {
   opacity = new AnimatableProperty<number>(1);
   blendMode: BLEND_MODES = 'normal';
   effects: Effect[] = [];
+  private readonly attachedEffects = new Set<Effect>();
+  private lastObj: Container | null = null;
 
   /** Create the backing pixi object (called when the clip becomes active). */
   abstract mount(): Container;
@@ -46,7 +48,29 @@ export abstract class VisualClip extends Clip {
     this.transform.applyTo(obj, t);
     obj.alpha = this.opacity.valueAt(t);
     obj.blendMode = this.blendMode;
-    for (const effect of this.effects) effect.updateAt(t);
+    this.syncEffects(obj, t);
+  }
+
+  /** Attach newly-added effects to `obj`, update all, detach removed ones. */
+  private syncEffects(obj: Container, t: number): void {
+    // A fresh pixi object (re-mount) needs its effects re-attached.
+    if (obj !== this.lastObj) {
+      this.attachedEffects.clear();
+      this.lastObj = obj;
+    }
+    for (const effect of this.effects) {
+      if (!this.attachedEffects.has(effect)) {
+        effect.attach(obj);
+        this.attachedEffects.add(effect);
+      }
+      effect.updateAt(t);
+    }
+    for (const effect of [...this.attachedEffects]) {
+      if (!this.effects.includes(effect)) {
+        effect.detach(obj);
+        this.attachedEffects.delete(effect);
+      }
+    }
   }
 }
 

@@ -71,7 +71,11 @@ export { Reconciler } from './compositor/reconciler';
 // ── Effects & Transitions ────────────────────────────────────────────────────
 export { Effect } from './effects/effect';
 export { EffectRegistry, type EffectFactory } from './effects/effect-registry';
+export { ColorEffect } from './effects/color-effect';
+export { BlurEffect } from './effects/blur-effect';
+export { registerBuiltins, BUILTIN_EFFECTS } from './effects/builtins';
 export { Transition } from './effects/transition';
+export { CrossfadeTransition, crossfadeAlpha } from './effects/crossfade-transition';
 
 // ── Audio ─────────────────────────────────────────────────────────────────
 export { AudioEngine } from './audio/audio-engine';

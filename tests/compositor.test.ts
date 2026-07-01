@@ -85,7 +85,9 @@ function clipLabels(container: Container): string[] {
 /** A track effect that records attach/detach/update wiring (no real filter). */
 class TestEffect extends Effect {
   params = {} as Effect['params'];
-  protected filter = {} as never;
+  protected override createFilter() {
+    return {} as never;
+  }
   updateAt = vi.fn();
 }
 

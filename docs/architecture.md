@@ -34,7 +34,7 @@
 | 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
 | 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）已实现；转场待后续里程碑 |
-| 特效转场 | `src/effects/` | 🚧 抽象基类已定，内置效果待实现 |
+| 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
 | 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
 
@@ -156,6 +156,37 @@ clock.play();
 同样去重、计入 `ready()`。它只是 `load` 的便捷封装,走相同的 `document.fonts` 机制。
 （渲染校验见 `pnpm verify:font`:用自托管的 Pacifico 走同一路径上屏——本沙盒浏览器无外网,
 但 Google css2 端点经代理 curl 可达。）
+
+### 特效与转场（Effect / Transition）
+
+**`Effect`** 包一个 `PIXI.Filter`，参数是 `AnimatableProperty`。关键设计是
+**filter 惰性创建**——filter 需要 GPU/DOM 上下文，所以基类只在首次 `attach()` 时才调
+`createFilter()`。因此一个 Effect 可以在无渲染器的环境里被构造、参数被关键帧动画（也正
+因此纯逻辑能在 headless 单测里覆盖）。`attach/detach` 维护目标 `Container.filters` 链，
+`updateAt(t)` 把 `t` 时刻的值写进 filter（uniform / 矩阵）。写 filter 与算值分离：内置效果
+都暴露纯函数 `valuesAt(t)`，先测值、再测“值→filter”的写入。
+
+- 内置 **`ColorEffect`**（`ColorMatrixFilter`：亮度/对比度/饱和度，各 `1`=不变，
+  `updateAt` 里 `reset()` 后 `brightness/contrast/saturate` 叠加）与 **`BlurEffect`**
+  （`BlurFilter`，`strength` 可动画）。`registerBuiltins(registry)` 把 `color`/`blur`
+  按类型幂等注册进 `EffectRegistry`；消费者可 `register` 自定义类型。
+- **clip 级接线**：`VisualClip.applyCommon` 每帧调 `syncEffects(obj,t)`——把新加进
+  `clip.effects` 的 effect `attach` 一次（用 `attachedEffects` 集合去重）、对全部
+  `updateAt(t)`、把已移除的 `detach`；`obj` 换新（re-mount）时清空并重挂。轨道级 effect
+  走同一套（挂在轨道 `Container` 上，见「多轨叠层」）。
+- **`Transition`**：`render(renderer, from, to, progress ∈ [0,1]) → RenderTexture`，在 GPU 上把
+  两路纹理混成一张。内置 **`CrossfadeTransition`**：`from` 铺满、`to` 以 `alpha=progress`
+  叠加（`out = from*(1-p) + to*p`）；纯函数 `crossfadeAlpha(p)` 做 clamp。返回的
+  `RenderTexture` 由 transition 自己复用/持有（`dispose` 释放），调用方不得销毁。
+- 校验:`tests/effects.test.ts`（`valuesAt`、惰性创建、写矩阵、注册幂等、clip 接线的
+  attach/update/detach 次数、`crossfadeAlpha` clamp）+ e2e `pnpm verify:effects`——真实
+  WebGL 上用 `ColorEffect` 压暗白块、`BlurEffect` 让红块边缘外溢、`CrossfadeTransition`
+  把红→蓝在 `progress=0.5` 混成 `(128,0,127)`。
+
+尚未落地（后续里程碑）:`ChromaKeyEffect` / `LUTEffect` / `TransformEffect`（需自定义
+`GlProgram`/`GpuProgram`）、`WipeTransition`，以及把 `Transition` 接进 Compositor 让相邻
+clip 在重叠区间按 `durationFrames` **自动**过渡——当前 `Transition` 是可独立调用的构件，
+还没有由 Compositor 驱动。
 
 ### 分组 / 子合成（GroupClip）
 
