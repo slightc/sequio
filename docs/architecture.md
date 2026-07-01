@@ -103,8 +103,14 @@ clock.play();
   后者 mount）。见 `tests/compositor.test.ts`。
 - **半帧边界（如 10.5f）无歧义**：渲染帧落在整数帧序号上（导出 `t = frame/fps`），没有帧
   正好落在 10.5——切换发生在帧 10（属前 clip）与帧 11（属后 clip）之间，每帧唯一归属一个 clip。
-- **末端最后一帧**：内容在 `[0, end)` 上，最后可显示帧是 `end - 1/fps`；播放头正好停在 `end`
-  时该帧已失活（空/黑）。播放器式 UX 应让"播放头到末尾显示最后一帧"（示例见 `example/`）。
+- **末端最后一帧（Compositor 默认按住）**：内容在 `[0, end)` 上，最后可显示帧是 `end - 1/fps`；
+  播放头正好停在 `end`（= 最大 clip end）时该帧已失活，直接渲染就是空/黑。`Compositor` **默认**
+  把渲染时间钳到末帧（`holdLastFrameAtEnd`，见 `resolveRenderTime`）：`t` 到达/越过时间线末端时
+  按 `end - 1/fps` 渲染——像视频播放器停在最后一帧——所以上层可以把时钟一路走到 `duration`，预览
+  不会黑。**只影响最末端**：严格早于末端的 `t`（片头留白、clip 间缝隙、有后继 clip 的干净切换）
+  原样渲染，不受影响。想要"片尾留白/内容后是黑场"的时间线可 `holdLastFrameAtEnd: false` 关掉。
+  `prepare(t)` 同样按此钳制（末端预解码末帧而非什么都不解）；导出逐帧 `t` 全 `< end`，不触发、
+  不受影响。见 `tests/compositor.test.ts`。
 - **预览的过渡观感（非崩溃）**：跨到新 clip 的那一刻，新 clip 的源可能**还没解码好**，
   预览是尽力而为（fire-and-forget prepare + 立即 renderSync，契约 #1），故切换后的头几帧
   可能 miss → 短暂空白。**导出** `await prepare` 等齐、帧级精确、无此现象。

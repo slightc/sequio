@@ -49,6 +49,18 @@ export interface CompositorOptions {
    * Default `0.5`.
    */
   prewarmSeconds?: number;
+  /**
+   * Hold the last frame at the timeline's end (default `true`). Clips are active
+   * on `[start, end)`, so rendering exactly at the timeline end (the maximum clip
+   * end) would show an empty/black frame. With this on, the render time is
+   * clamped to the last real frame (`end - 1/fps`) once `t` reaches/passes the
+   * end — like a video player freezing on its final frame — so callers can drive
+   * the clock all the way to `duration` without the preview going black. Only the
+   * very end is affected: any `t` strictly before it (leading black, gaps between
+   * clips, clean cuts where another clip starts) renders unchanged. Turn off for
+   * a timeline that intends trailing black past its content.
+   */
+  holdLastFrameAtEnd?: boolean;
 }
 
 /**
@@ -85,6 +97,8 @@ export class Compositor implements Disposable {
   readonly resolution: number;
   /** Cross-clip pre-warm look-ahead in seconds (mutable at runtime; `0` = off). */
   prewarmSeconds: number;
+  /** Freeze the final frame at the timeline end instead of showing black. */
+  holdLastFrameAtEnd: boolean;
   private renderer: Renderer | null = null;
   private initPromise: Promise<void> | null = null;
   private dirty = true;
@@ -102,6 +116,7 @@ export class Compositor implements Disposable {
     this.view.height = options.height;
     this.resolution = options.resolution ?? (globalThis.devicePixelRatio || 1);
     this.prewarmSeconds = options.prewarmSeconds ?? 0.5;
+    this.holdLastFrameAtEnd = options.holdLastFrameAtEnd ?? true;
     this.ownsTextures = options.textures === undefined;
     this.textures = options.textures ?? new TextureManager(options.textureBudgetBytes);
   }
@@ -164,13 +179,41 @@ export class Compositor implements Disposable {
    * `t + prewarmSeconds`, so a clip transition doesn't miss on its first frame.
    */
   async prepare(t: number): Promise<void> {
+    const rt = this.resolveRenderTime(t);
     const jobs: Promise<void>[] = [];
     for (const track of this.tracks) {
       if (track instanceof VisualTrack && track.enabled) {
-        this.collectPrepareJobs(track.clips, t, this.prewarmSeconds, jobs);
+        this.collectPrepareJobs(track.clips, rt, this.prewarmSeconds, jobs);
       }
     }
     await Promise.all(jobs);
+  }
+
+  /** The timeline's end in seconds: the largest clip end across visual tracks
+   *  (`0` if there are none). This is the exclusive edge of `[0, end)`. */
+  private timelineEnd(): number {
+    let end = 0;
+    for (const track of this.tracks) {
+      if (track instanceof VisualTrack) {
+        for (const clip of track.clips) if (clip.end > end) end = clip.end;
+      }
+    }
+    return end;
+  }
+
+  /**
+   * Map a requested time to the time actually rendered. Normally the identity;
+   * with {@link holdLastFrameAtEnd} (default), a `t` at or past the timeline end
+   * is pulled back to the last real frame (`end - 1/fps`) so the final frame
+   * isn't the empty `[start, end)` boundary. `t` strictly before the end (leading
+   * black, gaps, cuts) is untouched — so only the very end freezes, not gaps.
+   */
+  private resolveRenderTime(t: number): number {
+    if (!this.holdLastFrameAtEnd) return t;
+    const end = this.timelineEnd();
+    if (!(end > 0) || !Number.isFinite(end) || t < end) return t;
+    const last = end - this.options.timebase.frameDuration;
+    return last > 0 ? last : 0;
   }
 
   /**
@@ -218,8 +261,9 @@ export class Compositor implements Disposable {
     // Any render supersedes a pending post-decode preview repaint (so a stale
     // seek — or an export driving this same compositor — can't be clobbered).
     this.previewToken++;
-    this.reconciler.reconcile(this.tracks, t, this.stage, this.renderContext());
-    this.syncStageEffects(t);
+    const rt = this.resolveRenderTime(t); // hold the last frame at the very end
+    this.reconciler.reconcile(this.tracks, rt, this.stage, this.renderContext());
+    this.syncStageEffects(rt);
     this.renderer?.render({ container: this.stage });
     this.dirty = false;
   }
@@ -244,8 +288,9 @@ export class Compositor implements Disposable {
       throw new Error('Compositor.renderToTexture requires init() first — see todo/01-skeleton.md');
     }
     this.previewToken++; // an offscreen/export render also supersedes a pending repaint
-    this.reconciler.reconcile(this.tracks, t, this.stage, this.renderContext());
-    this.syncStageEffects(t);
+    const rt = this.resolveRenderTime(t); // hold the last frame at the very end
+    this.reconciler.reconcile(this.tracks, rt, this.stage, this.renderContext());
+    this.syncStageEffects(rt);
     const target = RenderTexture.create({
       width: this.options.width,
       height: this.options.height,

@@ -104,14 +104,8 @@ async function main(): Promise<void> {
     clock.seek(0);
   }
 
-  // Clips are active on [start, end); at exactly t=duration every clip has ended
-  // → a black frame. Like a video player, hold the *render* at the last frame
-  // while the clock still reports the full duration (so the scrubber reaches the
-  // end). Same pattern as example/multitrack-demo.ts and example/av-player.ts.
-  const renderAt = (t: number) => compositor.renderPreview(Math.min(t, clock.duration - 1 / FPS));
-
   clock.onTick((t) => {
-    renderAt(t);
+    compositor.renderPreview(t);
     scrub.value = String(t);
     label.textContent = `${t.toFixed(2)}s / ${clock.duration.toFixed(2)}s`;
   });
