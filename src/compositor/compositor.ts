@@ -27,8 +27,15 @@ export interface CompositorOptions {
   /** Prefer the PixiJS v8 WebGPU backend when available. */
   preferWebGPU?: boolean;
   colorSpace?: 'srgb' | 'display-p3';
-  /** GPU texture-pool budget in bytes (default 256 MiB). */
+  /** GPU texture-pool budget in bytes (default 256 MiB). Ignored if {@link textures} is given. */
   textureBudgetBytes?: number;
+  /**
+   * Share an existing {@link TextureManager} (and thus the decoded/uploaded
+   * frames behind it) instead of creating a private one — e.g. an offscreen
+   * export compositor reusing the preview's pool so nothing is decoded twice.
+   * A shared pool is not disposed when this compositor is disposed.
+   */
+  textures?: TextureManager;
   /**
    * Backing-store scale for crisp output on HiDPI screens (default
    * `devicePixelRatio`). The canvas draws at `width*resolution` internally while
@@ -72,6 +79,8 @@ export class Compositor implements Disposable {
   private readonly attachedEffects = new Set<Effect>();
   /** Shared GPU texture pool; every video source under this compositor uses it. */
   readonly textures: TextureManager;
+  /** Whether we own {@link textures} (created it) vs. share an injected one. */
+  private readonly ownsTextures: boolean;
   /** Backing-store scale (HiDPI). */
   readonly resolution: number;
   /** Cross-clip pre-warm look-ahead in seconds (mutable at runtime; `0` = off). */
@@ -90,7 +99,8 @@ export class Compositor implements Disposable {
     this.view.height = options.height;
     this.resolution = options.resolution ?? (globalThis.devicePixelRatio || 1);
     this.prewarmSeconds = options.prewarmSeconds ?? 0.5;
-    this.textures = new TextureManager(options.textureBudgetBytes);
+    this.ownsTextures = options.textures === undefined;
+    this.textures = options.textures ?? new TextureManager(options.textureBudgetBytes);
   }
 
   /**
@@ -128,6 +138,9 @@ export class Compositor implements Disposable {
   removeTrack(track: Track): void {
     const i = this.tracks.indexOf(track);
     if (i >= 0) this.tracks.splice(i, 1);
+    // Unmount now (not on the next reconcile) so the track can be safely moved
+    // to another compositor without leaving its clips double-mounted.
+    this.reconciler.unmountTrack(track, this.stage);
     this.invalidate();
   }
 
@@ -279,7 +292,7 @@ export class Compositor implements Disposable {
     this.attachedEffects.clear();
     this.reconciler.clear(this.stage);
     this.tracks.length = 0;
-    this.textures.dispose();
+    if (this.ownsTextures) this.textures.dispose(); // keep a shared/injected pool alive
     this.renderer?.destroy();
     this.renderer = null;
     this.initPromise = null;

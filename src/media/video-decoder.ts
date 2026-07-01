@@ -26,6 +26,14 @@ export interface VideoDecoderBackend {
    * it via the cache.
    */
   decode(sec: number): Promise<DecodedFrame | null>;
+  /**
+   * Optional: create an independent decoder that **shares the demux** (the file
+   * is parsed once) but has its own decode position — so a preview and an export
+   * can decode the same source in parallel without contending on one decoder.
+   * The fork must be `load()`ed before use and disposed by its caller; disposing
+   * it must not tear down the shared demux. Backends that can't fork omit this.
+   */
+  fork?(): VideoDecoderBackend;
   /** Release the demuxer / decoder. */
   dispose(): void;
 }

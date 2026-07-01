@@ -15,7 +15,7 @@
 | 5 | Image / Text / Shape clips | [05-image-text-shape.md](05-image-text-shape.md) | ✅ Done |
 | 6 | AudioEngine 音画同步 | [06-audio-engine.md](06-audio-engine.md) | ✅ Done |
 | 7 | Effects + EffectRegistry + Transition | [07-effects-transitions.md](07-effects-transitions.md) | 🚧 In progress（color/blur + warp + 全局 effects + 轨道内 crossfade 转场落地；chroma/LUT/wipe 待做） |
-| 8 | Exporter（FixedStep + 编码封装） | [08-exporter.md](08-exporter.md) | ⬜ Todo |
+| 8 | Exporter（FixedStep + 编码封装） | [08-exporter.md](08-exporter.md) | ✅ Done（MP4/WebM,视频 + 音频;golden-frame 全帧对比为后续） |
 | 9 | GroupClip 子合成（嵌套分组） | [09-group-clip.md](09-group-clip.md) | ✅ Done |
 
 状态约定：`⬜ Todo` / `🚧 In progress` / `✅ Done` / `🅿️ Blocked`。

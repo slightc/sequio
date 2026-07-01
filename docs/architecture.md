@@ -36,7 +36,7 @@
 | 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）+ 轨道内重叠驱动转场（`track.addTransition`）已实现 |
 | 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
 | 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
-| 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
+| 导出 | `src/export/` | ✅ `Exporter`（定步循环 + `await prepare` 不丢帧 + Mediabunny `Output` 封装 MP4/WebM,视频 + 音频）已实现;golden-frame 全帧对比为后续 |
 
 ### 时钟控制面（对齐 `HTMLMediaElement`）
 
@@ -133,6 +133,44 @@ clock.play();
 - 校验:`tests/audio-scheduling.test.ts` + `tests/audio-engine.test.ts`(假 context 记录
   节点参数);e2e `pnpm verify:audio`——真实 `OfflineAudioContext` 渲染带 fade+gain 的正弦,
   断言 `midRms≈0.5×0.707`、fade 段更弱;并用 MediaRecorder 录一段 Opus 经 `AudioSource` 解回。
+
+### 导出（Exporter）
+
+`Exporter` 复用**同一套渲染核心**,但换成定步、逐帧确定性导出(契约 #1 + #3):
+
+- **纯帧时序**(`exportFrameTimes(range, fps)`,可单测):`[start,end)` 内 `round((end-start)*fps)`
+  帧,第 `i` 帧在 `start + i/fps`——半开、与 clip 区间一致,不看 wall-clock。
+- **逐帧循环**:字体一次性等齐(`await fonts.ready()`,绝不中途换字体)后,对每帧
+  `await compositor.prepare(t)`(**await = 绝不丢帧**,与预览的 best-effort 相对)→
+  `renderSync(t)`(画到共享的 `view` 画布)→ `sink.addFrame(t, 1/fps)`。音频取离线混音
+  `AudioEngine.renderOffline(duration)` 一次性编码。
+- **编码/封装 = `ExportSink` seam**:默认 `MediabunnyExportSink` 用 Mediabunny
+  `CanvasSource`(直接抓 `view` 画布,免手动 `VideoFrame` readback)+ `AudioBufferSource` +
+  `Output`(`Mp4OutputFormat` / `WebMOutputFormat`)+ `BufferTarget` → `Blob`,取代
+  `mp4-muxer`/`webm-muxer`;动态 `import('mediabunny')`。`add` 返回的 Promise 被 await 以
+  尊重编码器背压(长视频内存稳定)。测试可注入假 sink。
+- **`ExportOptions`**:`fps` / `container`('mp4'|'webm')/ `videoCodec` / `bitrate` / `audio` /
+  `audioCodec` / `audioBitrate` / `range`(默认整条时间线 = 最大 clip end)。`onProgress(p)`
+  每帧上报;`cancel()` 置标志,下一帧抛 `ExportCancelledError` 并 `sink.cancel()` 释放编码器。
+- **fork 导出(不打扰预览、不重复加载)**:导出会独占渲染循环。要让预览完全不受影响、
+  **导出期间仍能正常播放**,消费者可**另起一个离屏 `Compositor` 专供导出**:
+  - 通过 `CompositorOptions.textures` 共享预览的 `TextureManager`(从而共享已解码/上传的帧——
+    **绝不二次解码**;共享池不随 fork 的 `dispose` 释放)。PixiJS 的 `Texture` 可被多个 renderer
+    各自上传,所以同一 source 能被预览和导出两个 renderer 同时用。
+  - fork 用**自己的 clip**(引用同一批 source),而不是把预览的 track 挪过去——这样预览保留自己
+    的 track/时钟/音频/画布,导出期间照常播放。fork 有独立的 renderer/reconciler。
+  - **`VideoSource.fork()`**:视频再进一步——导出用一个 fork 出来的 `VideoSource`,它**共享
+    已 demux 的 `Input`(文件只解析一次)但有自己的 `VideoSampleSink`(解码器)+ 自己的
+    `FrameCache`**,所以预览和导出**并行解码**、互不抢占。`MediabunnyVideoDecoder.fork()` 造出
+    共享 demux、独立 sink 的解码器;fork 的 `dispose()` 不拆共享 demux。`decode` 内部对
+    `getSample` 串行化(sink 有解码状态,单个 sink 不能并发)。
+  `example/export-demo.ts` 即用此模式(旋律场景 + 加载视频都能在导出期间继续播放)。
+- 校验:`tests/exporter.test.ts`(纯 `exportFrameTimes`;用假 compositor/audio/sink 断言
+  **每帧 prepare→render→addFrame 的顺序**、帧时刻、progress 单调到 1、`audio:false` 跳过音频、
+  `range` 覆盖时长、`cancel` 中止且不 finalize)+ e2e `pnpm verify:export`——真实导出:
+  ①视频-only 红 clip 到 MP4,解回断言帧数(8)、尺寸(160×120)、帧确实是红色(排除空画布抓取);
+  ②音+画(排一段 440Hz 正弦进 `AudioEngine`)到 WebM(vp8/opus,挑能编码的),解回断言
+  **视频轨 + 音频轨都在**。
 
 ### 文字与字体加载（TextClip / FontManager）
 
@@ -260,7 +298,9 @@ resolution 1)。
 - `prepare(t)`（异步）：`decode(t)` 取「≤t 最近一帧」入 `FrameCache`，并按播放方向
   fire-and-forget 预读 `lookahead` 帧;`getTextureAt(t)`（同步）读 cache，命中经
   `TextureManager.acquireOrUpload(`sourceId:frameIdx`)` 上传/复用 `Texture`，miss 返回
-  `null`（预览复用上一帧）—— 契约 #1。
+  `null`（预览复用上一帧）—— 契约 #1。miss 时若上一帧的池化纹理已被淘汰/`destroy`（显存预算/
+  缓存淘汰),`VideoClip` 会退回 `Texture.EMPTY`——绝不渲染已销毁的纹理(否则 Pixi 读 null
+  source 的 `addressModeU` 崩溃;导出长/大视频时尤易触发)。
 - 帧按 `round(t * fps)` 索引（**假设 CFR**，VFR 精确化是后续细化）。
 - **双预算联动**（契约 #4）：解码侧 `FrameCache`（帧数预算）与显存侧 `TextureManager`
   （字节预算 + LRU）相互独立——纹理可在显存压力下被淘汰而帧仍在缓存（下次 `getTextureAt`

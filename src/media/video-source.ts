@@ -43,7 +43,8 @@ export class VideoSource extends VisualSource {
   private readonly id = nextSourceId++;
   private readonly backend: VideoDecoderBackend;
   private readonly cache: FrameCache<DecodedFrame>;
-  private readonly inFlight = new Set<number>();
+  /** In-flight decodes by frame index → their promise, so callers can await them. */
+  private readonly inFlight = new Map<number, Promise<void>>();
   private readonly lookahead: number;
   private textures: TextureManager;
   private ownsTextures: boolean;
@@ -68,6 +69,19 @@ export class VideoSource extends VisualSource {
     this.metadata = meta;
     if (meta.fps && meta.fps > 0) this.fps = meta.fps;
     return meta;
+  }
+
+  /**
+   * A second `VideoSource` over the SAME demuxed input (no re-parse) but with its
+   * own decoder + frame cache, so a preview and an export can decode the source
+   * in parallel without contending on one decoder. The fork starts with a private
+   * texture pool (a compositor adopts a shared one on `prepare`); `await` its
+   * `load()` before use and `dispose()` it when done — that won't tear down the
+   * shared demux. Throws if the backend can't fork.
+   */
+  fork(): VideoSource {
+    if (!this.backend.fork) throw new Error('this VideoSource cannot be forked (backend has no fork())');
+    return new VideoSource({ ...this.options, backend: this.backend.fork(), textureManager: undefined });
   }
 
   /** Adopt a shared texture pool (unless one was explicitly injected). */
@@ -116,16 +130,27 @@ export class VideoSource extends VisualSource {
     return `v${this.id}:${frameIdx}`;
   }
 
-  /** Decode `idx` (frame at `sec`) into the cache unless already present/pending. */
-  private async ensure(idx: number, sec: number): Promise<void> {
-    if (this.cache.has(idx) || this.inFlight.has(idx)) return;
-    this.inFlight.add(idx);
-    try {
-      const frame = await this.backend.decode(sec);
-      if (frame) this.cache.put(idx, frame);
-    } finally {
-      this.inFlight.delete(idx);
-    }
+  /**
+   * Decode `idx` (frame at `sec`) into the cache. Resolves once the frame is
+   * resident. If a decode for `idx` is already in flight (e.g. a prior prewarm),
+   * this **awaits that same decode** rather than returning early — so an awaited
+   * `prepare(t)` truly guarantees the frame before render (no dropped/black
+   * frames on export). Concurrent callers share one decode.
+   */
+  private ensure(idx: number, sec: number): Promise<void> {
+    if (this.cache.has(idx)) return Promise.resolve();
+    const pending = this.inFlight.get(idx);
+    if (pending) return pending;
+    const p = (async () => {
+      try {
+        const frame = await this.backend.decode(sec);
+        if (frame) this.cache.put(idx, frame);
+      } finally {
+        this.inFlight.delete(idx);
+      }
+    })();
+    this.inFlight.set(idx, p);
+    return p;
   }
 
   dispose(): void {

@@ -46,7 +46,7 @@ src/
   compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips + overlap-driven transitions done
   effects/     Effect, EffectRegistry, Transition            🚧 color/blur + warp (bulge/perspective/displacement) + crossfade done, chroma/LUT/wipe TODO
   audio/       AudioEngine + scheduling                      ✅ implemented (Web Audio + OfflineAudioContext)
-  export/      Exporter                                      🚧 interface only
+  export/      Exporter (FixedStep loop + Mediabunny mux)     ✅ implemented (MP4/WebM, video + audio; golden-frame diff is a follow-up)
   index.ts     public barrel
 tests/         vitest unit tests (pure-logic modules)
 docs/          architecture & design
@@ -86,6 +86,7 @@ pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen
 pnpm verify:font    # Puppeteer e2e: custom/Google web-font renders in a TextClip
 pnpm verify:audio   # Puppeteer e2e: AudioEngine offline mix + AudioSource decode
 pnpm verify:effects # Puppeteer e2e: color/blur effect on a clip + crossfade blend
+pnpm verify:export  # Puppeteer e2e: Exporter → MP4/WebM, decoded back and checked
 ```
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's
