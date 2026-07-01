@@ -17,12 +17,14 @@ export class Transform2D {
     const [sx, sy] = this.scale.valueAt(t);
     const [ax, ay] = this.anchor.valueAt(t);
 
+    // Map the normalized anchor (0..1) onto the object's local content bounds so
+    // `position` places the anchor point: e.g. anchor [0.5,0.5] centers content
+    // on `position`, and scale/rotation pivot around it. `pivot` is in unscaled
+    // local pixels, so it must not include scale.
+    const b = obj.getLocalBounds();
+    obj.pivot.set(b.x + ax * b.width, b.y + ay * b.height);
     obj.position.set(px, py);
     obj.scale.set(sx, sy);
     obj.rotation = this.rotation.valueAt(t);
-    // `pivot` is in local pixels; consumers that need normalized anchor map it
-    // against the object's bounds. We expose anchor here and let the clip
-    // resolve it once it knows its content size.
-    obj.pivot.set(ax, ay);
   }
 }

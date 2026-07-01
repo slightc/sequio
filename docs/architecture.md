@@ -33,7 +33,7 @@
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
 | 媒体源 | `src/media/` | 🚧 `VideoSource` 解码已接 Mediabunny（sink + FrameCache + 方向预读）；Image / Audio 解码待实现 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
-| 合成图 | `src/compositor/` | 🚧 对象图/Reconciler 已实现；渲染核心已接 PixiJS（`init()` 建 renderer、`renderSync`/`renderToTexture` 落地），多轨/特效合成细节待后续里程碑 |
+| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层（每轨一个 Container、z 序稳定、轨道级 effects 调整层）已实现；转场/内置特效待后续里程碑 |
 | 特效转场 | `src/effects/` | 🚧 抽象基类已定，内置效果待实现 |
 | 音频引擎 | `src/audio/` | 🚧 接口已定，实现待开始 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
@@ -72,6 +72,19 @@ clock.play();
 
 `renderToTexture(t)` 返回的 `RenderTexture` 由调用方拥有并负责 `destroy()`（契约 #4）。
 完整可运行示例见 [`example/`](../example/)（`pnpm dev`）。
+
+### 多轨叠层与 Reconciler
+
+- **每条 `VisualTrack` 映射一个 PixiJS `Container`**，按 `zIndex` 在 stage 里排序；该轨道
+  的 clip mount 进它自己的 container，轨道级 `effects` 作为**调整层**挂到这个 container
+  的 filter 链上（作用于该轨道全部内容）。`Reconciler` 顶层管轨道容器、每轨内嵌一个子
+  `Reconciler` 管 clip，`reconcileClips` 是轨道层/分组层共用入口。
+- **z 序每帧重申**：无论 clip/轨道的挂载历史如何，`reconcile` 都用 `setChildIndex` 把
+  容器与 clip 重排成当前 z/数组顺序，所以「后激活的低层 clip」也会落到正确层级；
+  启用/禁用轨道、改 `zIndex` 立即反映。对象跨帧复用，每帧几乎零分配。
+- **anchor 语义**：`Transform2D.applyTo` 把归一化 anchor（0..1）按 `getLocalBounds()`
+  映射成局部像素 `pivot`——`position` 因此放置 anchor 点（如 anchor `[0.5,0.5]` 使内容
+  居中于 `position`，且缩放/旋转绕它进行）；`pivot` 用未缩放局部像素，不含 scale。
 
 ### 分组 / 子合成（GroupClip）
 
