@@ -2,14 +2,38 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>multitrack-test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>multitrack render check</title>
     <style>
-      body { margin: 0; background: #0b0b0e; }
-      #stage canvas { display: block; }
+      body {
+        margin: 0;
+        padding: 32px;
+        font-family: system-ui, sans-serif;
+        background: #0b0b0e;
+        color: #e6e6ea;
+      }
+      h1 { font-size: 16px; font-weight: 600; opacity: 0.85; }
+      p.expect { opacity: 0.6; font-size: 13px; max-width: 560px; line-height: 1.5; }
+      .row { display: flex; gap: 24px; margin-top: 16px; }
+      .panel { display: flex; flex-direction: column; gap: 8px; }
+      .panel canvas { border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
+      .title { font-size: 13px; font-weight: 600; }
+      .sub { font-size: 12px; opacity: 0.7; white-space: pre-line; font-variant-numeric: tabular-nums; }
+      #verdict { margin-top: 24px; font-size: 15px; font-weight: 600; }
+      #verdict.pass { color: #4ade80; }
+      #verdict.fail { color: #f87171; }
     </style>
   </head>
   <body>
+    <h1>Multi-track render check (milestone 04)</h1>
+    <p class="expect">
+      Two VisualTracks: a bottom <b>red</b> track and a top <b>blue</b> track (added out of
+      z-order; the reconciler sorts by zIndex). Panel ① blends the top at 50% opacity → expect
+      <b>purple</b>. Panel ② uses blendMode <code>add</code> → expect <b>magenta</b>. If you see
+      pure red or pure blue, stacking/blending is wrong.
+    </p>
     <div id="stage"></div>
+    <div id="verdict">running…</div>
     <script type="module" src="/example/multitrack-test.ts"></script>
   </body>
 </html>
