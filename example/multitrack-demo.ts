@@ -11,8 +11,10 @@ import { Texture } from 'pixi.js';
 import type { BLEND_MODES } from 'pixi.js';
 import {
   Compositor,
+  fonts,
   ImageClip,
   RealtimeClock,
+  TextClip,
   Timebase,
   VisualClip,
   VisualSource,
@@ -65,7 +67,22 @@ interface TrackDef {
   name: string;
   track: VisualTrack;
   clip: VisualClip;
-  source: VisualSource;
+  source?: VisualSource;
+}
+
+/**
+ * Load the title font. Uses the real Google Fonts path; if the browser has no
+ * network (e.g. CI sandbox), falls back to the self-hosted copy. Either way the
+ * font is registered before we build/render the TextClip.
+ */
+async function loadTitleFont(): Promise<string> {
+  const family = 'Pacifico';
+  try {
+    await fonts.loadGoogleFont({ family, text: 'video-editor-canvas' });
+  } catch {
+    await fonts.load({ family, src: '/example/assets/pacifico.ttf' }).catch(() => {});
+  }
+  return family;
 }
 
 async function main(): Promise<void> {
@@ -143,6 +160,23 @@ async function main(): Promise<void> {
   tintClip.blendMode = 'screen';
   tintTrack.add(tintClip);
   defs.push({ name: 'Tint (screen 40%)', track: tintTrack, clip: tintClip, source: tintSource });
+
+  // Title in a real web font (Google Fonts, falling back to self-hosted).
+  const family = await loadTitleFont();
+  const titleTrack = new VisualTrack();
+  titleTrack.zIndex = 3;
+  const titleClip = new TextClip({ text: 'video-editor-canvas', fontFamily: family, fill: 0xffffff });
+  titleClip.start = 0;
+  titleClip.end = DURATION;
+  titleClip.transform.anchor.setStatic([0.5, 0.5]);
+  titleClip.transform.position.setStatic([W / 2, H - 34]);
+  titleClip.fontSize.setKeyframes([
+    { time: 0, value: 28 },
+    { time: DURATION / 2, value: 40 },
+    { time: DURATION, value: 28 },
+  ]);
+  titleTrack.add(titleClip);
+  defs.push({ name: `Title (${family})`, track: titleTrack, clip: titleClip });
 
   for (const d of defs) compositor.addTrack(d.track);
 
