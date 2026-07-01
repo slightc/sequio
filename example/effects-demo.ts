@@ -22,11 +22,11 @@ import {
   CrossfadeTransition,
   DisplacementEffect,
   ImageClip,
-  ImageSource,
   PerspectiveEffect,
   RealtimeClock,
   ShapeClip,
   Timebase,
+  VisualClip,
   VisualSource,
   VisualTrack,
   type SourceMetadata,
@@ -37,44 +37,40 @@ const HEIGHT = 315;
 const FPS = 30;
 const DURATION = 3; // seconds, for the "Animate" sweep
 
+// HiDPI: draw generated raster art at `SS`× so it stays crisp on retina screens.
+// (The Compositor already renders vectors at devicePixelRatio; only our canvas
+// textures need supersampling.) A clip then scales the texture back by 1/SS.
+const SS = globalThis.devicePixelRatio || 1;
+
 // ── Panel A: a rich still image to show colour/blur on ──────────────────────
 
-/** A generated poster texture (gradient + shapes + label) for one still clip. */
-class PosterSource extends VisualSource {
+/**
+ * A canvas-backed source drawn at `SS`× and tagged with that factor, so the clip
+ * can scale it down by `1/SS` to occupy its logical `w×h` while carrying enough
+ * texels to be sharp on HiDPI. `draw` receives a context already scaled to
+ * logical coordinates.
+ */
+class DrawnSource extends VisualSource {
+  readonly ss = SS;
   private texture: Texture | null = null;
+
+  constructor(
+    private readonly draw: (ctx: CanvasRenderingContext2D) => void,
+    private readonly w = WIDTH,
+    private readonly h = HEIGHT,
+  ) {
+    super();
+  }
 
   async load(): Promise<SourceMetadata> {
     const c = document.createElement('canvas');
-    c.width = 512;
-    c.height = 288;
+    c.width = Math.round(this.w * this.ss);
+    c.height = Math.round(this.h * this.ss);
     const ctx = c.getContext('2d')!;
-    const grad = ctx.createLinearGradient(0, 0, 512, 288);
-    grad.addColorStop(0, '#ff5d73');
-    grad.addColorStop(0.5, '#ffd166');
-    grad.addColorStop(1, '#2b6cff');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 512, 288);
-
-    // A few saturated discs so saturation/contrast are obvious.
-    const discs: [number, number, number, string][] = [
-      [120, 90, 46, '#00e5a8'],
-      [400, 70, 38, '#ff3d81'],
-      [300, 210, 54, '#7c4dff'],
-    ];
-    for (const [x, y, r, fill] of discs) {
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = fill;
-      ctx.fill();
-    }
-
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.font = 'bold 44px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('EFFECTS', 256, 160);
-
+    ctx.scale(this.ss, this.ss); // draw in logical coordinates
+    this.draw(ctx);
     this.texture = Texture.from(c);
-    this.metadata = { width: 512, height: 288, duration: Infinity, hasAudio: false };
+    this.metadata = { width: c.width, height: c.height, duration: Infinity, hasAudio: false };
     return this.metadata;
   }
 
@@ -91,6 +87,41 @@ class PosterSource extends VisualSource {
     this.texture = null;
     this.metadata = null;
   }
+}
+
+/** Fill the frame with an `SS`×-supersampled clip: center it and scale by 1/SS. */
+function fillFrame(clip: VisualClip, ss: number): void {
+  clip.transform.anchor.setStatic([0.5, 0.5]);
+  clip.transform.position.setStatic([WIDTH / 2, HEIGHT / 2]);
+  clip.transform.scale.setStatic([1 / ss, 1 / ss]);
+}
+
+/** The poster artwork (gradient + saturated discs + label), in logical coords. */
+function drawPoster(ctx: CanvasRenderingContext2D): void {
+  const grad = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
+  grad.addColorStop(0, '#ff5d73');
+  grad.addColorStop(0.5, '#ffd166');
+  grad.addColorStop(1, '#2b6cff');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  const discs: [number, number, number, string][] = [
+    [130, 98, 50, '#00e5a8'],
+    [440, 78, 42, '#ff3d81'],
+    [330, 230, 60, '#7c4dff'],
+  ];
+  for (const [x, y, r, fill] of discs) {
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.font = 'bold 48px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('EFFECTS', WIDTH / 2, HEIGHT / 2);
 }
 
 function bind(id: string): HTMLInputElement {
@@ -111,15 +142,12 @@ async function setupEffects(): Promise<void> {
   const track = new VisualTrack();
   compositor.addTrack(track);
 
-  const source = new PosterSource();
+  const source = new DrawnSource(drawPoster);
   await source.load();
   const clip = new ImageClip(source);
   clip.start = 0;
   clip.end = DURATION;
-  clip.transform.anchor.setStatic([0.5, 0.5]);
-  clip.transform.position.setStatic([WIDTH / 2, HEIGHT / 2]);
-  // Fit the 512×288 poster into the 560×315 frame.
-  clip.transform.scale.setStatic([WIDTH / 512, WIDTH / 512]);
+  fillFrame(clip, source.ss); // HiDPI: SS×-supersampled poster, scaled to fill
 
   // A small badge clip with NO per-clip effect — only the global pass reaches it,
   // so it makes the clip-scope vs. global-scope difference visible.
@@ -236,29 +264,38 @@ async function setupEffects(): Promise<void> {
 
 // ── Panel B: crossfade transition ───────────────────────────────────────────
 
-/** A warm/cool gradient texture labelled A / B. */
+const XF_W = 320;
+const XF_H = 180;
+
+/** A warm/cool gradient texture labelled A / B, drawn at `SS`× for HiDPI. */
 function gradientTexture(label: string, a: string, b: string): Texture {
   const c = document.createElement('canvas');
-  c.width = 320;
-  c.height = 180;
+  c.width = Math.round(XF_W * SS);
+  c.height = Math.round(XF_H * SS);
   const ctx = c.getContext('2d')!;
-  const g = ctx.createLinearGradient(0, 0, 320, 180);
+  ctx.scale(SS, SS); // draw in logical coordinates
+  const g = ctx.createLinearGradient(0, 0, XF_W, XF_H);
   g.addColorStop(0, a);
   g.addColorStop(1, b);
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 320, 180);
+  ctx.fillRect(0, 0, XF_W, XF_H);
   ctx.fillStyle = 'rgba(255,255,255,0.92)';
   ctx.font = 'bold 96px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, 160, 96);
+  ctx.fillText(label, XF_W / 2, XF_H / 2);
   return Texture.from(c);
 }
 
 async function setupCrossfade(): Promise<void> {
+  // HiDPI: render at devicePixelRatio with autoDensity (canvas stays XF_W×XF_H
+  // in CSS px, backing store is SS×). The SS×-supersampled textures below keep
+  // the output crisp.
   const renderer = (await autoDetectRenderer({
-    width: 320,
-    height: 180,
+    width: XF_W,
+    height: XF_H,
+    resolution: SS,
+    autoDensity: true,
     preference: 'webgl',
     background: 0x101014,
   })) as Renderer;
@@ -268,9 +305,11 @@ async function setupCrossfade(): Promise<void> {
   const texB = gradientTexture('B', '#2b6cff', '#7c4dff');
   const transition = new CrossfadeTransition();
 
-  // Display the transition's output texture on the visible canvas.
+  // Display the transition's output texture on the visible canvas. The output is
+  // SS×-sized, so scale the sprite by 1/SS to occupy the logical XF_W×XF_H.
   const screen = new Container();
   const view = new Sprite();
+  view.scale.set(1 / SS);
   screen.addChild(view);
 
   function drawAt(progress: number): void {
@@ -316,12 +355,8 @@ async function setupCrossfade(): Promise<void> {
 
 // ── Panel C: warps (perspective / bulge / displacement) ──────────────────────
 
-/** A full-frame grid + colour blocks so warps read clearly. */
-async function gridBitmap(): Promise<ImageBitmap> {
-  const c = document.createElement('canvas');
-  c.width = WIDTH;
-  c.height = HEIGHT;
-  const ctx = c.getContext('2d')!;
+/** A full-frame grid + colour blocks so warps read clearly (logical coords). */
+function drawGrid(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = '#f4f4f8';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
   const blocks: [number, number, number, number, string][] = [
@@ -350,7 +385,6 @@ async function gridBitmap(): Promise<ImageBitmap> {
     ctx.lineTo(WIDTH, y + 0.5);
     ctx.stroke();
   }
-  return createImageBitmap(c);
 }
 
 /** A concentric ripple displacement map (R/G = horizontal/vertical offset). */
@@ -391,13 +425,12 @@ async function setupWarp(): Promise<void> {
   const track = new VisualTrack();
   compositor.addTrack(track);
 
-  const source = new ImageSource({ src: await gridBitmap() });
+  const source = new DrawnSource(drawGrid);
   await source.load();
   const clip = new ImageClip(source);
   clip.start = 0;
   clip.end = DURATION;
-  clip.transform.anchor.setStatic([0.5, 0.5]);
-  clip.transform.position.setStatic([WIDTH / 2, HEIGHT / 2]); // fills the frame at scale 1
+  fillFrame(clip, source.ss); // HiDPI: SS×-supersampled grid, scaled to fill
 
   const bulge = new BulgeEffect();
   const persp = new PerspectiveEffect();
@@ -467,10 +500,20 @@ async function main(): Promise<void> {
   await setupEffects();
   await setupCrossfade();
   await setupWarp();
-  // Readiness flag: lets `scripts/verify-page.cjs` smoke-test that both panels
+  // Readiness flag: lets `scripts/verify-page.cjs` smoke-test that the panels
   // wire up and paint without throwing (pixel correctness is covered by
-  // `pnpm verify:effects`).
-  (window as unknown as { __EFFECTS_DEMO_READY__: unknown }).__EFFECTS_DEMO_READY__ = { ok: true };
+  // `pnpm verify:effects`). Also reports HiDPI backing sizes for verification.
+  const backing = (id: string) => {
+    const cv = document.getElementById(id)?.querySelector('canvas');
+    return cv ? { w: cv.width, h: cv.height } : null;
+  };
+  (window as unknown as { __EFFECTS_DEMO_READY__: unknown }).__EFFECTS_DEMO_READY__ = {
+    ok: true,
+    ss: SS,
+    fx: backing('fx-stage'),
+    xf: backing('xf-stage'),
+    warp: backing('warp-stage'),
+  };
 }
 
 main().catch((err) => {
