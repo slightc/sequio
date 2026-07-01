@@ -39,6 +39,11 @@
 e2e 用 `ColorEffect` 压暗白块、`BlurEffect` 让红块边缘外溢、`CrossfadeTransition`
 把红→蓝在 `progress=0.5` 混成 `(128,0,127)` 紫色，均在真实 WebGL 上校验。
 
+交互 demo —— `pnpm dev` 后打开 `/example/effects-demo.html`：左面板一个 clip 带
+`ColorEffect`+`BlurEffect`，拖 slider 实时改亮度/对比度/饱和度/模糊（每次改动重绘一帧，
+契约 #5），勾 “Animate” 则把参数关键帧化、由渲染时钟扫 `updateAt(t)`；右面板一个
+`CrossfadeTransition` 把 A→B 混合，可拖 progress 或 Play 做 0→1→0 往返。
+
 ## 待办（后续里程碑内补齐）
 
 - 内置 `ChromaKeyEffect` / `LUTEffect` / `TransformEffect`（同 `Effect` + 惰性

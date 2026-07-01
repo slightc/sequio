@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>effects &amp; transitions playground</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 28px;
+        font-family: system-ui, sans-serif;
+        background: #0b0b0e;
+        color: #e6e6ea;
+      }
+      h1 { font-size: 16px; font-weight: 600; opacity: 0.85; margin: 0 0 4px; }
+      h2 { font-size: 13px; font-weight: 600; opacity: 0.8; margin: 0 0 10px; }
+      p.hint { opacity: 0.55; font-size: 13px; margin: 0 0 20px; max-width: 720px; }
+      .panels { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+      .panel { display: flex; flex-direction: column; gap: 14px; }
+      canvas { border-radius: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55); display: block; }
+      .card {
+        background: #16161c;
+        border: 1px solid #24242d;
+        border-radius: 10px;
+        padding: 14px 16px;
+        min-width: 300px;
+      }
+      .field { display: flex; align-items: center; gap: 10px; margin: 9px 0; font-size: 12px; }
+      .field .lbl { width: 78px; opacity: 0.65; }
+      .field input[type='range'] { flex: 1; }
+      .field .val { width: 40px; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.75; }
+      .row { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+      label.chk { display: flex; align-items: center; gap: 6px; font-size: 13px; opacity: 0.85; }
+      button {
+        background: #2b6cff;
+        color: #fff;
+        border: 0;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.4; cursor: default; }
+    </style>
+  </head>
+  <body>
+    <h1>Effects &amp; Transitions playground (milestone 07)</h1>
+    <p class="hint">
+      Left: a clip carrying a <code>ColorEffect</code> + <code>BlurEffect</code> — drag the sliders to
+      drive their animatable params (the canvas repaints on each change; the SDK never auto-repaints).
+      Tick <b>Animate</b> to keyframe them and let the render clock sweep <code>updateAt(t)</code>.
+      Right: a <code>CrossfadeTransition</code> blends A→B — scrub the mix or press Play to ping-pong it.
+    </p>
+
+    <div class="panels">
+      <div class="panel">
+        <h2>Clip effects</h2>
+        <div id="fx-stage"></div>
+        <div class="card">
+          <div class="field">
+            <span class="lbl">brightness</span>
+            <input id="fx-bright" type="range" min="0" max="2" step="0.01" value="1" />
+            <span class="val" id="fx-bright-v">1.00</span>
+          </div>
+          <div class="field">
+            <span class="lbl">contrast</span>
+            <input id="fx-contrast" type="range" min="0" max="2" step="0.01" value="1" />
+            <span class="val" id="fx-contrast-v">1.00</span>
+          </div>
+          <div class="field">
+            <span class="lbl">saturation</span>
+            <input id="fx-sat" type="range" min="0" max="3" step="0.01" value="1" />
+            <span class="val" id="fx-sat-v">1.00</span>
+          </div>
+          <div class="field">
+            <span class="lbl">blur</span>
+            <input id="fx-blur" type="range" min="0" max="24" step="1" value="0" />
+            <span class="val" id="fx-blur-v">0</span>
+          </div>
+          <div class="row">
+            <label class="chk"><input id="fx-animate" type="checkbox" /> Animate (keyframed)</label>
+            <button id="fx-play">⏸ Pause</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Crossfade transition</h2>
+        <div id="xf-stage"></div>
+        <div class="card">
+          <div class="field">
+            <span class="lbl">progress</span>
+            <input id="xf-progress" type="range" min="0" max="1" step="0.01" value="0.5" />
+            <span class="val" id="xf-progress-v">0.50</span>
+          </div>
+          <div class="row">
+            <button id="xf-play">▶ Play</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/example/effects-demo.ts"></script>
+  </body>
+</html>
