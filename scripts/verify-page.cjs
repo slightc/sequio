@@ -53,7 +53,13 @@ async function main() {
     await waitForServer(`http://localhost:${PORT}/`);
     browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--ignore-gpu-blocklist'],
+      args: [
+        '--no-sandbox',
+        '--use-gl=angle',
+        '--use-angle=swiftshader',
+        '--ignore-gpu-blocklist',
+        '--autoplay-policy=no-user-gesture-required',
+      ],
     });
     const page = await browser.newPage();
     const errors = [];

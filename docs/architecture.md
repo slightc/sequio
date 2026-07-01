@@ -35,7 +35,7 @@
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
 | 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）已实现；转场待后续里程碑 |
 | 特效转场 | `src/effects/` | 🚧 抽象基类已定，内置效果待实现 |
-| 音频引擎 | `src/audio/` | 🚧 接口已定，实现待开始 |
+| 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
 
 ### 时钟控制面（对齐 `HTMLMediaElement`）
@@ -114,6 +114,25 @@ clock.play();
   调整；对 `GroupClip` 递归生效（活跃组按局部时间、即将上场的组按其起点 0 递归）。
 - **边界值实践**：让 `clip2.start === clip1.end`（共用同一数值，别分别算）以免浮点 sub-epsilon
   的缝/叠；边界尽量用 `Timebase.toSeconds(frame)` 对齐到帧。
+
+### 音频排程与导出（AudioEngine）
+
+`AudioSource.load` 用 Mediabunny `Input` + `AudioBufferSink` 把整轨解码成一个
+`AudioBuffer`。`AudioEngine` 把 `AudioClip` 排到 Web Audio 图上:
+
+- **纯排程核心**(`src/audio/scheduling.ts`,可单测):`clipPlaybackAt(clip, playhead)`
+  算出 `when`(相对起播时刻)/`offset`(入缓冲)/`duration`(消耗缓冲秒)/`playbackRate`;
+  `speed` 即 `playbackRate`——**变调变速**(时间线 `[playStart,end)` 以速率 s 消耗缓冲
+  `[offset, offset+span*s)`,实播 span 秒)。`gainEventsAt` 把 `gain` 自动化与
+  `fadeIn`/`fadeOut` 合成一串增益事件(首个 setValueAtTime、其余 linearRamp)。
+- **预览**:`play(playhead)` / `pause()` / `seek(playhead)`——每个 clip 建
+  `AudioBufferSourceNode → GainNode → destination`,`src.start(when, offset, duration)`。
+  与视觉时钟对齐由上层同时驱动;Web Audio 采样级精确,漂移小。
+- **导出**:`renderOffline(duration)` 用 `OfflineAudioContext` 建**同一套**图渲染整轨混音,
+  故离线混音与预览一致(契约 #3)。
+- 校验:`tests/audio-scheduling.test.ts` + `tests/audio-engine.test.ts`(假 context 记录
+  节点参数);e2e `pnpm verify:audio`——真实 `OfflineAudioContext` 渲染带 fade+gain 的正弦,
+  断言 `midRms≈0.5×0.707`、fade 段更弱;并用 MediaRecorder 录一段 Opus 经 `AudioSource` 解回。
 
 ### 文字与字体加载（TextClip / FontManager）
 

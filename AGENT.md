@@ -45,7 +45,7 @@ src/
   text/        FontManager (web-font loading)                ✅ implemented
   compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips done, transitions TODO
   effects/     Effect, EffectRegistry, Transition            🚧 abstractions only
-  audio/       AudioEngine                                   🚧 interface only
+  audio/       AudioEngine + scheduling                      ✅ implemented (Web Audio + OfflineAudioContext)
   export/      Exporter                                      🚧 interface only
   index.ts     public barrel
 tests/         vitest unit tests (pure-logic modules)
@@ -84,6 +84,7 @@ pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
 pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen
 pnpm verify:font    # Puppeteer e2e: custom/Google web-font renders in a TextClip
+pnpm verify:audio   # Puppeteer e2e: AudioEngine offline mix + AudioSource decode
 ```
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's

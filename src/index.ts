@@ -75,6 +75,14 @@ export { Transition } from './effects/transition';
 
 // ── Audio ─────────────────────────────────────────────────────────────────
 export { AudioEngine } from './audio/audio-engine';
+export {
+  clipPlaybackAt,
+  effectiveGain,
+  fadeFactor,
+  gainEventsAt,
+  type ClipPlayback,
+  type GainEvent,
+} from './audio/scheduling';
 
 // ── Export ────────────────────────────────────────────────────────────────
 export { Exporter, type ExportOptions } from './export/exporter';
