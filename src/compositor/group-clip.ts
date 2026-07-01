@@ -52,15 +52,16 @@ export class GroupClip extends VisualClip {
 
   override update(t: number): void {
     if (!this.container) return;
-    // Group-level transform / opacity / blend / effects evaluated on the main
-    // timeline; children reconciled and evaluated at local time.
-    this.applyCommon(this.container, t);
+    // Reconcile children first so the group's local bounds are current, then
+    // apply the group transform (its anchor maps against those bounds). Group
+    // props are evaluated on the main timeline `t`; children at local time.
     const lt = this.localTime(t);
     this.reconciler.reconcileClips(
       this.children.filter((c) => c.isActiveAt(lt)),
       lt,
       this.container,
     );
+    this.applyCommon(this.container, t);
   }
 
   override unmount(): void {

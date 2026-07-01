@@ -1,0 +1,90 @@
+import { Graphics, Text } from 'pixi.js';
+import { describe, expect, it } from 'vitest';
+import { ShapeClip, TextClip } from '../src/compositor/clips';
+import { ImageSource } from '../src/media/image-source';
+
+/** Text.getLocalBounds() measures glyphs via a canvas, which headless node
+ *  lacks. Stub it so applyCommon's anchor math runs without measurement. */
+function stubBounds(t: Text): void {
+  (t as unknown as { getLocalBounds: () => object }).getLocalBounds = () => ({
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 20,
+  });
+}
+
+describe('ShapeClip', () => {
+  it('draws a rect with the requested size and applies the transform', () => {
+    const clip = new ShapeClip({ kind: 'rect', width: 80, height: 60, fill: 0xff0000 });
+    const g = clip.mount() as Graphics;
+    expect(g).toBeInstanceOf(Graphics);
+    expect(g.getLocalBounds().width).toBeCloseTo(80);
+    expect(g.getLocalBounds().height).toBeCloseTo(60);
+
+    clip.transform.position.setStatic([100, 50]);
+    clip.update(0);
+    expect(g.position.x).toBe(100);
+    expect(g.position.y).toBe(50);
+    // anchor [0.5,0.5] on 80x60 → pivot at content center
+    expect(g.pivot.x).toBeCloseTo(40);
+    expect(g.pivot.y).toBeCloseTo(30);
+  });
+
+  it('draws an ellipse and supports a stroke', () => {
+    const clip = new ShapeClip({
+      kind: 'ellipse',
+      width: 40,
+      height: 40,
+      fill: 0x00ff00,
+      stroke: { color: 0xffffff, width: 4 },
+    });
+    const g = clip.mount() as Graphics;
+    expect(g.getLocalBounds().width).toBeGreaterThan(0);
+    clip.update(0);
+    clip.unmount(); // must not throw
+    clip.update(0); // no-op after unmount
+  });
+});
+
+describe('TextClip', () => {
+  it('builds a PIXI.Text from the style', () => {
+    const clip = new TextClip({ text: 'Hello', fontFamily: 'serif', fontSize: 24, fill: 0x112233 });
+    const t = clip.mount() as Text;
+    expect(t).toBeInstanceOf(Text);
+    expect(t.text).toBe('Hello');
+    expect(t.style.fontSize).toBe(24);
+  });
+
+  it('animates font size via keyframes', () => {
+    const clip = new TextClip({ text: 'Hi', fontSize: 20 });
+    clip.fontSize.setKeyframes([
+      { time: 0, value: 20 },
+      { time: 1, value: 40 },
+    ]);
+    const t = clip.mount() as Text;
+    stubBounds(t); // text measurement needs a canvas; not what we're testing
+    clip.update(0.5);
+    expect(t.style.fontSize).toBe(30); // halfway
+  });
+
+  it('reflects text changes and releases the object on unmount', () => {
+    const clip = new TextClip({ text: 'a' });
+    const t = clip.mount() as Text;
+    stubBounds(t);
+    clip.text = 'b';
+    clip.update(0);
+    expect(t.text).toBe('b');
+    clip.unmount();
+    clip.update(0); // no-op, must not throw
+  });
+});
+
+describe('ImageSource', () => {
+  it('returns no texture before load and disposes cleanly', () => {
+    const src = new ImageSource({ src: 'x.png' });
+    expect(src.getTextureAt(0)).toBeNull();
+    expect(src.loaded).toBe(false);
+    src.dispose(); // must not throw
+  });
+});

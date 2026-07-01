@@ -28,6 +28,19 @@ export interface CompositorOptions {
   colorSpace?: 'srgb' | 'display-p3';
   /** GPU texture-pool budget in bytes (default 256 MiB). */
   textureBudgetBytes?: number;
+  /**
+   * Backing-store scale for crisp output on HiDPI screens (default
+   * `devicePixelRatio`). The canvas draws at `width*resolution` internally while
+   * staying `width` CSS px (`autoDensity`).
+   */
+  resolution?: number;
+  /**
+   * Look-ahead window (seconds) for cross-clip pre-warming: `prepare(t)` also
+   * decodes the first frame of clips that become active within `t + this`, so a
+   * clip transition doesn't miss on its first frame in preview. `0` disables it.
+   * Default `0.5`.
+   */
+  prewarmSeconds?: number;
 }
 
 /**
@@ -50,6 +63,10 @@ export class Compositor implements Disposable {
   private readonly reconciler = new Reconciler();
   /** Shared GPU texture pool; every video source under this compositor uses it. */
   readonly textures: TextureManager;
+  /** Backing-store scale (HiDPI). */
+  readonly resolution: number;
+  /** Cross-clip pre-warm look-ahead in seconds (mutable at runtime; `0` = off). */
+  prewarmSeconds: number;
   private renderer: Renderer | null = null;
   private initPromise: Promise<void> | null = null;
   private dirty = true;
@@ -62,6 +79,8 @@ export class Compositor implements Disposable {
       ({ width: options.width, height: options.height } as HTMLCanvasElement)) as HTMLCanvasElement;
     this.view.width = options.width;
     this.view.height = options.height;
+    this.resolution = options.resolution ?? (globalThis.devicePixelRatio || 1);
+    this.prewarmSeconds = options.prewarmSeconds ?? 0.5;
     this.textures = new TextureManager(options.textureBudgetBytes);
   }
 
@@ -78,6 +97,8 @@ export class Compositor implements Disposable {
       width: this.options.width,
       height: this.options.height,
       background: this.options.background ?? 0x000000,
+      resolution: this.resolution,
+      autoDensity: true,
     }).then((renderer) => {
       this.renderer = renderer;
     });
@@ -112,38 +133,51 @@ export class Compositor implements Disposable {
   }
 
   // ── Two-phase render ─────────────────────────────────────────────────────
-  /** Ensure every visual source active at `t` has its frame decoded. */
+  /**
+   * Ensure every visual source active at `t` has its frame decoded, plus — for
+   * cross-clip pre-warming — the first frame of clips that become active within
+   * `t + prewarmSeconds`, so a clip transition doesn't miss on its first frame.
+   */
   async prepare(t: number): Promise<void> {
     const jobs: Promise<void>[] = [];
     for (const track of this.tracks) {
       if (track instanceof VisualTrack && track.enabled) {
-        this.collectPrepareJobs(track.clips, t, jobs);
+        this.collectPrepareJobs(track.clips, t, this.prewarmSeconds, jobs);
       }
     }
     await Promise.all(jobs);
   }
 
   /**
-   * Walk clips active at local time `localT`, prepping their sources. Recurses
-   * into {@link GroupClip} children at the group's local time, mirroring how the
-   * reconciler renders the same subtree (so nested video decodes too).
+   * Walk clips at local time `localT`, prepping the sources of active clips (at
+   * their current source time) and of clips upcoming within `warmAhead` (at their
+   * first frame). Recurses into {@link GroupClip} children at the group's local
+   * time, mirroring how the reconciler renders the same subtree.
    */
   private collectPrepareJobs(
     clips: readonly VisualClip[],
     localT: number,
+    warmAhead: number,
     jobs: Promise<void>[],
   ): void {
     for (const clip of clips) {
-      if (!clip.isActiveAt(localT)) continue;
+      const active = clip.isActiveAt(localT);
+      // Upcoming: not active yet but starts within the look-ahead window.
+      const upcoming = !active && clip.start > localT && clip.start <= localT + warmAhead;
+      if (!active && !upcoming) continue;
+
       if (clip instanceof GroupClip) {
-        this.collectPrepareJobs(clip.children, clip.localTime(localT), jobs);
+        // Active → recurse at the group's local time; upcoming → at its start (0).
+        const childLocal = active ? clip.localTime(localT) : 0;
+        this.collectPrepareJobs(clip.children, childLocal, warmAhead, jobs);
         continue;
       }
       const source = (clip as { source?: VisualSource }).source;
       if (source instanceof VisualSource) {
         // Route every source's texture uploads through one VRAM budget.
         if (isTextureManagerAware(source)) source.adoptTextureManager(this.textures);
-        const sourceTime = localT - clip.start + clip.sourceIn;
+        // Active → current source time; upcoming → the clip's first frame.
+        const sourceTime = active ? localT - clip.start + clip.sourceIn : clip.sourceIn;
         jobs.push(source.prepare(sourceTime));
       }
     }
@@ -173,6 +207,7 @@ export class Compositor implements Disposable {
     const target = RenderTexture.create({
       width: this.options.width,
       height: this.options.height,
+      resolution: this.resolution,
     });
     this.renderer.render({ container: this.stage, target });
     return target;

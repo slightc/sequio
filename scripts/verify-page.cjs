@@ -1,20 +1,26 @@
 #!/usr/bin/env node
 /**
- * End-to-end verification of the VideoSource decode path, using Puppeteer +
+ * Generic browser e2e runner: spawn Vite, load an example page that publishes a
+ * result object on a `window.<global>`, and assert `result.ok`. Uses Puppeteer +
  * Chrome-for-Testing (which ships WebCodecs, unlike Playwright's stripped
- * Chromium). Spawns the Vite dev server, loads example/decode-test.html — which
- * records a real WebM and decodes it back through the SDK — and asserts the
- * in-page result.
+ * Chromium).
  *
- * Usage: pnpm verify:decode
+ * Usage: node scripts/verify-page.cjs <pagePath> <resultGlobal> [label]
+ *   e.g. node scripts/verify-page.cjs example/decode-test.html __DECODE_TEST__ "decode"
+ *
  * Requires a one-time browser fetch: `pnpm exec puppeteer browsers install chrome`.
  */
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 
+const [pagePath, resultGlobal, label = 'render'] = process.argv.slice(2);
+if (!pagePath || !resultGlobal) {
+  console.error('usage: verify-page.cjs <pagePath> <resultGlobal> [label]');
+  process.exit(2);
+}
+
 const ROOT = path.resolve(__dirname, '..');
 const PORT = 5199;
-const URL = `http://localhost:${PORT}/example/decode-test.html`;
 
 function waitForServer(url, timeoutMs = 20000) {
   const start = Date.now();
@@ -56,17 +62,17 @@ async function main() {
       if (m.type() === 'error') errors.push(m.text());
     });
 
-    await page.goto(URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction('window.__DECODE_TEST__ !== undefined', { timeout: 30000 });
-    const result = await page.evaluate('window.__DECODE_TEST__');
+    await page.goto(`http://localhost:${PORT}/${pagePath}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(`window.${resultGlobal} !== undefined`, { timeout: 30000 });
+    const result = await page.evaluate(`window.${resultGlobal}`);
 
-    console.log('decode-test result:', JSON.stringify(result, null, 2));
+    console.log(`${label} result:`, JSON.stringify(result, null, 2));
     if (errors.length) console.log('page errors:', errors.filter((e) => !/favicon/.test(e)));
 
     if (!result || !result.ok) {
-      throw new Error('decode verification FAILED');
+      throw new Error(`${label} verification FAILED`);
     }
-    console.log('\n✅ VideoSource decode path verified (real WebCodecs decode).');
+    console.log(`\n✅ ${label} verified.`);
   } finally {
     if (browser) await browser.close();
     vite.kill('SIGTERM');

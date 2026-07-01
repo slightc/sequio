@@ -1,4 +1,4 @@
-import type { Texture } from 'pixi.js';
+import { Texture } from 'pixi.js';
 import { type SourceMetadata, VisualSource } from './media-source';
 
 export interface ImageSourceOptions {
@@ -17,9 +17,24 @@ export class ImageSource extends VisualSource {
   }
 
   async load(): Promise<SourceMetadata> {
-    // TODO(media): decode `options.src` to an ImageBitmap → Texture and fill
-    // metadata (width/height, duration = Infinity, hasAudio = false).
-    throw new Error('ImageSource.load not implemented — see todo/05-image-text-shape.md');
+    const bitmap = await this.toBitmap(this.options.src);
+    this.texture = Texture.from(bitmap);
+    this.metadata = {
+      width: bitmap.width,
+      height: bitmap.height,
+      duration: Infinity,
+      hasAudio: false,
+    };
+    return this.metadata;
+  }
+
+  private async toBitmap(src: string | Blob | ImageBitmap): Promise<ImageBitmap> {
+    if (typeof src === 'string') {
+      const res = await fetch(src);
+      return createImageBitmap(await res.blob());
+    }
+    if (src instanceof Blob) return createImageBitmap(src);
+    return src; // already an ImageBitmap
   }
 
   async prepare(_sourceTime: number): Promise<void> {

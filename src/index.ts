@@ -43,11 +43,28 @@ export { FrameCache, type Closable } from './media/frame-cache';
 // ── Texture ─────────────────────────────────────────────────────────────────
 export { TextureManager } from './texture/texture-manager';
 
+// ── Text / Fonts ────────────────────────────────────────────────────────────
+export {
+  FontManager,
+  fonts,
+  buildGoogleCss2Url,
+  type FontSpec,
+  type GoogleFontSpec,
+} from './text/font-manager';
+
 // ── Compositor graph ─────────────────────────────────────────────────────────
 export { Compositor, type CompositorOptions } from './compositor/compositor';
 export { Track, VisualTrack, AudioTrack } from './compositor/track';
 export { Clip, VisualClip, AudioClip } from './compositor/clip';
-export { VideoClip, ImageClip, TextClip, ShapeClip, type TextStyleLike } from './compositor/clips';
+export {
+  VideoClip,
+  ImageClip,
+  TextClip,
+  ShapeClip,
+  type TextStyleLike,
+  type ShapeSpec,
+  type ShapeKind,
+} from './compositor/clips';
 export { GroupClip } from './compositor/group-clip';
 export { Reconciler } from './compositor/reconciler';
 

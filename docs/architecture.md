@@ -31,9 +31,9 @@
 |---|---|---|
 | 时间与时钟 | `src/time/` | ✅ Timebase / RealtimeClock / FixedStepClock 已实现（视频元素式控制面：play / pause / seek + 到 `duration` 自动停止）|
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
-| 媒体源 | `src/media/` | 🚧 `VideoSource` 解码已接 Mediabunny（sink + FrameCache + 方向预读）；Image / Audio 解码待实现 |
+| 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
-| 合成图 | `src/compositor/` | 🚧 对象图/Reconciler 已实现；渲染核心已接 PixiJS（`init()` 建 renderer、`renderSync`/`renderToTexture` 落地），多轨/特效合成细节待后续里程碑 |
+| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）已实现；转场待后续里程碑 |
 | 特效转场 | `src/effects/` | 🚧 抽象基类已定，内置效果待实现 |
 | 音频引擎 | `src/audio/` | 🚧 接口已定，实现待开始 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
@@ -72,6 +72,71 @@ clock.play();
 
 `renderToTexture(t)` 返回的 `RenderTexture` 由调用方拥有并负责 `destroy()`（契约 #4）。
 完整可运行示例见 [`example/`](../example/)（`pnpm dev`）。
+
+**HiDPI**：渲染器以 `resolution`（默认 `devicePixelRatio`）+ `autoDensity` 创建——canvas
+内部按 `width*resolution` 绘制、CSS 仍是 `width` px，所以高分屏上文字/矢量边缘清晰不糊。
+`renderToTexture` 的离屏纹理也用同一 `resolution`。可用 `CompositorOptions.resolution` 覆盖。
+
+### 多轨叠层与 Reconciler
+
+- **每条 `VisualTrack` 映射一个 PixiJS `Container`**，按 `zIndex` 在 stage 里排序；该轨道
+  的 clip mount 进它自己的 container，轨道级 `effects` 作为**调整层**挂到这个 container
+  的 filter 链上（作用于该轨道全部内容）。`Reconciler` 顶层管轨道容器、每轨内嵌一个子
+  `Reconciler` 管 clip，`reconcileClips` 是轨道层/分组层共用入口。
+- **z 序每帧重申**：无论 clip/轨道的挂载历史如何，`reconcile` 都用 `setChildIndex` 把
+  容器与 clip 重排成当前 z/数组顺序，所以「后激活的低层 clip」也会落到正确层级；
+  启用/禁用轨道、改 `zIndex` 立即反映。对象跨帧复用，每帧几乎零分配。
+- **anchor 语义**：`Transform2D.applyTo` 把归一化 anchor（0..1）作用为「把 anchor 点放到
+  `position`」（如 anchor `[0.5,0.5]` 使内容居中于 `position`，缩放/旋转绕它进行）。
+  `Sprite`/`Text` 用它们**原生的比例 `anchor`**——尺寸动画（如字号呼吸）下位置稳定、
+  且不用每帧测量 bounds；`Graphics`/`Container` 无原生 anchor，则按 `getLocalBounds()`
+  映射成未缩放局部 `pivot`。
+
+### Clip 时间区间与边界（半开 `[start, end)`）
+
+`Clip.isActiveAt(t) = t >= start && t < end`——**start 含、end 不含**。这决定了相邻 clip
+在边界处的行为：
+
+- **无重叠、无缝隙**：相邻 clip `[0, 10.5)` 与 `[10.5, 20)` 在任意 t **恰好一个**活跃。
+  边界 `t=10.5` 归**后一个** clip（前一个 `10.5 < 10.5` = false 已失活）。所以边界那一刻
+  不会两个都在（重叠/双画）也不会都不在（缝隙/黑帧）；Reconciler 干净切换（前者 unmount、
+  后者 mount）。见 `tests/compositor.test.ts`。
+- **半帧边界（如 10.5f）无歧义**：渲染帧落在整数帧序号上（导出 `t = frame/fps`），没有帧
+  正好落在 10.5——切换发生在帧 10（属前 clip）与帧 11（属后 clip）之间，每帧唯一归属一个 clip。
+- **末端最后一帧**：内容在 `[0, end)` 上，最后可显示帧是 `end - 1/fps`；播放头正好停在 `end`
+  时该帧已失活（空/黑）。播放器式 UX 应让"播放头到末尾显示最后一帧"（示例见 `example/`）。
+- **预览的过渡观感（非崩溃）**：跨到新 clip 的那一刻，新 clip 的源可能**还没解码好**，
+  预览是尽力而为（fire-and-forget prepare + 立即 renderSync，契约 #1），故切换后的头几帧
+  可能 miss → 短暂空白。**导出** `await prepare` 等齐、帧级精确、无此现象。
+- **跨 clip 预热**：`prepare(t)` 除了预解码当前活跃 clip 的源，还会预解码**在
+  `t + prewarmSeconds` 内即将变活跃**的 clip 的**首帧**（`prepare(sourceIn)`），使切换首帧
+  在预览里也命中缓存。窗口 `Compositor.prewarmSeconds` 可配（默认 0.5s，`0` 关闭）、可运行时
+  调整；对 `GroupClip` 递归生效（活跃组按局部时间、即将上场的组按其起点 0 递归）。
+- **边界值实践**：让 `clip2.start === clip1.end`（共用同一数值，别分别算）以免浮点 sub-epsilon
+  的缝/叠；边界尽量用 `Timebase.toSeconds(frame)` 对齐到帧。
+
+### 文字与字体加载（TextClip / FontManager）
+
+`TextClip` 用 `PIXI.Text` 渲染;`fontSize` 可关键帧动画,`text`/`fontFamily`/`fill` 为可设
+字段(仅变化时才 relayout)。
+
+字体加载**必须前置**、且是一次性设置——不是 per-frame 的 `prepare`:
+
+- Pixi 的文字用 Canvas 度量字形,度量时字体必须已在 `document.fonts` 里;
+- `render(t)` 是 (对象图, t) 的纯函数(契约 #2),若字体在播放中途才 load,前后帧会不一致;
+- 导出走定步循环(契约 #1),绝不能中途从 fallback 换成真字体。
+
+因此提供全局 `FontManager`(默认实例 `fonts`;`document.fonts` 本就是文档级全局):
+`await fonts.load({ family, src })` 用 `FontFace` API 加载并注册,按 family+weight+style 去重;
+`fonts.ready()` 等所有已请求字体就绪。典型流程:先 `await fonts.load(...)` → 建 `TextClip`
+（`fontFamily` 指向该 family）→ 再 `renderPreview`;导出前 `await fonts.ready()`（里程碑 08
+的 Exporter 会在定步循环前等齐）。
+
+**Google Fonts**:`await fonts.loadGoogleFont({ family: 'Roboto', weights: [400, 700], italic? })`
+—— 注入 css2 样式表(`buildGoogleCss2Url` 构建 URL）并 `document.fonts.load` 等齐指定字重,
+同样去重、计入 `ready()`。它只是 `load` 的便捷封装,走相同的 `document.fonts` 机制。
+（渲染校验见 `pnpm verify:font`:用自托管的 Pacifico 走同一路径上屏——本沙盒浏览器无外网,
+但 Google css2 端点经代理 curl 可达。）
 
 ### 分组 / 子合成（GroupClip）
 

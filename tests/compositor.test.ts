@@ -1,9 +1,10 @@
 import { Container, type Texture } from 'pixi.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Compositor } from '../src/compositor/compositor';
 import { VisualClip } from '../src/compositor/clip';
 import { GroupClip } from '../src/compositor/group-clip';
 import { Reconciler } from '../src/compositor/reconciler';
+import { Effect } from '../src/effects/effect';
 import { VisualTrack } from '../src/compositor/track';
 import { VisualSource, type SourceMetadata } from '../src/media/media-source';
 import type { TextureManager } from '../src/texture/texture-manager';
@@ -76,8 +77,20 @@ function makeCompositor(): Compositor {
   return new Compositor({ width: 320, height: 240, timebase: new Timebase(30) });
 }
 
+/** Labels of the clips mounted under a track container. */
+function clipLabels(container: Container): string[] {
+  return container.children.map((c) => (c as Container & { label: string }).label);
+}
+
+/** A track effect that records attach/detach/update wiring (no real filter). */
+class TestEffect extends Effect {
+  params = {} as Effect['params'];
+  protected filter = {} as never;
+  updateAt = vi.fn();
+}
+
 describe('Reconciler', () => {
-  it('mounts active clips and reuses them across frames (idempotent)', () => {
+  it('mounts active clips into a per-track container and reuses them (idempotent)', () => {
     const r = new Reconciler();
     const stage = new Container();
     const clip = new TestClip(0, 1);
@@ -88,11 +101,13 @@ describe('Reconciler', () => {
     r.reconcile([track], 0.5, stage);
 
     expect(clip.mountCount).toBe(1); // mounted once, reused on second pass
-    expect(stage.children.length).toBe(1);
+    expect(stage.children.length).toBe(1); // one track container
+    const trackC = stage.children[0] as Container;
+    expect(trackC.children.length).toBe(1); // clip lives under the track
     expect(clip.updates).toEqual([0.5, 0.5]); // update runs every frame
   });
 
-  it('unmounts clips once they fall outside their interval', () => {
+  it('unmounts clips but keeps the (empty) track container', () => {
     const r = new Reconciler();
     const stage = new Container();
     const clip = new TestClip(0, 1);
@@ -100,11 +115,13 @@ describe('Reconciler', () => {
     track.add(clip);
 
     r.reconcile([track], 0.5, stage);
-    expect(stage.children.length).toBe(1);
-    r.reconcile([track], 2, stage);
+    const trackC = stage.children[0] as Container;
+    expect(trackC.children.length).toBe(1);
 
+    r.reconcile([track], 2, stage);
     expect(clip.unmountCount).toBe(1);
-    expect(stage.children.length).toBe(0);
+    expect(stage.children.length).toBe(1); // track still enabled → container stays
+    expect(trackC.children.length).toBe(0);
   });
 
   it('composites tracks bottom-to-top by zIndex', () => {
@@ -120,8 +137,110 @@ describe('Reconciler', () => {
     // Pass tracks out of z-order; reconcile must sort them.
     r.reconcile([top, bottom], 0.5, stage);
 
-    const labels = stage.children.map((c) => (c as Container & { label: string }).label);
-    expect(labels).toEqual(['bottom', 'top']);
+    const order = stage.children.map((c) => clipLabels(c as Container)[0]);
+    expect(order).toEqual(['bottom', 'top']);
+  });
+
+  it('keeps clip z-order stable when a lower clip activates later', () => {
+    const r = new Reconciler();
+    const stage = new Container();
+    const track = new VisualTrack();
+    const a = new TestClip(1, 3, 'a'); // index 0, activates later
+    const b = new TestClip(0, 3, 'b'); // index 1, active from the start
+    track.add(a);
+    track.add(b);
+
+    r.reconcile([track], 0.5, stage); // only b mounted
+    r.reconcile([track], 2, stage); // a mounts after b, but must sit below it
+    const trackC = stage.children[0] as Container;
+    expect(clipLabels(trackC)).toEqual(['a', 'b']);
+  });
+
+  it('reflects track enable/disable immediately', () => {
+    const r = new Reconciler();
+    const stage = new Container();
+    const clip = new TestClip(0, 1);
+    const track = new VisualTrack();
+    track.add(clip);
+
+    r.reconcile([track], 0.5, stage);
+    expect(stage.children.length).toBe(1);
+
+    track.enabled = false;
+    r.reconcile([track], 0.5, stage);
+    expect(stage.children.length).toBe(0);
+    expect(clip.unmountCount).toBe(1);
+
+    track.enabled = true;
+    r.reconcile([track], 0.5, stage);
+    expect(stage.children.length).toBe(1);
+    expect(clip.mountCount).toBe(2);
+  });
+
+  it('reorders track containers when zIndex changes', () => {
+    const r = new Reconciler();
+    const stage = new Container();
+    const a = new VisualTrack();
+    a.zIndex = 0;
+    a.add(new TestClip(0, 1, 'a'));
+    const b = new VisualTrack();
+    b.zIndex = 10;
+    b.add(new TestClip(0, 1, 'b'));
+
+    r.reconcile([a, b], 0.5, stage);
+    expect(stage.children.map((c) => clipLabels(c as Container)[0])).toEqual(['a', 'b']);
+
+    b.zIndex = -5; // move b below a
+    r.reconcile([a, b], 0.5, stage);
+    expect(stage.children.map((c) => clipLabels(c as Container)[0])).toEqual(['b', 'a']);
+  });
+
+  it('applies track-level effects to the track container (adjustment layer)', () => {
+    const r = new Reconciler();
+    const stage = new Container();
+    const track = new VisualTrack();
+    track.add(new TestClip(0, 5));
+    const fx = new TestEffect();
+    const attach = vi.spyOn(fx, 'attach').mockImplementation(() => {});
+    const detach = vi.spyOn(fx, 'detach').mockImplementation(() => {});
+    track.effects.push(fx);
+
+    r.reconcile([track], 0.5, stage);
+    const trackC = stage.children[0] as Container;
+    expect(attach).toHaveBeenCalledWith(trackC); // attached to the track container
+    expect(fx.updateAt).toHaveBeenCalledWith(0.5);
+
+    r.reconcile([track], 0.6, stage);
+    expect(attach).toHaveBeenCalledTimes(1); // not re-attached
+    expect(fx.updateAt).toHaveBeenLastCalledWith(0.6); // updated every frame
+
+    track.effects.length = 0; // remove the effect
+    r.reconcile([track], 0.7, stage);
+    expect(detach).toHaveBeenCalledWith(trackC);
+  });
+
+  it('tiles adjacent clips at a fractional-frame boundary with no overlap or gap', () => {
+    const r = new Reconciler();
+    const stage = new Container();
+    const track = new VisualTrack();
+    const a = new TestClip(0, 10.5, 'a'); // [0, 10.5)
+    const b = new TestClip(10.5, 20, 'b'); // [10.5, 20)
+    track.add(a);
+    track.add(b);
+
+    const labelsAt = (t: number): string[] => {
+      r.reconcile([track], t, stage);
+      return clipLabels(stage.children[0] as Container);
+    };
+
+    // Exactly one clip active on each side of, and at, the shared boundary —
+    // never both (overlap) and never none (gap). end is exclusive, so t=10.5
+    // belongs to clip b.
+    expect(labelsAt(10.4)).toEqual(['a']);
+    expect(labelsAt(10.5)).toEqual(['b']);
+    expect(labelsAt(10.6)).toEqual(['b']);
+    expect(a.unmountCount).toBe(1); // a cleanly torn down at the swap
+    expect(b.mountCount).toBe(1);
   });
 
   it('skips disabled tracks', () => {
@@ -187,6 +306,12 @@ describe('Compositor', () => {
     expect(c.getTracks().length).toBe(0);
   });
 
+  it('defaults resolution to 1 without devicePixelRatio and honors an override', () => {
+    expect(makeCompositor().resolution).toBe(1);
+    const hi = new Compositor({ width: 10, height: 10, timebase: new Timebase(30), resolution: 3 });
+    expect(hi.resolution).toBe(3);
+  });
+
   it('exposes a shared texture pool with the configured budget', () => {
     const c = new Compositor({
       width: 320,
@@ -210,6 +335,57 @@ describe('Compositor', () => {
     await c.prepare(1);
     expect(source.adopted).toBe(c.textures); // shared VRAM budget across sources
     expect(source.prepared).toContain(1);
+  });
+
+  it('pre-warms clips upcoming within prewarmSeconds (at their first frame)', async () => {
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      prewarmSeconds: 0.5,
+    });
+    const s1 = new SpySource();
+    const clip1 = new SourceClip(s1);
+    clip1.start = 0;
+    clip1.end = 1;
+    const s2 = new SpySource();
+    const clip2 = new SourceClip(s2);
+    clip2.start = 1;
+    clip2.end = 2;
+    const track = new VisualTrack();
+    track.add(clip1);
+    track.add(clip2);
+    c.addTrack(track);
+
+    // t=0.6: clip1 active (source time 0.6); clip2 upcoming (starts at 1, within
+    // 0.6+0.5=1.1) → warmed at its first frame (sourceIn = 0).
+    await c.prepare(0.6);
+    expect(s1.prepared).toContain(0.6);
+    expect(s2.prepared).toEqual([0]);
+  });
+
+  it('does not warm clips beyond the window, and the threshold is adjustable', async () => {
+    const c = new Compositor({ width: 320, height: 240, timebase: new Timebase(30) });
+    const s2 = new SpySource();
+    const clip2 = new SourceClip(s2);
+    clip2.start = 1;
+    clip2.end = 2;
+    const track = new VisualTrack();
+    track.add(clip2);
+    c.addTrack(track);
+
+    c.prewarmSeconds = 0.2;
+    await c.prepare(0.6); // clip2 starts at 1, outside 0.6+0.2=0.8 → not warmed
+    expect(s2.prepared).toEqual([]);
+
+    c.prewarmSeconds = 0.5;
+    await c.prepare(0.6); // now within 0.6+0.5=1.1 → warmed
+    expect(s2.prepared).toEqual([0]);
+
+    c.prewarmSeconds = 0; // disabled
+    s2.prepared.length = 0;
+    await c.prepare(0.6);
+    expect(s2.prepared).toEqual([]);
   });
 
   it('recurses into groups: nested sources are prepared at local time', async () => {

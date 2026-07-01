@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>clips render check</title>
+    <style>
+      body { margin: 0; padding: 24px; background: #0b0b0e; font-family: system-ui, sans-serif; color: #e6e6ea; }
+      h1 { font-size: 15px; opacity: 0.85; }
+      #stage canvas { border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
+    </style>
+  </head>
+  <body>
+    <h1>Image / Text / Shape clips (milestone 05)</h1>
+    <p style="opacity: 0.55; font-size: 13px; max-width: 520px;">
+      Red rect + green ellipse (ShapeClip), magenta image (ImageClip), white “Hi” (TextClip) —
+      each transformed and composited. Result on <code>window.__CLIPS_TEST__</code>.
+    </p>
+    <div id="stage"></div>
+    <script type="module" src="/example/clips-test.ts"></script>
+  </body>
+</html>

@@ -11,8 +11,8 @@
 | 1 | 时间 + 时钟 + Compositor 渲染核心 + 单路视频上屏 | [01-skeleton.md](01-skeleton.md) | ✅ Done |
 | 2 | VideoSource（WebCodecs 解码） | [02-video-source.md](02-video-source.md) | ✅ Done |
 | 3 | TextureManager + FrameCache 预算 | [03-texture-frame-budget.md](03-texture-frame-budget.md) | ✅ Done |
-| 4 | Reconciler + 多轨叠层 + Transform | [04-reconciler-multitrack.md](04-reconciler-multitrack.md) | ⬜ Todo |
-| 5 | Image / Text / Shape clips | [05-image-text-shape.md](05-image-text-shape.md) | ⬜ Todo |
+| 4 | Reconciler + 多轨叠层 + Transform | [04-reconciler-multitrack.md](04-reconciler-multitrack.md) | ✅ Done |
+| 5 | Image / Text / Shape clips | [05-image-text-shape.md](05-image-text-shape.md) | ✅ Done |
 | 6 | AudioEngine 音画同步 | [06-audio-engine.md](06-audio-engine.md) | ⬜ Todo |
 | 7 | Effects + EffectRegistry + Transition | [07-effects-transitions.md](07-effects-transitions.md) | ⬜ Todo |
 | 8 | Exporter（FixedStep + 编码封装） | [08-exporter.md](08-exporter.md) | ⬜ Todo |

@@ -40,9 +40,10 @@ src/
   core/        Disposable / Subscription primitives
   time/        Timebase, Clock (Realtime / FixedStep)        ✅ implemented
   animation/   Easing, AnimatableProperty, Transform2D       ✅ implemented
-  media/       MediaSource + Video/Image/Audio, FrameCache   🚧 video decode (Mediabunny) + cache done, image/audio TODO
+  media/       MediaSource + Video/Image/Audio, FrameCache   🚧 video (Mediabunny) + image decode done, audio TODO
   texture/     TextureManager (GPU budget + LRU)             ✅ implemented
-  compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping done, multitrack/effects TODO
+  text/        FontManager (web-font loading)                ✅ implemented
+  compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips done, transitions TODO
   effects/     Effect, EffectRegistry, Transition            🚧 abstractions only
   audio/       AudioEngine                                   🚧 interface only
   export/      Exporter                                      🚧 interface only
@@ -80,11 +81,15 @@ pnpm typecheck      # tsc --noEmit
 pnpm build          # typecheck + vite library build (ESM + CJS + d.ts)
 pnpm dev            # vite dev server (for example/playground)
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
+pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
+pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen
+pnpm verify:font    # Puppeteer e2e: custom/Google web-font renders in a TextClip
 ```
 
-Browser e2e (`verify:decode`) needs a WebCodecs-capable browser. Playwright's
+Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's
 bundled Chromium lacks WebCodecs, so we use Puppeteer's Chrome-for-Testing —
-fetch it once with `pnpm exec puppeteer browsers install chrome`.
+fetch it once with `pnpm exec puppeteer browsers install chrome`. Both scripts
+share `scripts/verify-page.cjs` (spawns Vite, asserts a page's `window.*` result).
 
 ## Working agreement
 

@@ -8,6 +8,7 @@
 绝不丢帧（contract #1 + #3）。
 
 ## 范围
+- 循环前一次性等齐字体：`await fonts.ready()`（TextClip 用真字体，绝不中途换）。
 - 逐帧循环：`for t`：`await compositor.prepare(t)`（等齐）→ `renderToTexture(t)`
   → readback 成 `VideoFrame` → Mediabunny 视频编码（封装 WebCodecs `VideoEncoder`）。
 - 音频：`audio.renderOffline(duration)` → 编码 → Mediabunny `Output` 封装。
