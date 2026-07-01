@@ -43,6 +43,9 @@ export { FrameCache, type Closable } from './media/frame-cache';
 // ── Texture ─────────────────────────────────────────────────────────────────
 export { TextureManager } from './texture/texture-manager';
 
+// ── Text / Fonts ────────────────────────────────────────────────────────────
+export { FontManager, fonts, type FontSpec } from './text/font-manager';
+
 // ── Compositor graph ─────────────────────────────────────────────────────────
 export { Compositor, type CompositorOptions } from './compositor/compositor';
 export { Track, VisualTrack, AudioTrack } from './compositor/track';

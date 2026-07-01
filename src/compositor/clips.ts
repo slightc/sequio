@@ -67,6 +67,11 @@ export interface TextStyleLike {
  * Renders styled text via `PIXI.Text`. `text`, `fontFamily` and `fill` are
  * plain settable fields; `fontSize` is an {@link AnimatableProperty} so it can
  * be keyframed. Re-layout only happens when a value actually changes.
+ *
+ * Custom/web fonts must be loaded **before** rendering (Pixi measures glyphs via
+ * Canvas, and `render(t)` must be reproducible — contract #2). Load them up
+ * front with the `fonts` registry, then reference the family here:
+ * `await fonts.load({ family: 'Inter', src: '/Inter.woff2' })`.
  */
 export class TextClip extends VisualClip {
   text: string;

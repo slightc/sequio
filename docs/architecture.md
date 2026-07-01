@@ -86,6 +86,23 @@ clock.play();
   映射成局部像素 `pivot`——`position` 因此放置 anchor 点（如 anchor `[0.5,0.5]` 使内容
   居中于 `position`，且缩放/旋转绕它进行）；`pivot` 用未缩放局部像素，不含 scale。
 
+### 文字与字体加载（TextClip / FontManager）
+
+`TextClip` 用 `PIXI.Text` 渲染;`fontSize` 可关键帧动画,`text`/`fontFamily`/`fill` 为可设
+字段(仅变化时才 relayout)。
+
+字体加载**必须前置**、且是一次性设置——不是 per-frame 的 `prepare`:
+
+- Pixi 的文字用 Canvas 度量字形,度量时字体必须已在 `document.fonts` 里;
+- `render(t)` 是 (对象图, t) 的纯函数(契约 #2),若字体在播放中途才 load,前后帧会不一致;
+- 导出走定步循环(契约 #1),绝不能中途从 fallback 换成真字体。
+
+因此提供全局 `FontManager`(默认实例 `fonts`;`document.fonts` 本就是文档级全局):
+`await fonts.load({ family, src })` 用 `FontFace` API 加载并注册,按 family+weight+style 去重;
+`fonts.ready()` 等所有已请求字体就绪。典型流程:先 `await fonts.load(...)` → 建 `TextClip`
+（`fontFamily` 指向该 family）→ 再 `renderPreview`;导出前 `await fonts.ready()`（里程碑 08
+的 Exporter 会在定步循环前等齐）。
+
 ### 分组 / 子合成（GroupClip）
 
 `GroupClip` 本身是一个 `VisualClip`，可放在轨道上或嵌进另一个 `GroupClip`，把一组

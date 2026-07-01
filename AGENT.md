@@ -42,6 +42,7 @@ src/
   animation/   Easing, AnimatableProperty, Transform2D       ✅ implemented
   media/       MediaSource + Video/Image/Audio, FrameCache   🚧 video (Mediabunny) + image decode done, audio TODO
   texture/     TextureManager (GPU budget + LRU)             ✅ implemented
+  text/        FontManager (web-font loading)                ✅ implemented
   compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips done, transitions TODO
   effects/     Effect, EffectRegistry, Transition            🚧 abstractions only
   audio/       AudioEngine                                   🚧 interface only

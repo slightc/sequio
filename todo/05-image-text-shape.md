@@ -30,3 +30,6 @@
 ## 备注
 - 颜色（`fill`）逐通道关键帧插值待后续（当前 `fill` 为可设字段，`fontSize` 已可动画）。
 - 形状 `path` 待后续（当前支持 rect / rounded-rect / ellipse）。
+- **字体加载**：新增全局 `FontManager`（默认 `fonts`）——`await fonts.load({family, src})`
+  用 `FontFace` API 注册进 `document.fonts`，去重；`fonts.ready()` 等齐。字体必须在渲染前
+  一次性加载（契约 #1/#2，不能中途换字体）。单测 `tests/font-manager.test.ts`。
