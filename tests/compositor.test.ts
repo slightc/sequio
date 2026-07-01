@@ -319,6 +319,34 @@ describe('Compositor', () => {
     expect(() => c.renderToTexture(0)).toThrow(/init\(\)/);
   });
 
+  it('removeTrack unmounts immediately so a track can move between compositors', () => {
+    const a = makeCompositor();
+    const b = makeCompositor();
+    const track = new VisualTrack();
+    const clip = new TestClip(0, 5);
+    track.add(clip);
+
+    a.addTrack(track);
+    a.renderSync(0.5);
+    expect(clip.mountCount).toBe(1);
+
+    // Move to b WITHOUT rendering a again — the unmount must happen now, not on
+    // a's next reconcile (which never comes), or the clip is left double-mounted.
+    a.removeTrack(track);
+    expect(clip.unmountCount).toBe(1); // unmounted immediately
+
+    b.addTrack(track);
+    b.renderSync(0.5);
+    expect(clip.mountCount).toBe(2); // freshly mounted on b
+
+    // Move back to a and render — mounts cleanly again (playback not frozen).
+    b.removeTrack(track);
+    expect(clip.unmountCount).toBe(2);
+    a.addTrack(track);
+    a.renderSync(0.5);
+    expect(clip.mountCount).toBe(3);
+  });
+
   it('dispose unmounts clips and clears tracks', () => {
     const c = makeCompositor();
     const track = new VisualTrack();

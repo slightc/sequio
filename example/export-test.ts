@@ -266,32 +266,37 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
     error = String(e);
   }
 
-  // Move the scene back and confirm the "preview" compositor still renders the
-  // shared video (fork didn't break it, no re-decode needed).
+  // Move the scene back and confirm the "preview" compositor still *animates* the
+  // shared video (fork didn't break it). Rendering two different times must give
+  // different frames — a broken move-back would freeze on a stale/dead sprite.
   c3.removeTrack(track);
   c2.addTrack(track);
-  await c2.prepare(0);
-  c2.renderSync(0);
-  const oc = document.createElement('canvas');
-  oc.width = W;
-  oc.height = H;
-  const octx = oc.getContext('2d')!;
-  octx.drawImage(c2.view, 0, 0);
-  const pd = octx.getImageData(0, 0, W, H).data;
+  const readAt = async (t: number) => {
+    await c2.prepare(t);
+    c2.renderSync(t);
+    const oc = document.createElement('canvas');
+    oc.width = W;
+    oc.height = H;
+    const octx = oc.getContext('2d')!;
+    octx.drawImage(c2.view, 0, 0);
+    return octx.getImageData(0, 0, W, H).data;
+  };
+  const f0 = await readAt(0);
+  const f1 = await readAt(Math.min(meta.duration, 1) * 0.9);
   let previewLit = false;
-  for (let i = 0; i < pd.length; i += 4) {
-    if (pd[i]! > 40 || pd[i + 1]! > 40 || pd[i + 2]! > 40) {
-      previewLit = true;
-      break;
-    }
+  let previewDiff = 0;
+  for (let i = 0; i < f0.length; i += 4) {
+    if (f0[i]! > 40 || f0[i + 1]! > 40 || f0[i + 2]! > 40) previewLit = true;
+    if (Math.abs(f0[i]! - f1[i]!) > 40) previewDiff++;
   }
+  const previewOk = previewLit && previewDiff > 20; // shows content AND advances
 
   c3.dispose();
   c2.dispose();
   source.dispose();
   // Most frames must have visible content (the moving red box), not be black.
-  const okRoundTrip = !error && size > 500 && frames > 0 && litFrames >= frames - 1 && previewLit;
-  return { okRoundTrip, error, size, frames, litFrames, previewLit, duration: meta.duration };
+  const okRoundTrip = !error && size > 500 && frames > 0 && litFrames >= frames - 1 && previewOk;
+  return { okRoundTrip, error, size, frames, litFrames, previewLit, previewDiff, duration: meta.duration };
 }
 
 /** A VideoClip whose pooled texture gets evicted (destroyed) while a later frame

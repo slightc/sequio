@@ -123,6 +123,17 @@ export class Reconciler {
     return this.mounted.get(clip);
   }
 
+  /**
+   * Immediately unmount a track's clips and drop its container. Needed when a
+   * track is removed/moved between compositors: deferring the unmount to the
+   * next reconcile would leave the (shared) clip objects mounted in two places,
+   * and the other compositor's mount/unmount would corrupt them.
+   */
+  unmountTrack(track: Track, stage: Container): void {
+    const entry = this.trackEntries.get(track as VisualTrack);
+    if (entry) this.disposeTrackEntry(track as VisualTrack, entry, stage);
+  }
+
   /** Unmount everything (used on dispose / full rebuild). */
   clear(stage: Container): void {
     for (const [clip, obj] of this.mounted) {

@@ -138,6 +138,9 @@ export class Compositor implements Disposable {
   removeTrack(track: Track): void {
     const i = this.tracks.indexOf(track);
     if (i >= 0) this.tracks.splice(i, 1);
+    // Unmount now (not on the next reconcile) so the track can be safely moved
+    // to another compositor without leaving its clips double-mounted.
+    this.reconciler.unmountTrack(track, this.stage);
     this.invalidate();
   }
 
