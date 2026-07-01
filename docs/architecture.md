@@ -115,6 +115,14 @@ clock.play();
   - **只影响最末端**：严格早于末端的 `t`（片头留白、clip 间缝隙、有后继 clip 的干净切换）原样渲染。
     想要"片尾留白/内容后是黑场"可 `holdLastFrameAtEnd: false` 关掉。`prepare(t)` 同样按此钳制
     （末端预解码末帧而非什么都不解）；导出逐帧 `t` 全 `< end`，不触发、不受影响。见 `tests/compositor.test.ts`。
+  - **非帧对齐的 `end` 用 round（与导出一致，可能"少一帧"）**：`toFrame` 是 `round`，所以整套引擎
+    把时长按**四舍五入到整数帧**处理。例如 `end = 10.1` 帧：`toFrame = round(10.1) = 10`，末帧
+    `= toSeconds(9)` = **第 9 帧**——尽管第 10 帧（`10f`）严格来说 `< 10.1f`、也在区间内，却被丢掉。
+    这是**刻意的**：`exportFrameTimes` 的帧数同样是 `round(end·fps) = 10`（帧号 0..9），两边末帧逐字
+    相等（契约 #3），并非 `resolveRenderTime` 单独的 off-by-one。整数帧时 round 与严格 `< end` 一致、
+    无歧义，所以实践中让 `end` 帧对齐（用 `Timebase.toSeconds(frame)`）即可回避。若确需"凡 `< end` 的帧
+    都算"（10.1f → 末帧 10），得把 `resolveRenderTime` 与 `exportFrameTimes` **一起**从 round 换成
+    `ceil`，是个全局取舍——当前不做。
 - **预览的过渡观感（非崩溃）**：跨到新 clip 的那一刻，新 clip 的源可能**还没解码好**，
   预览是尽力而为（fire-and-forget prepare + 立即 renderSync，契约 #1），故切换后的头几帧
   可能 miss → 短暂空白。**导出** `await prepare` 等齐、帧级精确、无此现象。
