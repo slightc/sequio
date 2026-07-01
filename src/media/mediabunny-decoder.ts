@@ -1,4 +1,5 @@
-import type { Input, InputVideoTrack, VideoSampleSink } from 'mediabunny';
+import type { Input, InputVideoTrack, VideoSample, VideoSampleSink } from 'mediabunny';
+import { ForwardDecodeCursor } from './forward-decode-cursor';
 import type { SourceMetadata } from './media-source';
 import type { DecodedFrame, VideoDecoderBackend } from './video-decoder';
 
@@ -9,25 +10,38 @@ export type VideoInput = string | ArrayBuffer | Blob;
  * Default {@link VideoDecoderBackend}: demux + hardware decode via
  * [Mediabunny](https://mediabunny.dev) (a zero-dependency WebCodecs wrapper).
  *
- * `decode(sec)` uses a `VideoSampleSink`, which seeks to the nearest keyframe,
- * decodes forward to the target and returns the sample at-or-before `sec`.
- * Mediabunny is loaded dynamically so it stays out of the import graph until a
- * real decode happens (consumers injecting their own backend never pay for it).
+ * **Sequential fast-path.** Naively, `sink.getSample(sec)` re-seeks to the
+ * nearest keyframe and re-decodes the GOP prefix up to `sec` on *every* call —
+ * so playing a clip frame-by-frame is O(GOP²) and visibly stutters. Instead a
+ * {@link ForwardDecodeCursor} keeps a running `sink.samples(sec)` iterator (one
+ * long-lived decoder that pre-decodes a little ahead) and, for a monotonic
+ * request, just advances it to the frame at-or-before `sec` — each frame is
+ * decoded exactly once. A backward step or a large forward jump (a seek)
+ * rebuilds the iterator. Mediabunny is loaded dynamically so it stays out of the
+ * import graph until a real decode happens (consumers injecting their own
+ * backend never pay for it).
  */
 export class MediabunnyVideoDecoder implements VideoDecoderBackend {
   private input: Input | null = null;
   private track: InputVideoTrack | null = null;
   private sink: VideoSampleSink | null = null;
-  /** Serializes `getSample` — the sink has internal decode state and is not safe
-   *  to call concurrently (prewarm lookahead, or a shared source driven by both a
+  /** Serializes `decode` — the cursor is mutable state and is not safe to
+   *  advance concurrently (prewarm lookahead, or a shared source driven by both a
    *  preview and an export at once). */
   private queue: Promise<unknown> = Promise.resolve();
+  /** Long-lived forward decode cursor over {@link sink} (built in `load`). */
+  private cursor: ForwardDecodeCursor<VideoSample> | null = null;
   /** Whether we own the demux `Input` (dispose it) or share a parent's. */
   private ownsInput = true;
   /** For a fork: the parent's already-demuxed track + metadata (no re-parse). */
   private forkedFrom: { track: InputVideoTrack; input: Input; meta: SourceMetadata } | null = null;
 
   constructor(private readonly src: VideoInput) {}
+
+  /** Build the forward cursor over the current sink (after `load`). */
+  private makeCursor(sink: VideoSampleSink): ForwardDecodeCursor<VideoSample> {
+    return new ForwardDecodeCursor<VideoSample>((startSec) => sink.samples(startSec));
+  }
 
   async load(): Promise<SourceMetadata> {
     const { Input, VideoSampleSink, ALL_FORMATS, UrlSource, BufferSource, BlobSource } =
@@ -38,6 +52,7 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
       this.input = this.forkedFrom.input;
       this.track = this.forkedFrom.track;
       this.sink = new VideoSampleSink(this.forkedFrom.track);
+      this.cursor = this.makeCursor(this.sink);
       return this.forkedFrom.meta;
     }
 
@@ -53,6 +68,7 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
     if (!track) throw new Error('MediabunnyVideoDecoder: no video track in source');
     this.track = track;
     this.sink = new VideoSampleSink(track);
+    this.cursor = this.makeCursor(this.sink);
 
     const [duration, stats, audioTrack] = await Promise.all([
       this.input.computeDuration(),
@@ -89,9 +105,9 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
   }
 
   async decode(sec: number): Promise<DecodedFrame | null> {
-    if (!this.sink) throw new Error('MediabunnyVideoDecoder.decode before load()');
-    const sink = this.sink;
-    const run = this.queue.then(() => sink.getSample(sec));
+    if (!this.cursor) throw new Error('MediabunnyVideoDecoder.decode before load()');
+    const cursor = this.cursor;
+    const run = this.queue.then(() => cursor.at(sec));
     this.queue = run.then(
       () => undefined,
       () => undefined,
@@ -106,6 +122,8 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
   }
 
   dispose(): void {
+    this.cursor?.dispose(); // release the cursor's decoder + carried frame
+    this.cursor = null;
     if (this.ownsInput) this.input?.dispose(); // a fork must not tear down the shared demux
     this.input = null;
     this.track = null;

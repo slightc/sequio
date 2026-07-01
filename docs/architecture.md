@@ -302,6 +302,18 @@ resolution 1)。
   缓存淘汰),`VideoClip` 会退回 `Texture.EMPTY`——绝不渲染已销毁的纹理(否则 Pixi 读 null
   source 的 `addressModeU` 崩溃;导出长/大视频时尤易触发)。
 - 帧按 `round(t * fps)` 索引（**假设 CFR**，VFR 精确化是后续细化）。
+- **顺序解码快路径（避免播放卡顿）**：`sink.getSample(sec)` 每次都会 seek 到最近关键帧再
+  把 GOP 前缀重新解到 `sec`，逐帧播放就是 O(GOP²)、肉眼可见卡顿。`MediabunnyVideoDecoder`
+  改用一个长驻的 `ForwardDecodeCursor`（`src/media/forward-decode-cursor.ts`）：内部维持一个
+  `sink.samples(sec)` 迭代器（单个解码器、会向前预解一点），单调请求时只把游标推进到「≤sec
+  最近一帧」——每帧只解一次;后退或大跳（> `resetGap`，默认 1s）才从新关键帧重建迭代器。游标是
+  纯控制流（迭代器工厂注入），脱离真实解码器单测（`tests/forward-decode-cursor.test.ts`）。
+- **拖拽 seek 不堆积解码任务（drop-stale）**：快速拖动会在解码器追上前连发很多 `prepare`,若每个
+  中间位置（连同预读）都排一个 decode,解码器会在拖拽结束后仍长时间消化没人要的帧。`VideoSource`
+  用一条单车道 `decodeLane` 串行化 decode 派发,每个排队的 decode 到队头时用 `wanted(idx)`
+  复检:若一次更晚的 seek 已把播放头移出 `dropHorizon`（= `lookahead + 8` 帧）则跳过自己——于是
+  拖拽最终**收敛到落点帧**而不是堆积。导出是逐帧 `await`(不会有更新的 `prepare` 抢占),目标帧永不
+  被丢,故导出不受影响。
 - **双预算联动**（契约 #4）：解码侧 `FrameCache`（帧数预算）与显存侧 `TextureManager`
   （字节预算 + LRU）相互独立——纹理可在显存压力下被淘汰而帧仍在缓存（下次 `getTextureAt`
   重传）；帧被 `FrameCache` 淘汰时经 `onEvict` 钩子 `release` 掉它的纹理。`Compositor`

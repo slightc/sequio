@@ -67,21 +67,35 @@ class ForkableBackend implements VideoDecoderBackend {
   }
 }
 
-/** Backend whose decodes block until explicitly released (per source-second). */
+/**
+ * Backend whose decodes block until explicitly released (per source-second).
+ * `release` is order-independent: releasing a second before its decode is even
+ * dispatched (VideoSource now serializes decodes, so dispatch lands a microtask
+ * later) is remembered and resolves the decode as soon as it arrives.
+ */
 class GatedBackend implements VideoDecoderBackend {
   decodeCalls: number[] = [];
   private readonly gates = new Map<number, () => void>();
+  private readonly preReleased = new Set<number>();
   async load(): Promise<SourceMetadata> {
     return META;
   }
   decode(sec: number): Promise<DecodedFrame | null> {
     this.decodeCalls.push(sec);
     return new Promise((resolve) => {
-      this.gates.set(sec, () => resolve({ timestamp: sec, image: {} as CanvasImageSource, close: () => {} }));
+      const fire = () => resolve({ timestamp: sec, image: {} as CanvasImageSource, close: () => {} });
+      if (this.preReleased.delete(sec)) fire();
+      else this.gates.set(sec, fire);
     });
   }
   release(sec: number): void {
-    this.gates.get(sec)?.();
+    const gate = this.gates.get(sec);
+    if (gate) {
+      this.gates.delete(sec);
+      gate();
+    } else {
+      this.preReleased.add(sec); // decode not dispatched yet — resolve on arrival
+    }
   }
   dispose(): void {}
 }
@@ -174,6 +188,43 @@ describe('VideoSource', () => {
     await p2;
     expect(source.getTextureAt(16 / 30)).not.toBeNull(); // now resident, in sync
     expect(backend.decodeCalls.filter((s) => Math.abs(s - 16 / 30) < 1e-9)).toHaveLength(1); // decoded once
+  });
+
+  it('sheds a stale scrub backlog: a far seek drops queued decodes the playhead left behind', async () => {
+    // A fast drag fires many prepares before the decoder catches up. With decodes
+    // gated (decoder "busy"), queue several far-apart positions, then land on a
+    // final one; only frames near the final playhead should actually decode — the
+    // superseded middle positions are dropped instead of piling up.
+    const backend = new GatedBackend();
+    const source = new VideoSource({ src: 'x', backend, textureManager: new TestTextureManager(), lookahead: 0 });
+    await source.load();
+
+    // First decode occupies the single lane (gated, not yet released).
+    const first = source.prepare(0); // idx 0
+    await tick();
+    expect(backend.decodeCalls).toEqual([0]); // dispatched, now blocking the lane
+
+    // Scrub far forward while the lane is busy — each is >> dropHorizon apart.
+    void source.prepare(1); // idx 30  (superseded)
+    void source.prepare(2); // idx 60  (superseded)
+    const last = source.prepare(3); // idx 90 (the final resting position)
+    await tick();
+
+    // Lane still blocked on the gated idx 0 — nothing else dispatched yet.
+    expect(backend.decodeCalls).toEqual([0]);
+
+    backend.release(0); // let the lane advance through the queued work
+    await first;
+    await tick();
+
+    // The middle seeks (idx 30, 60) were dropped as stale; only the final
+    // playhead (idx 90) still decodes.
+    expect(has(backend.decodeCalls, 1)).toBe(false); // idx 30 shed
+    expect(has(backend.decodeCalls, 2)).toBe(false); // idx 60 shed
+    backend.release(3);
+    await last;
+    expect(has(backend.decodeCalls, 3)).toBe(true); // idx 90 decoded
+    expect(source.getTextureAt(3)).not.toBeNull();
   });
 
   it('fork() shares the demux but decodes independently; disposing a fork keeps the parent alive', async () => {
