@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>exporter playground</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 28px;
+        font-family: system-ui, sans-serif;
+        background: #0b0b0e;
+        color: #e6e6ea;
+      }
+      h1 { font-size: 16px; font-weight: 600; opacity: 0.85; margin: 0 0 4px; }
+      p.hint { opacity: 0.55; font-size: 13px; margin: 0 0 18px; max-width: 640px; }
+      .layout { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+      canvas { border-radius: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55); display: block; }
+      .transport { display: flex; align-items: center; gap: 12px; margin-top: 14px; width: 480px; }
+      .transport #scrub { flex: 1; }
+      #time { font-variant-numeric: tabular-nums; opacity: 0.7; min-width: 110px; }
+      button {
+        background: #2b6cff; color: #fff; border: 0; border-radius: 6px;
+        padding: 8px 14px; font-size: 14px; cursor: pointer;
+      }
+      button:disabled { opacity: 0.45; cursor: default; }
+      .panel { min-width: 300px; display: flex; flex-direction: column; gap: 12px; }
+      .card { background: #16161c; border: 1px solid #24242d; border-radius: 10px; padding: 14px 16px; }
+      .row { display: flex; align-items: center; gap: 12px; }
+      select {
+        background: #0f0f14; color: #e6e6ea; border: 1px solid #2a2a34;
+        border-radius: 5px; padding: 6px 8px; font-size: 13px;
+      }
+      .progress { height: 8px; background: #24242d; border-radius: 999px; overflow: hidden; margin-top: 12px; }
+      #bar { height: 100%; width: 0%; background: #06d6a0; transition: width 0.05s linear; }
+      #status { font-size: 12px; opacity: 0.75; display: block; margin-top: 10px; min-height: 16px; }
+      #result video { display: block; }
+      a { color: #6ea8ff; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <h1>Exporter playground (milestone 08)</h1>
+    <p class="hint">
+      An animated timeline — a gradient A→B crossfade plus a rotating square — previews live on the left.
+      Press <b>Export</b> to render it to a real MP4/WebM with a progress bar; the file plays back inline and
+      can be downloaded. Preview and export share one render core, so the output matches the preview.
+    </p>
+    <div class="layout">
+      <div>
+        <div id="stage"></div>
+        <div class="transport">
+          <button id="play">▶ Play</button>
+          <input id="scrub" type="range" min="0" max="3.5" step="0.01" value="0" />
+          <span id="time">0.00 / 3.50s</span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="card">
+          <div class="row">
+            <label for="container" style="font-size: 13px; opacity: 0.8;">container</label>
+            <select id="container">
+              <option value="auto">auto</option>
+              <option value="mp4">mp4 (avc)</option>
+              <option value="webm">webm (vp9/vp8)</option>
+            </select>
+            <button id="export">⬇ Export</button>
+          </div>
+          <div class="progress"><div id="bar"></div></div>
+          <span id="status">Idle.</span>
+        </div>
+        <div id="result"></div>
+      </div>
+    </div>
+    <script type="module" src="/example/export-demo.ts"></script>
+  </body>
+</html>

@@ -38,6 +38,9 @@
   `audioBitrate`/`range`;`onProgress`、`cancel()`/`ExportCancelledError`。
 - 测试:`tests/exporter.test.ts` + `pnpm verify:export`(真实导出→Mediabunny 解回:帧数 8、
   尺寸 160×120、解出的帧是红色)。
+- 交互 demo:`pnpm dev` 后打开 `/example/export-demo.html`——一条动画时间线(渐变 A→B 交叉
+  叠化 + 旋转移动的方块)先实时预览,点 **Export** 带进度条导出成真实 MP4/WebM,结果内联播放
+  并可下载(预览与导出共用同一渲染核心)。
 
 ## 待办（后续补齐）
 
