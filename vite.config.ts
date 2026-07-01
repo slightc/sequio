@@ -5,6 +5,9 @@ import dts from 'vite-plugin-dts';
 // Library build: the SDK ships as ESM + CJS with type declarations.
 // `pixi.js` (peer) and `mediabunny` (runtime dep) stay external.
 export default defineConfig({
+  server: {
+    port: 6173,
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
