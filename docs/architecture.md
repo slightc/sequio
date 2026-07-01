@@ -36,7 +36,7 @@
 | 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）+ 轨道内重叠驱动转场（`track.addTransition`）已实现 |
 | 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
 | 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
-| 导出 | `src/export/` | ✅ `Exporter`（定步循环 + `await prepare` 不丢帧 + Mediabunny `Output` 封装 MP4/WebM）已实现；音画一起导出的 e2e + golden-frame 全帧对比为后续 |
+| 导出 | `src/export/` | ✅ `Exporter`（定步循环 + `await prepare` 不丢帧 + Mediabunny `Output` 封装 MP4/WebM,视频 + 音频）已实现;golden-frame 全帧对比为后续 |
 
 ### 时钟控制面（对齐 `HTMLMediaElement`）
 
@@ -154,9 +154,10 @@ clock.play();
   每帧上报;`cancel()` 置标志,下一帧抛 `ExportCancelledError` 并 `sink.cancel()` 释放编码器。
 - 校验:`tests/exporter.test.ts`(纯 `exportFrameTimes`;用假 compositor/audio/sink 断言
   **每帧 prepare→render→addFrame 的顺序**、帧时刻、progress 单调到 1、`audio:false` 跳过音频、
-  `range` 覆盖时长、`cancel` 中止且不 finalize)+ e2e `pnpm verify:export`——真实导出红色
-  clip 到 MP4/WebM,再用 Mediabunny `Input` 解回,断言帧数(8)、尺寸(160×120)、解出的帧
-  确实是红色(排除空画布抓取)。
+  `range` 覆盖时长、`cancel` 中止且不 finalize)+ e2e `pnpm verify:export`——真实导出:
+  ①视频-only 红 clip 到 MP4,解回断言帧数(8)、尺寸(160×120)、帧确实是红色(排除空画布抓取);
+  ②音+画(排一段 440Hz 正弦进 `AudioEngine`)到 WebM(vp8/opus,挑能编码的),解回断言
+  **视频轨 + 音频轨都在**。
 
 ### 文字与字体加载（TextClip / FontManager）
 

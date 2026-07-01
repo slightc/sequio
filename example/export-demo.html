@@ -40,19 +40,27 @@
     </style>
   </head>
   <body>
-    <h1>Exporter playground (milestone 08)</h1>
+    <h1>Exporter + A/V player (milestone 08)</h1>
     <p class="hint">
-      An animated timeline — a gradient A→B crossfade plus a rotating square — previews live on the left.
-      Press <b>Export</b> to render it to a real MP4/WebM with a progress bar; the file plays back inline and
-      can be downloaded. Preview and export share one render core, so the output matches the preview.
+      One clock drives both video and audio, so they preview together (音画一起播): a 4-note melody with a
+      marker stepping across the blocks in sync, or load a video file. Press <b>Export</b> to render the
+      current scene — <b>video and audio</b> — to a real MP4/WebM with a progress bar; the file plays back
+      inline and can be downloaded. Preview and export share one render core.
     </p>
     <div class="layout">
       <div>
         <div id="stage"></div>
         <div class="transport">
           <button id="play">▶ Play</button>
-          <input id="scrub" type="range" min="0" max="3.5" step="0.01" value="0" />
-          <span id="time">0.00 / 3.50s</span>
+          <input id="scrub" type="range" min="0" max="2" step="0.01" value="0" />
+          <span id="time">0.00 / 2.00s</span>
+          <label class="loop" style="display:flex;align-items:center;gap:6px;font-size:13px;opacity:0.8;">
+            <input id="loop" type="checkbox" checked /> loop
+          </label>
+        </div>
+        <div class="transport" style="margin-top:8px;">
+          <label style="font-size:13px;opacity:0.8;">Load video: <input id="file" type="file" accept="video/*" /></label>
+          <span id="audio" style="font-size:13px;opacity:0.75;">🔊 audio</span>
         </div>
       </div>
       <div class="panel">

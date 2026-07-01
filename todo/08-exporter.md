@@ -36,14 +36,14 @@
   readback + `AudioBufferSource` + `Output`(MP4/WebM) + `BufferTarget`,动态 import）。
 - **`ExportOptions`**:`fps`/`container`/`videoCodec`/`bitrate`/`audio`/`audioCodec`/
   `audioBitrate`/`range`;`onProgress`、`cancel()`/`ExportCancelledError`。
-- 测试:`tests/exporter.test.ts` + `pnpm verify:export`(真实导出→Mediabunny 解回:帧数 8、
-  尺寸 160×120、解出的帧是红色)。
-- 交互 demo:`pnpm dev` 后打开 `/example/export-demo.html`——一条动画时间线(渐变 A→B 交叉
-  叠化 + 旋转移动的方块)先实时预览,点 **Export** 带进度条导出成真实 MP4/WebM,结果内联播放
-  并可下载(预览与导出共用同一渲染核心)。
+- 测试:`tests/exporter.test.ts` + `pnpm verify:export`(真实导出→Mediabunny 解回:①视频-only
+  帧数 8、尺寸 160×120、帧是红色;②音+画到 WebM,解回断言视频轨 + 音频轨都在)。
+- 交互 demo:`pnpm dev` 后打开 `/example/export-demo.html`——并入了 av-player:一个时钟同时驱动
+  画面与 `AudioEngine`(音画一起播),默认 4 音符旋律 + 同步跳动的 marker,或加载视频文件;点
+  **Export** 把当前场景的**视频 + 音频**带进度条导出成真实 MP4/WebM,结果内联播放并可下载
+  (预览与导出共用同一渲染核心)。
 
 ## 待办（后续补齐）
 
-- 音画一起导出的 e2e（当前 e2e 走 `audio:false`;音频 `addAudio` 已实现并单测,但未 e2e 解回验证）。
 - golden-frame 全画面逐帧 diff 工具（预览 vs 导出）。
 - 长视频压测(内存/背压)。

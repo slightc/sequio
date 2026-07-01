@@ -46,7 +46,7 @@ src/
   compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips + overlap-driven transitions done
   effects/     Effect, EffectRegistry, Transition            🚧 color/blur + warp (bulge/perspective/displacement) + crossfade done, chroma/LUT/wipe TODO
   audio/       AudioEngine + scheduling                      ✅ implemented (Web Audio + OfflineAudioContext)
-  export/      Exporter (FixedStep loop + Mediabunny mux)     ✅ implemented (MP4/WebM; audio-in-export + golden-frame diff are follow-ups)
+  export/      Exporter (FixedStep loop + Mediabunny mux)     ✅ implemented (MP4/WebM, video + audio; golden-frame diff is a follow-up)
   index.ts     public barrel
 tests/         vitest unit tests (pure-logic modules)
 docs/          architecture & design
