@@ -25,6 +25,7 @@ import {
   ImageSource,
   PerspectiveEffect,
   RealtimeClock,
+  ShapeClip,
   Timebase,
   VisualSource,
   VisualTrack,
@@ -120,17 +121,27 @@ async function setupEffects(): Promise<void> {
   // Fit the 512×288 poster into the 560×315 frame.
   clip.transform.scale.setStatic([WIDTH / 512, WIDTH / 512]);
 
+  // A small badge clip with NO per-clip effect — only the global pass reaches it,
+  // so it makes the clip-scope vs. global-scope difference visible.
+  const badge = new ShapeClip({ kind: 'rect', width: 96, height: 96, fill: 0x00e5a8 });
+  badge.start = 0;
+  badge.end = DURATION;
+  badge.transform.anchor.setStatic([0.5, 0.5]);
+  badge.transform.position.setStatic([WIDTH - 74, HEIGHT - 74]);
+
   const color = new ColorEffect();
   const blur = new BlurEffect();
   blur.strength.setStatic(0);
   clip.effects.push(color, blur);
   track.add(clip);
+  track.add(badge);
 
   const bright = bind('fx-bright');
   const contrast = bind('fx-contrast');
   const sat = bind('fx-sat');
   const strength = bind('fx-blur');
   const animate = bind('fx-animate');
+  const globalBox = bind('fx-global');
   const playBtn = document.getElementById('fx-play') as HTMLButtonElement;
   const readouts = {
     bright: document.getElementById('fx-bright-v')!,
@@ -198,7 +209,16 @@ async function setupEffects(): Promise<void> {
     }
   }
 
+  /** Move the color+blur effects between the single clip and the whole composite. */
+  function relocate(): void {
+    clip.effects.length = 0;
+    compositor.effects.length = 0;
+    (globalBox.checked ? compositor.effects : clip.effects).push(color, blur);
+    if (!animate.checked) applyStatic(); // repaint now; while animating the clock does
+  }
+
   animate.addEventListener('change', () => setAnimating(animate.checked));
+  globalBox.addEventListener('change', relocate);
   playBtn.addEventListener('click', () => {
     if (clock.paused) {
       clock.play();
@@ -209,7 +229,7 @@ async function setupEffects(): Promise<void> {
     }
   });
 
-  applyStatic(); // initial paint (manual mode)
+  applyStatic(); // initial paint (manual mode, clip-scoped)
   playBtn.disabled = true;
   playBtn.textContent = '▶ Play';
 }

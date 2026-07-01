@@ -121,6 +121,49 @@ async function runClipEffects(): Promise<Record<string, unknown>> {
   return { okDim, dim: dimPx, okBlur, bleed: bleedPx };
 }
 
+/** A2) global effect over the whole composite (Compositor.effects). */
+async function runGlobalEffect(): Promise<Record<string, unknown>> {
+  const compositor = new Compositor({
+    width: W,
+    height: H,
+    timebase: new Timebase(30),
+    background: 0x000000,
+    preferWebGPU: false,
+  });
+  await compositor.init();
+
+  const track = new VisualTrack();
+  const red = new ShapeClip({ kind: 'rect', width: 120, height: 120, fill: 0xff0000 });
+  place(red, 80, 100);
+  const blue = new ShapeClip({ kind: 'rect', width: 120, height: 120, fill: 0x0000ff });
+  place(blue, 240, 100);
+  for (const c of [red, blue]) track.add(c);
+  compositor.addTrack(track);
+
+  // One global desaturate → BOTH clips lose their hue (proves it hits the whole
+  // composite, not a single clip).
+  const gray = new ColorEffect();
+  gray.saturation.setStatic(0);
+  compositor.effects.push(gray);
+  compositor.renderSync(0);
+
+  const off = document.createElement('canvas');
+  off.width = W;
+  off.height = H;
+  const octx = off.getContext('2d')!;
+  octx.drawImage(compositor.view, 0, 0);
+  const { data } = octx.getImageData(0, 0, W, H);
+
+  const redPx = px(data, W, 80, 100);
+  const bluePx = px(data, W, 240, 100);
+  const isGray = (p: { r: number; g: number; b: number }) =>
+    Math.abs(p.r - p.g) < 45 && Math.abs(p.g - p.b) < 45 && Math.abs(p.r - p.b) < 45;
+  const okGlobal = isGray(redPx) && isGray(bluePx);
+
+  compositor.dispose();
+  return { okGlobal, red: redPx, blue: bluePx };
+}
+
 /** B) crossfade transition on the GPU. */
 async function runCrossfade(): Promise<Record<string, unknown>> {
   const renderer = (await autoDetectRenderer({
@@ -297,11 +340,13 @@ async function runWarps(): Promise<Record<string, unknown>> {
 
 async function run(): Promise<void> {
   const clip = await runClipEffects();
+  const global = await runGlobalEffect();
   const fade = await runCrossfade();
   const warp = await runWarps();
   const ok = Boolean(
     clip.okDim &&
       clip.okBlur &&
+      global.okGlobal &&
       fade.okStart &&
       fade.okEnd &&
       fade.okMid &&
@@ -309,7 +354,7 @@ async function run(): Promise<void> {
       warp.okPerspective &&
       warp.okDisplacement,
   );
-  (window as unknown as { __EFFECTS_TEST__: unknown }).__EFFECTS_TEST__ = { ok, clip, fade, warp };
+  (window as unknown as { __EFFECTS_TEST__: unknown }).__EFFECTS_TEST__ = { ok, clip, global, fade, warp };
 }
 
 run().catch((err) => {

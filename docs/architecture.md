@@ -33,7 +33,7 @@
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
 | 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
-| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）已实现；转场待后续里程碑 |
+| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）已实现；转场待后续里程碑 |
 | 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
 | 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
@@ -170,16 +170,26 @@ clock.play();
   `updateAt` 里 `reset()` 后 `brightness/contrast/saturate` 叠加）与 **`BlurEffect`**
   （`BlurFilter`，`strength` 可动画）。`registerBuiltins(registry)` 把 `color`/`blur`
   按类型幂等注册进 `EffectRegistry`；消费者可 `register` 自定义类型。
-- **clip 级接线**：`VisualClip.applyCommon` 每帧调 `syncEffects(obj,t)`——把新加进
-  `clip.effects` 的 effect `attach` 一次（用 `attachedEffects` 集合去重）、对全部
-  `updateAt(t)`、把已移除的 `detach`；`obj` 换新（re-mount）时清空并重挂。轨道级 effect
-  走同一套（挂在轨道 `Container` 上，见「多轨叠层」）。
+- **三级作用域，同一套 attach/update/detach 机制**，区别只是 filter 挂到哪个 `Container`：
+  - **clip 级**（`clip.effects`）：`VisualClip.applyCommon` 每帧调 `syncEffects(obj,t)`——把
+    新加进的 effect `attach` 一次（`attachedEffects` 集合去重）、对全部 `updateAt(t)`、把已
+    移除的 `detach`；`obj` 换新（re-mount）时清空并重挂。只影响该 clip。
+  - **轨道级**（`track.effects`）：`Reconciler.syncTrackEffects` 挂到轨道 `Container`（调整层，
+    见「多轨叠层」），影响该轨道全部 clip。
+  - **全局**（`compositor.effects`）：`Compositor.syncStageEffects` 挂到 root `stage`，影响
+    **整帧合成结果**——主调色 / 全局模糊 / 整帧 warp。`renderSync` 与 `renderToTexture` 都
+    渲染同一个 stage，所以全局效果在预览与导出一致（契约 #3）。同一 effect 实例只应属于一个
+    作用域（它只持有一个 filter、一次挂一个目标）。warp 的作用范围是目标 `Container` 的包围盒，
+    整帧 warp 需内容铺满帧（见 warp 小节的 caveat）。
 - **`Transition`**：`render(renderer, from, to, progress ∈ [0,1]) → RenderTexture`，在 GPU 上把
   两路纹理混成一张。内置 **`CrossfadeTransition`**：`from` 铺满、`to` 以 `alpha=progress`
   叠加（`out = from*(1-p) + to*p`）；纯函数 `crossfadeAlpha(p)` 做 clamp。返回的
   `RenderTexture` 由 transition 自己复用/持有（`dispose` 释放），调用方不得销毁。
 - 校验:`tests/effects.test.ts`（`valuesAt`、惰性创建、写矩阵、注册幂等、clip 接线的
-  attach/update/detach 次数、`crossfadeAlpha` clamp）+ e2e `pnpm verify:effects`——真实
+  attach/update/detach 次数、`crossfadeAlpha` clamp）+ `tests/compositor.test.ts`（全局
+  `compositor.effects` 挂 stage：一次 attach、每帧 update、移除后 detach）+ e2e
+  `pnpm verify:effects`（含全局段：一个 `compositor.effects` 的 desaturate 让红/蓝两个 clip
+  同时变灰，证明作用于整帧）——真实
   WebGL 上用 `ColorEffect` 压暗白块、`BlurEffect` 让红块边缘外溢、`CrossfadeTransition`
   把红→蓝在 `progress=0.5` 混成 `(128,0,127)`。
 

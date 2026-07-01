@@ -36,8 +36,10 @@
   - **`DisplacementEffect`**：封装内置 `DisplacementFilter`，位移贴图驱动，`strength` 可动画。
 - **`registerBuiltins(registry)`**：把 `color` / `blur` / `bulge` / `perspective` /
   `displacement` 注册进 `EffectRegistry`，按类型幂等。
-- **clip 级特效接线**：`VisualClip.applyCommon` 里的 `syncEffects(obj,t)` 把新加的 effect
-  attach 一次、每帧 `updateAt`、移除的 detach；`obj` 换新（re-mount）时重新 attach。
+- **三级作用域**（同一套 attach/update/detach，区别在挂到哪个 `Container`）：clip 级
+  `clip.effects`（`VisualClip.syncEffects`，re-mount 时重挂）、轨道级 `track.effects`
+  （`Reconciler.syncTrackEffects`）、全局 `compositor.effects`（`Compositor.syncStageEffects`，
+  挂 root stage → 影响整帧合成，预览/导出一致）。
 - **`CrossfadeTransition`**：`render(renderer, from, to, progress)` 把 `from` 铺满、
   `to` 以 `alpha=progress` 叠加 → `RenderTexture`（由 transition 复用/持有）。纯函数
   `crossfadeAlpha(progress)` 做 clamp，可单测。

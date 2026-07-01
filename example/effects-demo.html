@@ -58,6 +58,8 @@
       Left: a clip carrying a <code>ColorEffect</code> + <code>BlurEffect</code> — drag the sliders to
       drive their animatable params (the canvas repaints on each change; the SDK never auto-repaints).
       Tick <b>Animate</b> to keyframe them and let the render clock sweep <code>updateAt(t)</code>.
+      Tick <b>Global</b> to move the grade onto <code>Compositor.effects</code> — it then also hits the
+      teal badge (which has no effect of its own), proving it applies to the whole composite.
       Middle: a <code>CrossfadeTransition</code> blends A→B — scrub the mix or press Play to ping-pong it.
       Right: geometric <b>warps</b> — perspective corner-pin, bulge/pinch, or a displacement-map ripple
       (things <code>Transform2D</code>'s affine transform can't do). Pick a type and drag the amount.
@@ -91,6 +93,9 @@
           <div class="row">
             <label class="chk"><input id="fx-animate" type="checkbox" /> Animate (keyframed)</label>
             <button id="fx-play">⏸ Pause</button>
+          </div>
+          <div class="row">
+            <label class="chk"><input id="fx-global" type="checkbox" /> Global (whole composite — grades the badge too)</label>
           </div>
         </div>
       </div>
