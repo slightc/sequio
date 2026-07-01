@@ -100,8 +100,9 @@ clock.play();
 - `FrameCache` 的 `onEvict` 钩子把派生 `Texture` 的销毁与帧的关闭绑定，显存随解码内存
   回收（契约 #4）。
 - 把后端做成接口的副作用：编解码编排逻辑（keying / 预读方向 / 缓存命中 / dispose）可在
-  headless 下用 fake backend 单测；真实 WebCodecs 解码由 `example/`「Load video」手验
-  （注：CI 环境的 headless Chromium 不带 WebCodecs，需在支持的浏览器里验）。
+  headless 下用 fake backend 单测；真实 WebCodecs 解码由 `pnpm verify:decode` 自动验证
+  （Puppeteer + Chrome-for-Testing：浏览器内录一段真 WebM → 经 `VideoSource` 解回、渲染并
+  断言）。Playwright 精简 Chromium 不带 WebCodecs，故用 Puppeteer 的 Chrome-for-Testing。
 
 ## 核心契约（决定底座成败的几点）
 

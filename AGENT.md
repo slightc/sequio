@@ -79,7 +79,12 @@ pnpm test:watch     # watch mode
 pnpm typecheck      # tsc --noEmit
 pnpm build          # typecheck + vite library build (ESM + CJS + d.ts)
 pnpm dev            # vite dev server (for example/playground)
+pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 ```
+
+Browser e2e (`verify:decode`) needs a WebCodecs-capable browser. Playwright's
+bundled Chromium lacks WebCodecs, so we use Puppeteer's Chrome-for-Testing —
+fetch it once with `pnpm exec puppeteer browsers install chrome`.
 
 ## Working agreement
 

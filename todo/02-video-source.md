@@ -32,8 +32,12 @@
   缓存 / 预读 / 纹理生命周期。
 - 单测 `tests/video-source.test.ts`（fake backend）：metadata 透传、CFR keying、
   prepare/getTextureAt 同异步分离、方向预读翻转、去重、预算淘汰、dispose。
-- 真实 WebCodecs 解码：`example/`「Load video」手验（CI 的 headless Chromium 不带
-  WebCodecs，需在支持的浏览器里验）。
+- 真实 WebCodecs 解码：`pnpm verify:decode`（Puppeteer + Chrome-for-Testing，含
+  WebCodecs）自动验证 —— `example/decode-test.*` 在浏览器里 MediaRecorder 录一段真 WebM，
+  再经 `VideoSource` 解回、渲染并断言（metadata / 三处取帧命中 / 非空像素 / 预读缓存）。
+  也可 `example/`「Load video」手验。
+  注：Playwright 自带的精简 Chromium 不带 WebCodecs，故改用 Puppeteer 的
+  Chrome-for-Testing；首次需 `pnpm exec puppeteer browsers install chrome`。
 
 ## 关键契约
 - `prepare` 异步、`getTextureAt` 同步，二者严格分离（contract #1）。
