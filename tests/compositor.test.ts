@@ -7,6 +7,7 @@ import { Reconciler } from '../src/compositor/reconciler';
 import { Effect } from '../src/effects/effect';
 import { VisualTrack } from '../src/compositor/track';
 import { VisualSource, type SourceMetadata } from '../src/media/media-source';
+import { exportFrameTimes } from '../src/export/frame-times';
 import type { TextureManager } from '../src/texture/texture-manager';
 import { Timebase } from '../src/time/timebase';
 
@@ -312,6 +313,20 @@ describe('Compositor', () => {
     c.renderSync(1); // playhead at the exclusive end
     expect(clip.mountCount).toBe(1); // stays lit — not an empty/black frame
     expect(clip.updates.at(-1)).toBeCloseTo(29 / 30); // rendered the last real frame
+  });
+
+  it('holds the last frame *boundary* for an off-grid end (matches export final frame)', () => {
+    const c = makeCompositor(); // 30fps
+    const track = new VisualTrack();
+    const clip = new TestClip(0, 0.98); // end off the frame grid: N = round(29.4) = 29
+    track.add(clip);
+    c.addTrack(track);
+
+    c.renderSync(0.98); // held at frame N-1 = 28 → 28/30, a clean boundary (not 0.98 - 1/30)
+    expect(clip.updates.at(-1)).toBeCloseTo(28 / 30);
+    // Same as exportFrameTimes([0, 0.98], 30)'s last entry (contract #3).
+    const exportLast = exportFrameTimes([0, 0.98], 30).at(-1)!;
+    expect(clip.updates.at(-1)).toBeCloseTo(exportLast);
   });
 
   it('does not hold at an internal cut — the next clip shows (clean cut)', () => {

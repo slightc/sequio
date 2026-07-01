@@ -204,15 +204,23 @@ export class Compositor implements Disposable {
   /**
    * Map a requested time to the time actually rendered. Normally the identity;
    * with {@link holdLastFrameAtEnd} (default), a `t` at or past the timeline end
-   * is pulled back to the last real frame (`end - 1/fps`) so the final frame
-   * isn't the empty `[start, end)` boundary. `t` strictly before the end (leading
-   * black, gaps, cuts) is untouched — so only the very end freezes, not gaps.
+   * is pulled back to the **last real frame** so the final frame isn't the empty
+   * `[start, end)` boundary. `t` strictly before the end (leading black, gaps,
+   * cuts) is untouched — so only the very end freezes, not gaps.
+   *
+   * The held time is the last frame *boundary* — `toSeconds(toFrame(end) - 1)` —
+   * not `end - ε`. This is a frame-quantized engine: the last frame that exists
+   * is `N-1` (`N = toFrame(end)`), which is exactly what `exportFrameTimes` emits
+   * as its final frame (contract #3). Rendering closer to `end` wouldn't gain a
+   * "more final" frame — for video it would round *up* to the non-existent frame
+   * `N` (`frameIndexAt = round(t·fps)`) and miss.
    */
   private resolveRenderTime(t: number): number {
     if (!this.holdLastFrameAtEnd) return t;
     const end = this.timelineEnd();
     if (!(end > 0) || !Number.isFinite(end) || t < end) return t;
-    const last = end - this.options.timebase.frameDuration;
+    const tb = this.options.timebase;
+    const last = tb.toSeconds(tb.toFrame(end) - 1); // last real frame = export's final frame
     return last > 0 ? last : 0;
   }
 
