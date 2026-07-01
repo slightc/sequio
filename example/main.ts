@@ -22,6 +22,7 @@ import {
   VisualTrack,
   type SourceMetadata,
 } from '../src/index';
+import { applyCover } from './cover';
 
 const WIDTH = 640;
 const HEIGHT = 360;
@@ -156,7 +157,7 @@ async function main(): Promise<void> {
     const clip = new VideoClip(source);
     clip.start = 0;
     clip.end = meta.duration;
-    clip.transform.position.setStatic([WIDTH / 2, HEIGHT / 2]);
+    applyCover(clip, meta.width, meta.height, WIDTH, HEIGHT); // fill canvas, cover
     setClip(clip, source, meta.duration);
   });
 }
