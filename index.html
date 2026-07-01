@@ -78,11 +78,37 @@
         overflow: auto;
       }
       .stage-col { display: flex; flex-direction: column; gap: 12px; }
+      #stage { position: relative; display: inline-block; line-height: 0; }
       #stage canvas {
         border-radius: 10px;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
         background: #000;
       }
+      /* Interaction overlay: drag to move, corner handles to resize. */
+      #overlay {
+        position: absolute;
+        inset: 0;
+        touch-action: none;
+      }
+      #sel-box {
+        position: absolute;
+        border: 1.5px solid #6ea0ff;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+        cursor: move;
+        display: none;
+      }
+      #sel-box .handle {
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        background: #fff;
+        border: 1.5px solid #6ea0ff;
+        border-radius: 3px;
+      }
+      #sel-box .handle.nw { left: -7px; top: -7px; cursor: nwse-resize; }
+      #sel-box .handle.ne { right: -7px; top: -7px; cursor: nesw-resize; }
+      #sel-box .handle.sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+      #sel-box .handle.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
       .transport {
         display: flex;
         align-items: center;
@@ -229,11 +255,27 @@
         <button id="add-track" class="ghost">+ Track</button>
         <span class="spacer"></span>
         <span id="status" style="color: var(--muted)"></span>
+        <div class="group">
+          <select id="export-format" class="ghost" style="padding: 7px 8px">
+            <option value="mp4">MP4</option>
+            <option value="webm">WebM</option>
+          </select>
+          <button id="export">⬇ Export</button>
+        </div>
       </div>
 
       <div class="main">
         <div class="stage-col">
-          <div id="stage"></div>
+          <div id="stage">
+            <div id="overlay">
+              <div id="sel-box">
+                <div class="handle nw"></div>
+                <div class="handle ne"></div>
+                <div class="handle sw"></div>
+                <div class="handle se"></div>
+              </div>
+            </div>
+          </div>
           <div class="transport">
             <button id="play">▶ Play</button>
             <input id="scrub" type="range" min="0" max="6" step="0.01" value="0" />

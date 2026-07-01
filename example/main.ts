@@ -7,7 +7,9 @@
  *   - upload local files as Image / Video sources and add them as clips
  *   - add tracks (stacked, later track renders on top via zIndex)
  *   - move / trim a clip on the timeline (edit its start / end)
- *   - move & resize a clip on the canvas (transform position / scale)
+ *   - move & resize a clip directly on the canvas (drag body, drag corner
+ *     handles) or numerically in the inspector (transform position / scale)
+ *   - export the timeline to MP4 / WebM via the SDK's Exporter (WebCodecs)
  *
  * Persistence, undo and schema are intentionally NOT here — that's the
  * consumer's job (see AGENT.md). This file only drives the SDK: every mutation
@@ -15,7 +17,9 @@
  * never repaints on its own (contract #5).
  */
 import {
+  AudioEngine,
   Compositor,
+  Exporter,
   ImageClip,
   ImageSource,
   RealtimeClock,
@@ -48,6 +52,9 @@ interface ClipModel {
   color: string;
   /** Editable text (text clips only). */
   text?: string;
+  /** Intrinsic (unscaled) size in canvas px, for the on-canvas selection box. */
+  iw: number;
+  ih: number;
 }
 
 /** A track plus its clip models. */
@@ -91,6 +98,13 @@ async function main(): Promise<void> {
   const tracksEl = $<HTMLDivElement>('tracks');
   const rulerEl = $<HTMLDivElement>('ruler');
   const inspectorEl = $<HTMLDivElement>('inspector');
+  const overlayEl = $<HTMLDivElement>('overlay');
+  const selBox = $<HTMLDivElement>('sel-box');
+  const exportBtn = $<HTMLButtonElement>('export');
+  const exportFormat = $<HTMLSelectElement>('export-format');
+
+  // Offscreen 2D context, reused to approximate text sizes.
+  const measureCtx = document.createElement('canvas').getContext('2d')!;
 
   // ── Core helpers ───────────────────────────────────────────────────────
 
@@ -104,6 +118,7 @@ async function main(): Promise<void> {
   /** Repaint the current frame. The SDK never auto-repaints (contract #5). */
   function render(): void {
     compositor.renderPreview(clock.currentTime);
+    updateOverlay();
   }
 
   /** Recompute the clock duration + scrub range from the current graph. */
@@ -151,6 +166,8 @@ async function main(): Promise<void> {
     source: { dispose(): void } | null,
     label: string,
     duration: number,
+    iw: number,
+    ih: number,
     extra?: Partial<ClipModel>,
   ): void {
     const tm = targetTrack();
@@ -167,6 +184,8 @@ async function main(): Promise<void> {
       clip,
       source,
       color: CLIP_COLORS[(nextId - 1) % CLIP_COLORS.length]!,
+      iw,
+      ih,
       ...extra,
     };
     tm.clips.push(model);
@@ -180,14 +199,17 @@ async function main(): Promise<void> {
   function addText(): void {
     const clip = new TextClip({ text: 'Text', fontSize: 56, fill: 0xffffff });
     placeCentered(clip);
-    addClip('text', clip, null, 'Text', DEFAULT_CLIP_DURATION, { text: 'Text' });
+    const [iw, ih] = measureText('Text', 56, clip.fontFamily);
+    addClip('text', clip, null, 'Text', DEFAULT_CLIP_DURATION, iw, ih, { text: 'Text' });
   }
 
   function addShape(kind: ShapeKind): void {
     const color = kind === 'rect' ? 0x3b82f6 : 0xec4899;
-    const clip = new ShapeClip({ kind, width: 200, height: 140, fill: color, radius: kind === 'rect' ? 12 : undefined });
+    const w = 200;
+    const h = 140;
+    const clip = new ShapeClip({ kind, width: w, height: h, fill: color, radius: kind === 'rect' ? 12 : undefined });
     placeCentered(clip);
-    addClip('shape', clip, null, kind === 'rect' ? 'Rect' : 'Ellipse', DEFAULT_CLIP_DURATION);
+    addClip('shape', clip, null, kind === 'rect' ? 'Rect' : 'Ellipse', DEFAULT_CLIP_DURATION, w, h);
   }
 
   async function addImage(file: File): Promise<void> {
@@ -198,7 +220,7 @@ async function main(): Promise<void> {
     // Contain within the canvas at 80% so it's clearly movable/resizable.
     const scale = Math.min(W / meta.width, H / meta.height) * 0.8;
     placeCentered(clip, scale);
-    addClip('image', clip, source, file.name, DEFAULT_CLIP_DURATION);
+    addClip('image', clip, source, file.name, DEFAULT_CLIP_DURATION, meta.width, meta.height);
     setStatus('');
   }
 
@@ -212,8 +234,15 @@ async function main(): Promise<void> {
     // Default the clip to the video's own length (capped so a long file doesn't
     // dominate the timeline; the user can trim it on the timeline anyway).
     const dur = Number.isFinite(meta.duration) ? Math.min(meta.duration, 10) : DEFAULT_CLIP_DURATION;
-    addClip('video', clip, source, file.name, dur);
+    addClip('video', clip, source, file.name, dur, meta.width, meta.height);
     setStatus('');
+  }
+
+  /** Approximate a text clip's unscaled pixel size (for the selection box). */
+  function measureText(text: string, fontSize: number, fontFamily: string): [number, number] {
+    measureCtx.font = `${fontSize}px ${fontFamily}`;
+    const w = measureCtx.measureText(text || ' ').width;
+    return [Math.max(w, 8), fontSize * 1.2];
   }
 
   function deleteClip(model: ClipModel): void {
@@ -356,18 +385,152 @@ async function main(): Promise<void> {
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      rebuildInspector(); // re-sync inputs after the gesture settles
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   }
 
+  // ── On-canvas manipulation (drag to move, corner handles to resize) ──────
+
+  /** CSS↔logical scale of the canvas (backing store is W×H logical px). */
+  function cssScale(): { kx: number; ky: number } {
+    const cw = compositor.view.clientWidth || W;
+    const ch = compositor.view.clientHeight || H;
+    return { kx: cw / W, ky: ch / H };
+  }
+
+  /** Axis-aligned bounds of a clip in logical canvas px (anchor is centered). */
+  function clipBounds(m: ClipModel): { cx: number; cy: number; w: number; h: number } {
+    const [cx, cy] = m.clip.transform.position.valueAt(clock.currentTime);
+    const [sx, sy] = m.clip.transform.scale.valueAt(clock.currentTime);
+    return { cx, cy, w: m.iw * Math.abs(sx), h: m.ih * Math.abs(sy) };
+  }
+
+  /** Position the selection box over the selected clip (hidden if not shown). */
+  function updateOverlay(): void {
+    if (!selected || !selected.clip.isActiveAt(clock.currentTime)) {
+      selBox.style.display = 'none';
+      return;
+    }
+    const { kx, ky } = cssScale();
+    const { cx, cy, w, h } = clipBounds(selected);
+    selBox.style.display = 'block';
+    selBox.style.left = `${(cx - w / 2) * kx}px`;
+    selBox.style.top = `${(cy - h / 2) * ky}px`;
+    selBox.style.width = `${w * kx}px`;
+    selBox.style.height = `${h * ky}px`;
+  }
+
+  /** Push a clip's live transform into the inspector inputs (no rebuild). */
+  function syncInspectorTransform(m: ClipModel): void {
+    if (selected !== m) return;
+    const [x, y] = m.clip.transform.position.valueAt(clock.currentTime);
+    const s = m.clip.transform.scale.valueAt(clock.currentTime)[0];
+    if (insX && document.activeElement !== insX) insX.value = String(Math.round(x));
+    if (insY && document.activeElement !== insY) insY.value = String(Math.round(y));
+    if (insScale) insScale.value = String(s);
+    if (insScaleVal) insScaleVal.textContent = `${s.toFixed(2)}×`;
+  }
+
+  /** Convert a pointer event to logical canvas coordinates. */
+  function toLogical(e: PointerEvent): [number, number] {
+    const rect = overlayEl.getBoundingClientRect();
+    const { kx, ky } = cssScale();
+    return [(e.clientX - rect.left) / kx, (e.clientY - rect.top) / ky];
+  }
+
+  /** Topmost active clip whose bounds contain a logical point (top track first). */
+  function hitTest(x: number, y: number): ClipModel | null {
+    const ordered = [...tracks].sort((a, b) => b.track.zIndex - a.track.zIndex);
+    for (const tm of ordered) {
+      for (let i = tm.clips.length - 1; i >= 0; i--) {
+        const m = tm.clips[i]!;
+        if (!m.clip.isActiveAt(clock.currentTime)) continue;
+        const b = clipBounds(m);
+        if (Math.abs(x - b.cx) <= b.w / 2 && Math.abs(y - b.cy) <= b.h / 2) return m;
+      }
+    }
+    return null;
+  }
+
+  /** Drag the clip's center (position) with the pointer. */
+  function startMove(m: ClipModel, ev: PointerEvent): void {
+    const { kx, ky } = cssScale();
+    const [ox, oy] = m.clip.transform.position.valueAt(clock.currentTime);
+    const sx0 = ev.clientX;
+    const sy0 = ev.clientY;
+    dragUntilUp((e) => {
+      m.clip.transform.position.setStatic([ox + (e.clientX - sx0) / kx, oy + (e.clientY - sy0) / ky]);
+      render();
+      syncInspectorTransform(m);
+    });
+  }
+
+  /** Drag a corner handle to scale uniformly about the clip's center. */
+  function startResize(m: ClipModel, ev: PointerEvent): void {
+    ev.stopPropagation();
+    const { cx, cy } = clipBounds(m);
+    const [px, py] = toLogical(ev);
+    const startDist = Math.hypot(px - cx, py - cy) || 1;
+    const origScale = m.clip.transform.scale.valueAt(clock.currentTime)[0];
+    dragUntilUp((e) => {
+      const [x, y] = toLogical(e);
+      const d = Math.hypot(x - cx, y - cy);
+      const s = Math.min(20, Math.max(0.05, (origScale * d) / startDist));
+      m.clip.transform.scale.setStatic([s, s]);
+      render();
+      syncInspectorTransform(m);
+    });
+  }
+
+  function wireCanvasManipulation(): void {
+    // Empty canvas: hit-test to select (and immediately move) or deselect.
+    overlayEl.addEventListener('pointerdown', (e) => {
+      if (selBox.contains(e.target as Node)) return; // selBox handles its own drag
+      e.preventDefault();
+      const [x, y] = toLogical(e);
+      const hit = hitTest(x, y);
+      if (hit) {
+        if (hit !== selected) selectClip(hit);
+        startMove(hit, e);
+      } else {
+        selectClip(null);
+      }
+    });
+
+    // Selected clip's box: body moves, corner handles resize.
+    selBox.addEventListener('pointerdown', (e) => {
+      if ((e.target as HTMLElement).classList.contains('handle')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (selected) startMove(selected, e);
+    });
+    selBox.querySelectorAll<HTMLElement>('.handle').forEach((h) =>
+      h.addEventListener('pointerdown', (e) => {
+        if (selected) startResize(selected, e);
+      }),
+    );
+
+    window.addEventListener('resize', updateOverlay);
+  }
+
   // ── Inspector rendering ────────────────────────────────────────────────
+
+  // Live refs to the transform inputs so an on-canvas drag can update the
+  // readouts without a full inspector rebuild (which would steal focus).
+  let insX: HTMLInputElement | null = null;
+  let insY: HTMLInputElement | null = null;
+  let insScale: HTMLInputElement | null = null;
+  let insScaleVal: HTMLSpanElement | null = null;
 
   function rebuildInspector(): void {
     inspectorEl.innerHTML = '';
+    insX = insY = insScale = null;
+    insScaleVal = null;
     if (!selected) {
       inspectorEl.innerHTML =
-        '<h2>Inspector</h2><p class="empty-hint">Add a clip, then select it here or on the timeline to edit its <b>time</b>, <b>position</b> and <b>size</b>.</p>';
+        '<h2>Inspector</h2><p class="empty-hint">Add a clip, then select it here or on the timeline to edit its <b>time</b>, <b>position</b> and <b>size</b>. On the canvas: drag to move, drag a corner to resize.</p>';
       return;
     }
     const m = selected;
@@ -384,6 +547,8 @@ async function main(): Promise<void> {
           m.text = v;
           (c as TextClip).text = v;
           m.label = v || 'Text';
+          const size = (c as TextClip).fontSize.valueAt(clock.currentTime);
+          [m.iw, m.ih] = measureText(v, size, (c as TextClip).fontFamily);
           rebuildTimeline();
           render();
         })),
@@ -406,29 +571,27 @@ async function main(): Promise<void> {
 
     // Position (clip center in canvas px).
     const pos = c.transform.position.valueAt(clock.currentTime);
-    inspectorEl.append(
-      field('X', numberInput(Math.round(pos[0]), 1, (v) => {
-        const p = c.transform.position.valueAt(clock.currentTime);
-        c.transform.position.setStatic([v, p[1]]);
-        render();
-      })),
-    );
-    inspectorEl.append(
-      field('Y', numberInput(Math.round(pos[1]), 1, (v) => {
-        const p = c.transform.position.valueAt(clock.currentTime);
-        c.transform.position.setStatic([p[0], v]);
-        render();
-      })),
-    );
+    insX = numberInput(Math.round(pos[0]), 1, (v) => {
+      const p = c.transform.position.valueAt(clock.currentTime);
+      c.transform.position.setStatic([v, p[1]]);
+      render();
+    });
+    insY = numberInput(Math.round(pos[1]), 1, (v) => {
+      const p = c.transform.position.valueAt(clock.currentTime);
+      c.transform.position.setStatic([p[0], v]);
+      render();
+    });
+    inspectorEl.append(field('X', insX), field('Y', insY));
 
     // Size (uniform scale).
     const scale = c.transform.scale.valueAt(clock.currentTime)[0];
-    inspectorEl.append(
-      field('Size', rangeInput(scale, 0.1, 4, 0.05, (v) => {
-        c.transform.scale.setStatic([v, v]);
-        render();
-      }, (v) => `${v.toFixed(2)}×`),
-    ));
+    const sizeCtl = rangeInput(scale, 0.05, 4, 0.05, (v) => {
+      c.transform.scale.setStatic([v, v]);
+      render();
+    }, (v) => `${v.toFixed(2)}×`);
+    insScale = sizeCtl.input;
+    insScaleVal = sizeCtl.val;
+    inspectorEl.append(field('Size', sizeCtl.wrap));
 
     const del = document.createElement('button');
     del.className = 'danger';
@@ -483,7 +646,7 @@ async function main(): Promise<void> {
     step: number,
     onChange: (v: number) => void,
     fmt: (v: number) => string,
-  ): HTMLElement {
+  ): { wrap: HTMLElement; input: HTMLInputElement; val: HTMLSpanElement } {
     const wrap = document.createElement('div');
     wrap.style.display = 'flex';
     wrap.style.flex = '1';
@@ -504,7 +667,7 @@ async function main(): Promise<void> {
       onChange(v);
     });
     wrap.append(input, val);
-    return wrap;
+    return { wrap, input, val };
   }
 
   function round2(n: number): number {
@@ -570,7 +733,56 @@ async function main(): Promise<void> {
     setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // ── Export ─────────────────────────────────────────────────────────────
+
+  // No audio in this demo, but the Exporter needs an engine to construct; we
+  // pass `audio: false` so its offline mix is never invoked.
+  const audioEngine = new AudioEngine(timebase);
+
+  async function doExport(): Promise<void> {
+    if (timelineEnd() <= 0) {
+      setStatus('Nothing to export');
+      return;
+    }
+    // Export encodes via WebCodecs (Mediabunny). Fail fast on browsers without
+    // it instead of hanging on an encoder that never initializes.
+    if (typeof (globalThis as { VideoEncoder?: unknown }).VideoEncoder === 'undefined') {
+      setStatus('Export needs WebCodecs (use a recent Chrome/Edge)');
+      return;
+    }
+    clock.pause();
+    playBtn.textContent = '▶ Play';
+    exportBtn.disabled = true;
+    const container = exportFormat.value as 'mp4' | 'webm';
+    try {
+      const exporter = new Exporter(compositor, audioEngine);
+      const blob = await exporter.export(
+        { fps: FPS, container, audio: false, range: [0, timelineEnd()] },
+        (p) => setStatus(`Exporting… ${Math.round(p * 100)}%`),
+      );
+      downloadBlob(blob, `export.${container}`);
+      setStatus(`Exported ${(blob.size / 1e6).toFixed(1)} MB ✓`);
+    } catch (err) {
+      reportError(err);
+    } finally {
+      exportBtn.disabled = false;
+      render(); // export drove the compositor to other frames — restore preview
+    }
+  }
+
+  function downloadBlob(blob: Blob, name: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  exportBtn.addEventListener('click', () => void doExport());
+
   // ── Boot ───────────────────────────────────────────────────────────────
+  wireCanvasManipulation();
   addTrack(); // start with one empty track
   addText(); // and a sample title so the canvas isn't blank
   rebuildTimeline();
