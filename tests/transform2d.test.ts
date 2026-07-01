@@ -54,4 +54,24 @@ describe('Transform2D', () => {
     tf.applyTo(obj as unknown as Container, 0.5);
     expect(obj.pivot.set).toHaveBeenCalledWith(50, 50); // halfway → center
   });
+
+  it('uses the native proportional anchor when present (no pivot, no measure)', () => {
+    // Sprite/Text expose `anchor`; using it keeps size-animated content stable
+    // and avoids per-frame bounds measurement.
+    const obj = {
+      anchor: { set: vi.fn() },
+      position: { set: vi.fn() },
+      scale: { set: vi.fn() },
+      pivot: { set: vi.fn() },
+      rotation: 0,
+      getLocalBounds: vi.fn(() => ({ x: 0, y: 0, width: 100, height: 50 })),
+    };
+    const tf = new Transform2D();
+    tf.anchor.setStatic([0.5, 0.5]);
+    tf.applyTo(obj as unknown as Container, 0);
+
+    expect(obj.anchor.set).toHaveBeenCalledWith(0.5, 0.5);
+    expect(obj.pivot.set).not.toHaveBeenCalled();
+    expect(obj.getLocalBounds).not.toHaveBeenCalled(); // no jitter from bounds quantization
+  });
 });

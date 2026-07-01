@@ -282,6 +282,12 @@ describe('Compositor', () => {
     expect(c.getTracks().length).toBe(0);
   });
 
+  it('defaults resolution to 1 without devicePixelRatio and honors an override', () => {
+    expect(makeCompositor().resolution).toBe(1);
+    const hi = new Compositor({ width: 10, height: 10, timebase: new Timebase(30), resolution: 3 });
+    expect(hi.resolution).toBe(3);
+  });
+
   it('exposes a shared texture pool with the configured budget', () => {
     const c = new Compositor({
       width: 320,

@@ -28,6 +28,12 @@ export interface CompositorOptions {
   colorSpace?: 'srgb' | 'display-p3';
   /** GPU texture-pool budget in bytes (default 256 MiB). */
   textureBudgetBytes?: number;
+  /**
+   * Backing-store scale for crisp output on HiDPI screens (default
+   * `devicePixelRatio`). The canvas draws at `width*resolution` internally while
+   * staying `width` CSS px (`autoDensity`).
+   */
+  resolution?: number;
 }
 
 /**
@@ -50,6 +56,8 @@ export class Compositor implements Disposable {
   private readonly reconciler = new Reconciler();
   /** Shared GPU texture pool; every video source under this compositor uses it. */
   readonly textures: TextureManager;
+  /** Backing-store scale (HiDPI). */
+  readonly resolution: number;
   private renderer: Renderer | null = null;
   private initPromise: Promise<void> | null = null;
   private dirty = true;
@@ -62,6 +70,7 @@ export class Compositor implements Disposable {
       ({ width: options.width, height: options.height } as HTMLCanvasElement)) as HTMLCanvasElement;
     this.view.width = options.width;
     this.view.height = options.height;
+    this.resolution = options.resolution ?? (globalThis.devicePixelRatio || 1);
     this.textures = new TextureManager(options.textureBudgetBytes);
   }
 
@@ -78,6 +87,8 @@ export class Compositor implements Disposable {
       width: this.options.width,
       height: this.options.height,
       background: this.options.background ?? 0x000000,
+      resolution: this.resolution,
+      autoDensity: true,
     }).then((renderer) => {
       this.renderer = renderer;
     });
@@ -173,6 +184,7 @@ export class Compositor implements Disposable {
     const target = RenderTexture.create({
       width: this.options.width,
       height: this.options.height,
+      resolution: this.resolution,
     });
     this.renderer.render({ container: this.stage, target });
     return target;

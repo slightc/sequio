@@ -73,6 +73,10 @@ clock.play();
 `renderToTexture(t)` 返回的 `RenderTexture` 由调用方拥有并负责 `destroy()`（契约 #4）。
 完整可运行示例见 [`example/`](../example/)（`pnpm dev`）。
 
+**HiDPI**：渲染器以 `resolution`（默认 `devicePixelRatio`）+ `autoDensity` 创建——canvas
+内部按 `width*resolution` 绘制、CSS 仍是 `width` px，所以高分屏上文字/矢量边缘清晰不糊。
+`renderToTexture` 的离屏纹理也用同一 `resolution`。可用 `CompositorOptions.resolution` 覆盖。
+
 ### 多轨叠层与 Reconciler
 
 - **每条 `VisualTrack` 映射一个 PixiJS `Container`**，按 `zIndex` 在 stage 里排序；该轨道
@@ -82,9 +86,11 @@ clock.play();
 - **z 序每帧重申**：无论 clip/轨道的挂载历史如何，`reconcile` 都用 `setChildIndex` 把
   容器与 clip 重排成当前 z/数组顺序，所以「后激活的低层 clip」也会落到正确层级；
   启用/禁用轨道、改 `zIndex` 立即反映。对象跨帧复用，每帧几乎零分配。
-- **anchor 语义**：`Transform2D.applyTo` 把归一化 anchor（0..1）按 `getLocalBounds()`
-  映射成局部像素 `pivot`——`position` 因此放置 anchor 点（如 anchor `[0.5,0.5]` 使内容
-  居中于 `position`，且缩放/旋转绕它进行）；`pivot` 用未缩放局部像素，不含 scale。
+- **anchor 语义**：`Transform2D.applyTo` 把归一化 anchor（0..1）作用为「把 anchor 点放到
+  `position`」（如 anchor `[0.5,0.5]` 使内容居中于 `position`，缩放/旋转绕它进行）。
+  `Sprite`/`Text` 用它们**原生的比例 `anchor`**——尺寸动画（如字号呼吸）下位置稳定、
+  且不用每帧测量 bounds；`Graphics`/`Container` 无原生 anchor，则按 `getLocalBounds()`
+  映射成未缩放局部 `pivot`。
 
 ### 文字与字体加载（TextClip / FontManager）
 

@@ -17,12 +17,19 @@ export class Transform2D {
     const [sx, sy] = this.scale.valueAt(t);
     const [ax, ay] = this.anchor.valueAt(t);
 
-    // Map the normalized anchor (0..1) onto the object's local content bounds so
-    // `position` places the anchor point: e.g. anchor [0.5,0.5] centers content
-    // on `position`, and scale/rotation pivot around it. `pivot` is in unscaled
-    // local pixels, so it must not include scale.
-    const b = obj.getLocalBounds();
-    obj.pivot.set(b.x + ax * b.width, b.y + ay * b.height);
+    // Place the normalized anchor (0..1) at `position` — e.g. anchor [0.5,0.5]
+    // centers content on `position` and scale/rotation pivot around it.
+    const anchored = obj as unknown as { anchor?: { set(x: number, y: number): void } };
+    if (anchored.anchor && typeof anchored.anchor.set === 'function') {
+      // Sprite / Text carry a native proportional anchor: stable while content
+      // size animates (no bounds quantization jitter) and no per-frame measure.
+      anchored.anchor.set(ax, ay);
+    } else {
+      // Container / Graphics: map the anchor onto local bounds → pivot (unscaled
+      // local px, must not include scale).
+      const b = obj.getLocalBounds();
+      obj.pivot.set(b.x + ax * b.width, b.y + ay * b.height);
+    }
     obj.position.set(px, py);
     obj.scale.set(sx, sy);
     obj.rotation = this.rotation.valueAt(t);
