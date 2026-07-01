@@ -152,13 +152,16 @@ clock.play();
 - **`ExportOptions`**:`fps` / `container`('mp4'|'webm')/ `videoCodec` / `bitrate` / `audio` /
   `audioCodec` / `audioBitrate` / `range`(默认整条时间线 = 最大 clip end)。`onProgress(p)`
   每帧上报;`cancel()` 置标志,下一帧抛 `ExportCancelledError` 并 `sink.cancel()` 释放编码器。
-- **fork 导出(不打扰预览、不重复加载)**:导出会独占渲染循环并重绘画布。要让预览完全不受
-  影响,消费者可**另起一个离屏 `Compositor` 专供导出**,通过 `CompositorOptions.textures` 共享
-  预览的 `TextureManager`(从而共享已解码/上传的帧——**绝不二次解码**),把场景 track 临时挪到
-  这个 fork 上导出、完再挪回。fork 有自己的 renderer/画布/reconciler,预览的画布、场景图都不被
-  触碰;共享的纹理池不随 fork 的 `dispose` 释放。PixiJS 的 `Texture` 可被多个 renderer 各自
-  上传,所以同一 source 能被预览和导出两个 renderer 同时用。`example/export-demo.ts` 即用此
-  模式。
+- **fork 导出(不打扰预览、不重复加载)**:导出会独占渲染循环。要让预览完全不受影响、
+  **导出期间仍能正常播放**,消费者可**另起一个离屏 `Compositor` 专供导出**:
+  - 通过 `CompositorOptions.textures` 共享预览的 `TextureManager`(从而共享已解码/上传的帧——
+    **绝不二次解码**;共享池不随 fork 的 `dispose` 释放)。PixiJS 的 `Texture` 可被多个 renderer
+    各自上传,所以同一 source 能被预览和导出两个 renderer 同时用。
+  - fork 用**自己的 clip**(引用同一批 source),而不是把预览的 track 挪过去——这样预览保留自己
+    的 track/时钟/音频/画布,导出期间照常播放。fork 有独立的 renderer/reconciler。
+  - `MediabunnyVideoDecoder.decode` 内部对 `getSample` **串行化**(sink 有解码状态,不能并发),
+    所以预览与导出同时驱动同一个视频 source 也安全。
+  `example/export-demo.ts` 即用此模式(默认旋律场景导出期间可继续播放)。
 - 校验:`tests/exporter.test.ts`(纯 `exportFrameTimes`;用假 compositor/audio/sink 断言
   **每帧 prepare→render→addFrame 的顺序**、帧时刻、progress 单调到 1、`audio:false` 跳过音频、
   `range` 覆盖时长、`cancel` 中止且不 finalize)+ e2e `pnpm verify:export`——真实导出:

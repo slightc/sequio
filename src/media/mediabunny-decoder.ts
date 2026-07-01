@@ -18,6 +18,10 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
   private input: Input | null = null;
   private track: InputVideoTrack | null = null;
   private sink: VideoSampleSink | null = null;
+  /** Serializes `getSample` — the sink has internal decode state and is not safe
+   *  to call concurrently (prewarm lookahead, or a shared source driven by both a
+   *  preview and an export at once). */
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly src: VideoInput) {}
 
@@ -55,7 +59,13 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
 
   async decode(sec: number): Promise<DecodedFrame | null> {
     if (!this.sink) throw new Error('MediabunnyVideoDecoder.decode before load()');
-    const sample = await this.sink.getSample(sec);
+    const sink = this.sink;
+    const run = this.queue.then(() => sink.getSample(sec));
+    this.queue = run.then(
+      () => undefined,
+      () => undefined,
+    ); // keep the chain alive past rejections
+    const sample = await run;
     if (!sample) return null;
     return {
       timestamp: sample.timestamp,

@@ -21,7 +21,6 @@ import {
   Timebase,
   VideoClip,
   VideoSource,
-  type VisualClip,
   VisualTrack,
 } from '../src/index';
 import { applyCover } from './cover';
@@ -53,50 +52,56 @@ function melodyBuffer(): AudioBuffer {
 
 interface Scene {
   duration: number;
+  /** The track shown in the live preview. */
   visualTrack: VisualTrack;
-  clips: VisualClip[];
+  /**
+   * Build a *fresh* visual track with its own clips but the SAME sources — used
+   * by the export fork so the preview keeps its own track (and can keep playing)
+   * while export runs on a separate compositor.
+   */
+  makeVisualTrack(): VisualTrack;
   audioClip?: AudioClip;
   audioSource?: AudioSource;
   dispose(): void;
 }
 
 function buildMelodyScene(): Scene {
-  const track = new VisualTrack();
-  const clips: VisualClip[] = [];
-
   const bw = 100;
   const gap = (W - NOTES.length * bw) / (NOTES.length + 1);
-  NOTES.forEach((_, i) => {
-    const block = new ShapeClip({ kind: 'rect', width: bw, height: 140, fill: BLOCK_COLORS[i]!, radius: 12 });
-    block.start = 0;
-    block.end = MELODY_DUR;
-    block.transform.anchor.setStatic([0.5, 0.5]);
-    block.transform.position.setStatic([gap + i * (bw + gap) + bw / 2, H / 2]);
-    track.add(block);
-    clips.push(block);
-  });
 
-  const marker = new ShapeClip({
-    kind: 'rect',
-    width: bw + 16,
-    height: 156,
-    fill: 0xffffff,
-    radius: 14,
-    stroke: { color: 0xffffff, width: 3 },
-  });
-  marker.start = 0;
-  marker.end = MELODY_DUR;
-  marker.opacity.setStatic(0.28);
-  marker.transform.anchor.setStatic([0.5, 0.5]);
-  marker.transform.position.setKeyframes(
-    NOTES.map((_, i) => ({
-      time: i * NOTE_DUR,
-      value: [gap + i * (bw + gap) + bw / 2, H / 2] as [number, number],
-      easing: hold, // snap per note, matching the audio
-    })),
-  );
-  track.add(marker);
-  clips.push(marker);
+  // Procedural (no shared source), so each call is an independent track.
+  const makeVisualTrack = (): VisualTrack => {
+    const track = new VisualTrack();
+    NOTES.forEach((_, i) => {
+      const block = new ShapeClip({ kind: 'rect', width: bw, height: 140, fill: BLOCK_COLORS[i]!, radius: 12 });
+      block.start = 0;
+      block.end = MELODY_DUR;
+      block.transform.anchor.setStatic([0.5, 0.5]);
+      block.transform.position.setStatic([gap + i * (bw + gap) + bw / 2, H / 2]);
+      track.add(block);
+    });
+    const marker = new ShapeClip({
+      kind: 'rect',
+      width: bw + 16,
+      height: 156,
+      fill: 0xffffff,
+      radius: 14,
+      stroke: { color: 0xffffff, width: 3 },
+    });
+    marker.start = 0;
+    marker.end = MELODY_DUR;
+    marker.opacity.setStatic(0.28);
+    marker.transform.anchor.setStatic([0.5, 0.5]);
+    marker.transform.position.setKeyframes(
+      NOTES.map((_, i) => ({
+        time: i * NOTE_DUR,
+        value: [gap + i * (bw + gap) + bw / 2, H / 2] as [number, number],
+        easing: hold, // snap per note, matching the audio
+      })),
+    );
+    track.add(marker);
+    return track;
+  };
 
   const buffer = melodyBuffer();
   const audioSource = { getBuffer: () => buffer, dispose() {} } as unknown as AudioSource;
@@ -104,18 +109,23 @@ function buildMelodyScene(): Scene {
   audioClip.start = 0;
   audioClip.end = MELODY_DUR;
 
-  return { duration: MELODY_DUR, visualTrack: track, clips, audioClip, audioSource, dispose: () => clips.forEach((c) => c.unmount()) };
+  return { duration: MELODY_DUR, visualTrack: makeVisualTrack(), makeVisualTrack, audioClip, audioSource, dispose: () => {} };
 }
 
 async function buildVideoScene(file: File): Promise<Scene> {
   const videoSource = new VideoSource({ src: file });
   const meta = await videoSource.load();
-  const track = new VisualTrack();
-  const clip = new VideoClip(videoSource);
-  clip.start = 0;
-  clip.end = meta.duration;
-  applyCover(clip, meta.width, meta.height, W, H);
-  track.add(clip);
+
+  // Each track has its own VideoClip but shares the one decoded VideoSource.
+  const makeVisualTrack = (): VisualTrack => {
+    const track = new VisualTrack();
+    const clip = new VideoClip(videoSource);
+    clip.start = 0;
+    clip.end = meta.duration;
+    applyCover(clip, meta.width, meta.height, W, H);
+    track.add(clip);
+    return track;
+  };
 
   let audioClip: AudioClip | undefined;
   let audioSource: AudioSource | undefined;
@@ -132,12 +142,11 @@ async function buildVideoScene(file: File): Promise<Scene> {
 
   return {
     duration: meta.duration,
-    visualTrack: track,
-    clips: [clip],
+    visualTrack: makeVisualTrack(),
+    makeVisualTrack,
     audioClip,
     audioSource,
     dispose: () => {
-      clip.unmount();
       videoSource.dispose();
       audioSource?.dispose();
     },
@@ -252,42 +261,24 @@ async function main(): Promise<void> {
 
   exportBtn.addEventListener('click', async () => {
     if (!scene) return;
-    // Export drives the shared compositor, so remember the preview's playback
-    // state and restore it afterward — exporting must not change where you were.
-    const wasPlaying = !clock.paused;
-    const playhead = clock.currentTime;
-    clock.pause();
-    audio.pause();
+    // The preview keeps playing during export — we don't touch its clock, audio,
+    // track or canvas. Export runs on a separate offscreen compositor below.
     exportBtn.disabled = true;
     result.innerHTML = '';
     bar.style.width = '0%';
-
-    // Put the preview back exactly where it was — same frame, and playing again
-    // if it was playing.
-    const restore = () => {
-      exportBtn.disabled = false;
-      clock.seek(playhead); // re-renders the preview frame at the playhead
-      if (wasPlaying) {
-        clock.play();
-        audio.play(playhead);
-        playBtn.textContent = '⏸ Pause';
-      } else {
-        playBtn.textContent = '▶ Play';
-      }
-    };
 
     const withAudio = !!(scene.audioClip && scene.audioSource);
     const codec = await pickCodec(containerSel.value, withAudio);
     if (!codec) {
       status.textContent = 'No encodable codec in this browser.';
-      restore();
+      exportBtn.disabled = false;
       return;
     }
     status.textContent = `Encoding ${codec.container} / ${codec.videoCodec}${withAudio ? ` + ${codec.audioCodec}` : ''}…`;
 
-    // Fork an offscreen export compositor that SHARES the preview's texture pool
-    // and sources (nothing is decoded twice) and move the scene onto it. The
-    // preview's renderer/canvas/reconciler stay untouched during export.
+    // Fork: an offscreen export compositor with its OWN track (its own clips) but
+    // SHARING the preview's texture pool + sources (nothing is decoded twice).
+    // The preview compositor is never touched, so it keeps playing.
     const fork = new Compositor({
       width: W,
       height: H,
@@ -297,10 +288,10 @@ async function main(): Promise<void> {
       textures: compositor.textures,
     });
     await fork.init();
-    compositor.removeTrack(scene.visualTrack);
-    fork.addTrack(scene.visualTrack);
+    const forkTrack = scene.makeVisualTrack();
+    fork.addTrack(forkTrack);
 
-    const exporter = new Exporter(fork, audio); // same AudioEngine → export includes the mix
+    const exporter = new Exporter(fork, audio); // audio.renderOffline reads the shared mix
     try {
       const t0 = performance.now();
       const blob = await exporter.export(
@@ -330,10 +321,9 @@ async function main(): Promise<void> {
     } catch (err) {
       status.textContent = `Export failed: ${String(err)}`;
     } finally {
-      fork.removeTrack(scene.visualTrack); // move the scene back to the preview
-      compositor.addTrack(scene.visualTrack);
-      fork.dispose(); // shared texture pool is kept (owned by the preview)
-      restore(); // playhead + play/pause + audio, exactly as before export
+      fork.removeTrack(forkTrack);
+      fork.dispose(); // its own clips/renderer; the shared texture pool is kept
+      exportBtn.disabled = false;
     }
   });
 
