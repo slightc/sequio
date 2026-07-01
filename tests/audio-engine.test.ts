@@ -100,6 +100,15 @@ describe('AudioEngine', () => {
     expect(engine.isPlaying).toBe(false);
   });
 
+  it('clear() drops registered clips so nothing schedules', () => {
+    const { engine, started } = makeEngine();
+    engine.schedule(audioClip({ start: 0, end: 5 }), fakeSource());
+    engine.clear();
+    engine.play(0);
+    expect(started).toEqual([]);
+    expect(engine.isPlaying).toBe(true); // play() ran, just nothing to schedule
+  });
+
   it('renderOffline builds the mix from t=0 and returns the rendered buffer', async () => {
     const rendered = { length: 480 } as unknown as AudioBuffer;
     const offline = fakeContext(0);

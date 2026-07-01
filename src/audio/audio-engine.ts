@@ -36,6 +36,13 @@ export class AudioEngine implements Disposable {
     this.entries.push({ clip, source });
   }
 
+  /** Stop playback and drop all registered clips (e.g. when swapping timelines). */
+  clear(): void {
+    this.stopNodes();
+    this.playing = false;
+    this.entries.length = 0;
+  }
+
   get isPlaying(): boolean {
     return this.playing;
   }
