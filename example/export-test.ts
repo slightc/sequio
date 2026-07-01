@@ -7,6 +7,7 @@
  * asserts the frame count, dimensions and that a decoded frame is actually red
  * (catches a blank-canvas capture). Result on `window.__EXPORT_TEST__`.
  */
+import { Texture } from 'pixi.js';
 import {
   AudioClip,
   AudioEngine,
@@ -15,8 +16,12 @@ import {
   Exporter,
   ShapeClip,
   Timebase,
+  VideoClip,
+  VideoSource,
+  type VisualSource,
   VisualTrack,
 } from '../src/index';
+import { applyCover } from './cover';
 
 const W = 160;
 const H = 120;
@@ -157,11 +162,126 @@ async function runAudioExport(): Promise<Record<string, unknown>> {
   return { okAudio, container: combo.container, audioCodec: combo.audioCodec, hasVideo: !!vtrack, hasAudio: !!atrack, size: blob.size };
 }
 
+/** Export a clip to a video, re-load it as a VideoSource, and export THAT
+ *  (i.e. "load video → export"). Reproduces the destroyed-texture crash. */
+async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
+  const codec = await pickCodec();
+  if (!codec) return { okRoundTrip: true, skipped: 'no encodable video codec' };
+
+  // 1. Make a source video with motion so frames differ.
+  const c1 = makeCompositor();
+  await c1.init();
+  const t1 = new VisualTrack();
+  const box = new ShapeClip({ kind: 'rect', width: 60, height: 60, fill: 0xff0000 });
+  box.start = 0;
+  box.end = 1;
+  box.transform.anchor.setStatic([0.5, 0.5]);
+  box.transform.position.setKeyframes([
+    { time: 0, value: [30, H / 2] },
+    { time: 1, value: [W - 30, H / 2] },
+  ]);
+  t1.add(box);
+  c1.addTrack(t1);
+  const blob = await new Exporter(c1, new AudioEngine(new Timebase(FPS))).export({
+    fps: FPS,
+    range: [0, 1],
+    audio: false,
+    bitrate: 1_000_000,
+    ...codec,
+  });
+  c1.dispose();
+
+  // 2. Load it back as a VideoSource and export again.
+  const file = new File([blob], `src.${codec.container}`, { type: blob.type });
+  const source = new VideoSource({ src: file });
+  const meta = await source.load();
+  const c2 = makeCompositor();
+  await c2.init();
+  const track = new VisualTrack();
+  const clip = new VideoClip(source);
+  clip.start = 0;
+  clip.end = meta.duration;
+  applyCover(clip, meta.width, meta.height, W, H);
+  track.add(clip);
+  c2.addTrack(track);
+
+  let error: string | null = null;
+  let size = 0;
+  try {
+    const out = await new Exporter(c2, new AudioEngine(new Timebase(FPS))).export({
+      fps: FPS,
+      range: [0, Math.min(meta.duration, 1)],
+      audio: false,
+      bitrate: 1_000_000,
+      ...codec,
+    });
+    size = out.size;
+  } catch (e) {
+    error = String(e);
+  }
+  c2.dispose();
+  source.dispose();
+  return { okRoundTrip: !error && size > 500, error, size, duration: meta.duration };
+}
+
+/** A VideoClip whose pooled texture gets evicted (destroyed) while a later frame
+ *  misses must not crash the renderer (the "load video → export" TypeError). */
+async function runDestroyedTextureGuard(): Promise<Record<string, unknown>> {
+  const compositor = makeCompositor();
+  await compositor.init();
+
+  // A fake video source: yields `tex` until we set it to null (a decode miss).
+  let tex: Texture | null = null;
+  const source = {
+    getTextureAt: () => tex,
+    async prepare() {},
+    async load() {
+      return { width: W, height: H, duration: 1, hasAudio: false };
+    },
+    getBuffer: () => null,
+    dispose() {},
+  } as unknown as VisualSource;
+
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#00ff00';
+  ctx.fillRect(0, 0, W, H);
+  tex = Texture.from(c);
+
+  const track = new VisualTrack();
+  const clip = new VideoClip(source);
+  clip.start = 0;
+  clip.end = 1;
+  clip.transform.anchor.setStatic([0.5, 0.5]);
+  clip.transform.position.setStatic([W / 2, H / 2]);
+  track.add(clip);
+  compositor.addTrack(track);
+
+  compositor.renderSync(0); // sprite now holds `tex`
+
+  // Evict it: destroy the texture (as the VRAM budget / cache would) and miss.
+  tex.destroy(true);
+  tex = null;
+
+  let error: string | null = null;
+  try {
+    compositor.renderSync(0.2); // must not read addressModeU off a null source
+  } catch (e) {
+    error = String(e);
+  }
+  compositor.dispose();
+  return { okGuard: !error, error };
+}
+
 async function run(): Promise<void> {
   const video = await runVideoExport();
   const audio = await runAudioExport();
-  const ok = Boolean(video.okVideo && audio.okAudio);
-  (window as unknown as { __EXPORT_TEST__: unknown }).__EXPORT_TEST__ = { ok, video, audio };
+  const roundTrip = await runVideoRoundTrip();
+  const guard = await runDestroyedTextureGuard();
+  const ok = Boolean(video.okVideo && audio.okAudio && roundTrip.okRoundTrip && guard.okGuard);
+  (window as unknown as { __EXPORT_TEST__: unknown }).__EXPORT_TEST__ = { ok, video, audio, roundTrip, guard };
 }
 
 run().catch((err) => {

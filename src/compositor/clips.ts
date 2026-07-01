@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { AnimatableProperty } from '../animation/animatable-property';
 import type { VisualSource } from '../media/media-source';
 import { VisualClip } from './clip';
@@ -12,7 +12,7 @@ export class VideoClip extends VisualClip {
   }
 
   override mount(): Container {
-    this.sprite = new Sprite();
+    this.sprite = new Sprite(Texture.EMPTY);
     return this.sprite;
   }
 
@@ -20,7 +20,14 @@ export class VideoClip extends VisualClip {
     if (!this.sprite) return;
     const sourceTime = this.mapToSource(t);
     const tex = this.source.getTextureAt(sourceTime);
-    if (tex) this.sprite.texture = tex; // miss → keep last frame (preview)
+    if (tex) {
+      this.sprite.texture = tex; // fresh frame
+    } else if (this.sprite.texture.destroyed) {
+      // Miss, and the last frame's pooled texture was evicted/destroyed (VRAM
+      // budget / cache eviction). Rendering a destroyed texture crashes the
+      // renderer (null source), so fall back to a valid empty texture instead.
+      this.sprite.texture = Texture.EMPTY;
+    } // else: miss but last texture still live → keep showing it (preview)
     this.applyCommon(this.sprite, t);
   }
 

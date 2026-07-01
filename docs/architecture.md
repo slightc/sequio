@@ -285,7 +285,9 @@ resolution 1)。
 - `prepare(t)`（异步）：`decode(t)` 取「≤t 最近一帧」入 `FrameCache`，并按播放方向
   fire-and-forget 预读 `lookahead` 帧;`getTextureAt(t)`（同步）读 cache，命中经
   `TextureManager.acquireOrUpload(`sourceId:frameIdx`)` 上传/复用 `Texture`，miss 返回
-  `null`（预览复用上一帧）—— 契约 #1。
+  `null`（预览复用上一帧）—— 契约 #1。miss 时若上一帧的池化纹理已被淘汰/`destroy`（显存预算/
+  缓存淘汰),`VideoClip` 会退回 `Texture.EMPTY`——绝不渲染已销毁的纹理(否则 Pixi 读 null
+  source 的 `addressModeU` 崩溃;导出长/大视频时尤易触发)。
 - 帧按 `round(t * fps)` 索引（**假设 CFR**，VFR 精确化是后续细化）。
 - **双预算联动**（契约 #4）：解码侧 `FrameCache`（帧数预算）与显存侧 `TextureManager`
   （字节预算 + LRU）相互独立——纹理可在显存压力下被淘汰而帧仍在缓存（下次 `getTextureAt`
