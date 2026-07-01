@@ -40,9 +40,9 @@ src/
   core/        Disposable / Subscription primitives
   time/        Timebase, Clock (Realtime / FixedStep)        ✅ implemented
   animation/   Easing, AnimatableProperty, Transform2D       ✅ implemented
-  media/       MediaSource + Video/Image/Audio, FrameCache   🚧 video decode (Mediabunny) + cache done, image/audio TODO
+  media/       MediaSource + Video/Image/Audio, FrameCache   🚧 video (Mediabunny) + image decode done, audio TODO
   texture/     TextureManager (GPU budget + LRU)             ✅ implemented
-  compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack done, transitions TODO
+  compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips done, transitions TODO
   effects/     Effect, EffectRegistry, Transition            🚧 abstractions only
   audio/       AudioEngine                                   🚧 interface only
   export/      Exporter                                      🚧 interface only
@@ -81,6 +81,7 @@ pnpm build          # typecheck + vite library build (ESM + CJS + d.ts)
 pnpm dev            # vite dev server (for example/playground)
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
+pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen
 ```
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's

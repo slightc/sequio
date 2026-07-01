@@ -31,9 +31,9 @@
 |---|---|---|
 | 时间与时钟 | `src/time/` | ✅ Timebase / RealtimeClock / FixedStepClock 已实现（视频元素式控制面：play / pause / seek + 到 `duration` 自动停止）|
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
-| 媒体源 | `src/media/` | 🚧 `VideoSource` 解码已接 Mediabunny（sink + FrameCache + 方向预读）；Image / Audio 解码待实现 |
+| 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
-| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层（每轨一个 Container、z 序稳定、轨道级 effects 调整层）已实现；转场/内置特效待后续里程碑 |
+| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）已实现；转场待后续里程碑 |
 | 特效转场 | `src/effects/` | 🚧 抽象基类已定，内置效果待实现 |
 | 音频引擎 | `src/audio/` | 🚧 接口已定，实现待开始 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |

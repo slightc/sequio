@@ -27,6 +27,7 @@
     "test:watch": "vitest",
     "verify:decode": "node scripts/verify-page.cjs example/decode-test.html __DECODE_TEST__ \"VideoSource decode\"",
     "verify:render": "node scripts/verify-page.cjs example/multitrack-test.html __RENDER_TEST__ \"multi-track render\"",
+    "verify:clips": "node scripts/verify-page.cjs example/clips-test.html __CLIPS_TEST__ \"image/text/shape clips\"",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\""
   },
