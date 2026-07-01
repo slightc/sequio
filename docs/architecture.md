@@ -36,7 +36,7 @@
 | 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）+ 轨道内重叠驱动转场（`track.addTransition`）已实现 |
 | 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
 | 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
-| 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
+| 导出 | `src/export/` | ✅ `Exporter`（定步循环 + `await prepare` 不丢帧 + Mediabunny `Output` 封装 MP4/WebM）已实现；音画一起导出的 e2e + golden-frame 全帧对比为后续 |
 
 ### 时钟控制面（对齐 `HTMLMediaElement`）
 
@@ -133,6 +133,30 @@ clock.play();
 - 校验:`tests/audio-scheduling.test.ts` + `tests/audio-engine.test.ts`(假 context 记录
   节点参数);e2e `pnpm verify:audio`——真实 `OfflineAudioContext` 渲染带 fade+gain 的正弦,
   断言 `midRms≈0.5×0.707`、fade 段更弱;并用 MediaRecorder 录一段 Opus 经 `AudioSource` 解回。
+
+### 导出（Exporter）
+
+`Exporter` 复用**同一套渲染核心**,但换成定步、逐帧确定性导出(契约 #1 + #3):
+
+- **纯帧时序**(`exportFrameTimes(range, fps)`,可单测):`[start,end)` 内 `round((end-start)*fps)`
+  帧,第 `i` 帧在 `start + i/fps`——半开、与 clip 区间一致,不看 wall-clock。
+- **逐帧循环**:字体一次性等齐(`await fonts.ready()`,绝不中途换字体)后,对每帧
+  `await compositor.prepare(t)`(**await = 绝不丢帧**,与预览的 best-effort 相对)→
+  `renderSync(t)`(画到共享的 `view` 画布)→ `sink.addFrame(t, 1/fps)`。音频取离线混音
+  `AudioEngine.renderOffline(duration)` 一次性编码。
+- **编码/封装 = `ExportSink` seam**:默认 `MediabunnyExportSink` 用 Mediabunny
+  `CanvasSource`(直接抓 `view` 画布,免手动 `VideoFrame` readback)+ `AudioBufferSource` +
+  `Output`(`Mp4OutputFormat` / `WebMOutputFormat`)+ `BufferTarget` → `Blob`,取代
+  `mp4-muxer`/`webm-muxer`;动态 `import('mediabunny')`。`add` 返回的 Promise 被 await 以
+  尊重编码器背压(长视频内存稳定)。测试可注入假 sink。
+- **`ExportOptions`**:`fps` / `container`('mp4'|'webm')/ `videoCodec` / `bitrate` / `audio` /
+  `audioCodec` / `audioBitrate` / `range`(默认整条时间线 = 最大 clip end)。`onProgress(p)`
+  每帧上报;`cancel()` 置标志,下一帧抛 `ExportCancelledError` 并 `sink.cancel()` 释放编码器。
+- 校验:`tests/exporter.test.ts`(纯 `exportFrameTimes`;用假 compositor/audio/sink 断言
+  **每帧 prepare→render→addFrame 的顺序**、帧时刻、progress 单调到 1、`audio:false` 跳过音频、
+  `range` 覆盖时长、`cancel` 中止且不 finalize)+ e2e `pnpm verify:export`——真实导出红色
+  clip 到 MP4/WebM,再用 Mediabunny `Input` 解回,断言帧数(8)、尺寸(160×120)、解出的帧
+  确实是红色(排除空画布抓取)。
 
 ### 文字与字体加载（TextClip / FontManager）
 
