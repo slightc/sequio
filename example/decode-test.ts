@@ -119,17 +119,24 @@ async function run(): Promise<void> {
   };
   const covered = Object.values(probes).every((b) => b > 100);
 
+  const vram = compositor.textures.usage;
+
   (window as unknown as { __DECODE_TEST__: unknown }).__DECODE_TEST__ = {
     ok:
       hits.every(Boolean) &&
       covered &&
       meta.width === SRC_W &&
-      meta.height === SRC_H,
+      meta.height === SRC_H &&
+      compositor.textures.count > 0 && // frames uploaded via the shared pool
+      vram.usedBytes > 0 &&
+      vram.usedBytes <= vram.budgetBytes,
     meta,
     hits,
     covered,
     probes,
     cachedFrameCount: source.cachedFrameCount,
+    textureCount: compositor.textures.count,
+    vram,
   };
 }
 

@@ -41,7 +41,7 @@ src/
   time/        Timebase, Clock (Realtime / FixedStep)        ✅ implemented
   animation/   Easing, AnimatableProperty, Transform2D       ✅ implemented
   media/       MediaSource + Video/Image/Audio, FrameCache   🚧 video decode (Mediabunny) + cache done, image/audio TODO
-  texture/     TextureManager (GPU budget + LRU)             🚧 budget done, upload TODO
+  texture/     TextureManager (GPU budget + LRU)             ✅ implemented
   compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping done, multitrack/effects TODO
   effects/     Effect, EffectRegistry, Transition            🚧 abstractions only
   audio/       AudioEngine                                   🚧 interface only

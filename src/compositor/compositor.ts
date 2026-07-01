@@ -5,6 +5,16 @@ import { Reconciler } from './reconciler';
 import type { Track } from './track';
 import { VisualSource } from '../media/media-source';
 import { VisualTrack } from './track';
+import { TextureManager } from '../texture/texture-manager';
+
+/** A source that can adopt the compositor's shared GPU texture pool. */
+interface TextureManagerAware {
+  adoptTextureManager(manager: TextureManager): void;
+}
+
+function isTextureManagerAware(source: unknown): source is TextureManagerAware {
+  return typeof (source as TextureManagerAware).adoptTextureManager === 'function';
+}
 
 export interface CompositorOptions {
   width: number;
@@ -14,6 +24,8 @@ export interface CompositorOptions {
   /** Prefer the PixiJS v8 WebGPU backend when available. */
   preferWebGPU?: boolean;
   colorSpace?: 'srgb' | 'display-p3';
+  /** GPU texture-pool budget in bytes (default 256 MiB). */
+  textureBudgetBytes?: number;
 }
 
 /**
@@ -34,6 +46,8 @@ export class Compositor implements Disposable {
   private readonly stage = new Container();
   private readonly tracks: Track[] = [];
   private readonly reconciler = new Reconciler();
+  /** Shared GPU texture pool; every video source under this compositor uses it. */
+  readonly textures: TextureManager;
   private renderer: Renderer | null = null;
   private initPromise: Promise<void> | null = null;
   private dirty = true;
@@ -46,6 +60,7 @@ export class Compositor implements Disposable {
       ({ width: options.width, height: options.height } as HTMLCanvasElement)) as HTMLCanvasElement;
     this.view.width = options.width;
     this.view.height = options.height;
+    this.textures = new TextureManager(options.textureBudgetBytes);
   }
 
   /**
@@ -103,6 +118,8 @@ export class Compositor implements Disposable {
         for (const clip of track.activeAt(t)) {
           const source = (clip as { source?: VisualSource }).source;
           if (source instanceof VisualSource) {
+            // Route every source's texture uploads through one VRAM budget.
+            if (isTextureManagerAware(source)) source.adoptTextureManager(this.textures);
             const sourceTime = t - clip.start + clip.sourceIn;
             jobs.push(source.prepare(sourceTime));
           }
@@ -166,6 +183,7 @@ export class Compositor implements Disposable {
   dispose(): void {
     this.reconciler.clear(this.stage);
     this.tracks.length = 0;
+    this.textures.dispose();
     this.renderer?.destroy();
     this.renderer = null;
     this.initPromise = null;

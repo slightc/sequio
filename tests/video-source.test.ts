@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { VideoSource } from '../src/media/video-source';
 import type { DecodedFrame, VideoDecoderBackend } from '../src/media/video-decoder';
 import type { SourceMetadata } from '../src/media/media-source';
+import { TextureManager } from '../src/texture/texture-manager';
 
 const META: SourceMetadata = { width: 640, height: 360, duration: 10, fps: 30, hasAudio: false };
 
@@ -30,13 +31,16 @@ class FakeBackend implements VideoDecoderBackend {
   }
 }
 
-/** VideoSource with a non-GPU texture factory so getTextureAt is testable. */
-class TestVideoSource extends VideoSource {
-  createdTextures: { destroy: ReturnType<typeof vi.fn> }[] = [];
+/** TextureManager with a non-GPU factory so getTextureAt is testable. */
+class TestTextureManager extends TextureManager {
+  created: { destroy: ReturnType<typeof vi.fn> }[] = [];
   protected override createTexture(): Texture {
     const tex = { destroy: vi.fn() };
-    this.createdTextures.push(tex);
+    this.created.push(tex);
     return tex as unknown as Texture;
+  }
+  protected override estimateBytes(): number {
+    return 100;
   }
 }
 
@@ -45,8 +49,9 @@ const has = (arr: number[], v: number) => arr.some((x) => Math.abs(x - v) < 1e-9
 
 function make(opts: Partial<{ cacheFrames: number; lookahead: number }> = {}) {
   const backend = new FakeBackend();
-  const source = new TestVideoSource({ src: 'x', backend, ...opts });
-  return { backend, source };
+  const textures = new TestTextureManager();
+  const source = new VideoSource({ src: 'x', backend, textureManager: textures, ...opts });
+  return { backend, textures, source };
 }
 
 describe('VideoSource', () => {
@@ -65,14 +70,15 @@ describe('VideoSource', () => {
   });
 
   it('prepare decodes the target frame; getTextureAt is a sync cache read', async () => {
-    const { source } = make({ lookahead: 0 });
+    const { source, textures } = make({ lookahead: 0 });
     await source.load();
     expect(source.getTextureAt(0.5)).toBeNull(); // miss before prepare
 
     await source.prepare(0.5);
     const tex = source.getTextureAt(0.5);
     expect(tex).not.toBeNull();
-    expect(source.getTextureAt(0.5)).toBe(tex); // memoized, no re-create
+    expect(source.getTextureAt(0.5)).toBe(tex); // pooled, no re-upload
+    expect(textures.created).toHaveLength(1);
     expect(source.getTextureAt(2.0)).toBeNull(); // different frame, still a miss
   });
 
@@ -102,30 +108,52 @@ describe('VideoSource', () => {
     expect(backend.decodeCalls.filter((s) => s === 0.5)).toHaveLength(1);
   });
 
-  it('evicting a frame past budget closes it and destroys its texture', async () => {
-    const { backend, source } = make({ cacheFrames: 2, lookahead: 0 });
+  it('evicting a frame past budget closes it and releases its texture', async () => {
+    const { backend, textures, source } = make({ cacheFrames: 2, lookahead: 0 });
     await source.load();
 
     await source.prepare(0); // idx 0
-    source.getTextureAt(0); // create texture for idx 0
+    source.getTextureAt(0); // upload texture for idx 0
     await source.prepare(1 / 30); // idx 1
     await source.prepare(2 / 30); // idx 2 -> evicts idx 0 (LRU)
 
     expect(source.cachedFrameCount).toBe(2);
     expect(backend.frames[0]!.close).toHaveBeenCalled(); // frame 0 closed
-    expect(source.createdTextures[0]!.destroy).toHaveBeenCalled(); // its texture destroyed
+    expect(textures.created[0]!.destroy).toHaveBeenCalled(); // its texture released
+    expect(textures.count).toBe(0);
   });
 
-  it('dispose closes frames, destroys textures and tears down the backend', async () => {
-    const { backend, source } = make({ lookahead: 0 });
+  it('dispose closes frames, releases textures and tears down the backend', async () => {
+    const { backend, textures, source } = make({ lookahead: 0 });
     await source.load();
     await source.prepare(0.5);
     source.getTextureAt(0.5);
 
     source.dispose();
     expect(backend.frames[0]!.close).toHaveBeenCalled();
-    expect(source.createdTextures[0]!.destroy).toHaveBeenCalled();
+    expect(textures.created[0]!.destroy).toHaveBeenCalled();
     expect(backend.disposed).toBe(true);
     expect(source.getTextureAt(0.5)).toBeNull(); // unloaded
+  });
+
+  it('does not dispose an injected (shared) texture manager', async () => {
+    const { textures, source } = make({ lookahead: 0 });
+    await source.load();
+    await source.prepare(0.5);
+    source.getTextureAt(0.5);
+    const spy = vi.spyOn(textures, 'dispose');
+    source.dispose();
+    expect(spy).not.toHaveBeenCalled(); // Compositor owns the shared pool
+  });
+
+  it('adopts a shared texture manager when it owns none', async () => {
+    const backend = new FakeBackend();
+    const source = new VideoSource({ src: 'x', backend, lookahead: 0 }); // private default
+    const shared = new TestTextureManager();
+    source.adoptTextureManager(shared);
+    await source.load();
+    await source.prepare(0.5);
+    source.getTextureAt(0.5);
+    expect(shared.created).toHaveLength(1); // uploads routed to the shared pool
   });
 });

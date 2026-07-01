@@ -1,8 +1,11 @@
-import { Texture } from 'pixi.js';
+import type { Texture } from 'pixi.js';
 import { FrameCache } from './frame-cache';
 import { MediabunnyVideoDecoder, type VideoInput } from './mediabunny-decoder';
 import { type SourceMetadata, VisualSource } from './media-source';
 import type { DecodedFrame, VideoDecoderBackend } from './video-decoder';
+import { TextureManager } from '../texture/texture-manager';
+
+let nextSourceId = 0;
 
 export interface VideoSourceOptions {
   /** Source URL, an already-fetched buffer, or a Blob/File. */
@@ -16,26 +19,34 @@ export interface VideoSourceOptions {
    * tests or an alternative decoder (e.g. an `ffmpeg.wasm` fallback).
    */
   backend?: VideoDecoderBackend;
+  /**
+   * Shared GPU texture pool. Defaults to a private one; a Compositor injects
+   * (or adopts) its own so all sources share one VRAM budget (contract #4).
+   */
+  textureManager?: TextureManager;
 }
 
 /**
  * Hardware-accelerated video decode via WebCodecs, driven by Mediabunny.
  *
  * Pipeline: {@link VideoDecoderBackend} (Mediabunny `Input` + `VideoSampleSink`)
- * → {@link FrameCache} (ring + LRU). `prepare(t)` decodes the frame at `t` into
- * the cache and kicks off directional lookahead; `getTextureAt(t)` reads the
- * cache synchronously and returns a `Texture` (miss → `null`, preview reuses the
+ * → {@link FrameCache} (ring + LRU) → {@link TextureManager} (VRAM budget).
+ * `prepare(t)` decodes the frame at `t` into the cache and kicks off directional
+ * lookahead; `getTextureAt(t)` reads the cache synchronously and uploads/reuses
+ * a `Texture` keyed by `sourceId:frameIdx` (miss → `null`, preview reuses the
  * last frame). The async `prepare` / sync `getTextureAt` split is contract #1.
  *
  * Frame indices assume constant frame rate; the cache keys a requested time `t`
  * to `round(t * fps)`. (VFR-accurate keying is a later refinement.)
  */
 export class VideoSource extends VisualSource {
+  private readonly id = nextSourceId++;
   private readonly backend: VideoDecoderBackend;
   private readonly cache: FrameCache<DecodedFrame>;
-  private readonly textures = new Map<number, Texture>();
   private readonly inFlight = new Set<number>();
   private readonly lookahead: number;
+  private textures: TextureManager;
+  private ownsTextures: boolean;
   private fps = 30;
   private lastSec: number | null = null;
 
@@ -43,14 +54,12 @@ export class VideoSource extends VisualSource {
     super();
     this.backend = options.backend ?? new MediabunnyVideoDecoder(options.src);
     this.lookahead = options.lookahead ?? 3;
-    // When a frame leaves the cache, destroy the texture derived from it so GPU
-    // memory tracks decoder memory.
+    this.textures = options.textureManager ?? new TextureManager();
+    this.ownsTextures = options.textureManager === undefined;
+    // When a frame leaves the decode cache, release its GPU texture so VRAM
+    // tracks decoder memory.
     this.cache = new FrameCache<DecodedFrame>(options.cacheFrames ?? 60, (idx) => {
-      const tex = this.textures.get(idx);
-      if (tex) {
-        tex.destroy(true);
-        this.textures.delete(idx);
-      }
+      this.textures.release(this.textureKey(idx));
     });
   }
 
@@ -59,6 +68,14 @@ export class VideoSource extends VisualSource {
     this.metadata = meta;
     if (meta.fps && meta.fps > 0) this.fps = meta.fps;
     return meta;
+  }
+
+  /** Adopt a shared texture pool (unless one was explicitly injected). */
+  adoptTextureManager(manager: TextureManager): void {
+    if (!this.ownsTextures || this.textures === manager) return;
+    this.textures.dispose(); // the private default is still empty at adoption time
+    this.textures = manager;
+    this.ownsTextures = false;
   }
 
   /** Map a source time (seconds) to a constant-frame-rate frame index. */
@@ -87,12 +104,7 @@ export class VideoSource extends VisualSource {
     const idx = this.frameIndexAt(sourceTime);
     const frame = this.cache.get(idx);
     if (!frame) return null; // miss → preview keeps the last frame
-    let tex = this.textures.get(idx);
-    if (!tex) {
-      tex = this.createTexture(frame.image);
-      this.textures.set(idx, tex);
-    }
-    return tex;
+    return this.textures.acquireOrUpload(this.textureKey(idx), frame.image);
   }
 
   /** Number of decoded frames currently resident (test/diagnostic hook). */
@@ -100,9 +112,8 @@ export class VideoSource extends VisualSource {
     return this.cache.size;
   }
 
-  /** Build a texture from a decoded image source. Overridable for tests. */
-  protected createTexture(image: CanvasImageSource): Texture {
-    return Texture.from(image);
+  private textureKey(frameIdx: number): string {
+    return `v${this.id}:${frameIdx}`;
   }
 
   /** Decode `idx` (frame at `sec`) into the cache unless already present/pending. */
@@ -118,9 +129,9 @@ export class VideoSource extends VisualSource {
   }
 
   dispose(): void {
-    this.cache.dispose(); // closes frames; onEvict destroys their textures
-    this.textures.clear();
+    this.cache.dispose(); // closes frames; onEvict releases their textures
     this.inFlight.clear();
+    if (this.ownsTextures) this.textures.dispose();
     this.backend.dispose();
     this.metadata = null;
   }

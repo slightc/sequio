@@ -1,10 +1,43 @@
-import { Container } from 'pixi.js';
+import { Container, type Texture } from 'pixi.js';
 import { describe, expect, it } from 'vitest';
 import { Compositor } from '../src/compositor/compositor';
 import { VisualClip } from '../src/compositor/clip';
 import { Reconciler } from '../src/compositor/reconciler';
 import { VisualTrack } from '../src/compositor/track';
+import { VisualSource, type SourceMetadata } from '../src/media/media-source';
+import type { TextureManager } from '../src/texture/texture-manager';
 import { Timebase } from '../src/time/timebase';
+
+/** A visual source that records adoption of the shared texture pool + prepares. */
+class SpySource extends VisualSource {
+  adopted: TextureManager | null = null;
+  prepared: number[] = [];
+  async load(): Promise<SourceMetadata> {
+    return { width: 1, height: 1, duration: 5, hasAudio: false };
+  }
+  async prepare(t: number): Promise<void> {
+    this.prepared.push(t);
+  }
+  getTextureAt(): Texture | null {
+    return null;
+  }
+  dispose(): void {}
+  adoptTextureManager(manager: TextureManager): void {
+    this.adopted = manager;
+  }
+}
+
+/** A clip backed by a source, so Compositor.prepare reaches `clip.source`. */
+class SourceClip extends VisualClip {
+  constructor(public source: VisualSource) {
+    super();
+  }
+  override mount(): Container {
+    return new Container();
+  }
+  override update(): void {}
+  override unmount(): void {}
+}
 
 /** Minimal visual clip that records mount/update/unmount for assertions. */
 class TestClip extends VisualClip {
@@ -151,5 +184,30 @@ describe('Compositor', () => {
     c.dispose();
     expect(clip.unmountCount).toBe(1);
     expect(c.getTracks().length).toBe(0);
+  });
+
+  it('exposes a shared texture pool with the configured budget', () => {
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      textureBudgetBytes: 1234,
+    });
+    expect(c.textures.usage.budgetBytes).toBe(1234);
+  });
+
+  it('routes active sources onto its shared texture pool during prepare', async () => {
+    const c = makeCompositor();
+    const source = new SpySource();
+    const clip = new SourceClip(source);
+    clip.start = 0;
+    clip.end = 5;
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    await c.prepare(1);
+    expect(source.adopted).toBe(c.textures); // shared VRAM budget across sources
+    expect(source.prepared).toContain(1);
   });
 });
