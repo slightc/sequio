@@ -285,7 +285,22 @@ async function main(): Promise<void> {
     }
     status.textContent = `Encoding ${codec.container} / ${codec.videoCodec}${withAudio ? ` + ${codec.audioCodec}` : ''}…`;
 
-    const exporter = new Exporter(compositor, audio); // same AudioEngine → export includes the mix
+    // Fork an offscreen export compositor that SHARES the preview's texture pool
+    // and sources (nothing is decoded twice) and move the scene onto it. The
+    // preview's renderer/canvas/reconciler stay untouched during export.
+    const fork = new Compositor({
+      width: W,
+      height: H,
+      timebase: new Timebase(FPS),
+      background: 0x0b0b0e,
+      preferWebGPU: false,
+      textures: compositor.textures,
+    });
+    await fork.init();
+    compositor.removeTrack(scene.visualTrack);
+    fork.addTrack(scene.visualTrack);
+
+    const exporter = new Exporter(fork, audio); // same AudioEngine → export includes the mix
     try {
       const t0 = performance.now();
       const blob = await exporter.export(
@@ -315,6 +330,9 @@ async function main(): Promise<void> {
     } catch (err) {
       status.textContent = `Export failed: ${String(err)}`;
     } finally {
+      fork.removeTrack(scene.visualTrack); // move the scene back to the preview
+      compositor.addTrack(scene.visualTrack);
+      fork.dispose(); // shared texture pool is kept (owned by the preview)
       restore(); // playhead + play/pause + audio, exactly as before export
     }
   });

@@ -191,7 +191,10 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
   });
   c1.dispose();
 
-  // 2. Load it back as a VideoSource and export again.
+  // 2. Load it back as a VideoSource on a "preview" compositor (c2), render a
+  //    frame there, then FORK an offscreen export compositor (c3) that SHARES
+  //    c2's texture pool + the source (no re-decode) and export from it — leaving
+  //    c2 untouched (the fork pattern the demo uses).
   const file = new File([blob], `src.${codec.container}`, { type: blob.type });
   const source = new VideoSource({ src: file });
   const meta = await source.load();
@@ -204,13 +207,27 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
   applyCover(clip, meta.width, meta.height, W, H);
   track.add(clip);
   c2.addTrack(track);
+  await c2.prepare(0);
+  c2.renderSync(0); // c2 (preview) uploads a texture from the shared pool
+
+  const c3 = new Compositor({
+    width: W,
+    height: H,
+    timebase: new Timebase(FPS),
+    background: 0x000000,
+    preferWebGPU: false,
+    textures: c2.textures, // share the pool → no second decode/upload
+  });
+  await c3.init();
+  c2.removeTrack(track); // move the scene to the fork for export
+  c3.addTrack(track);
 
   let error: string | null = null;
   let size = 0;
   let litFrames = 0;
   let frames = 0;
   try {
-    const out = await new Exporter(c2, new AudioEngine(new Timebase(FPS))).export({
+    const out = await new Exporter(c3, new AudioEngine(new Timebase(FPS))).export({
       fps: FPS,
       range: [0, Math.min(meta.duration, 1)],
       audio: false,
@@ -248,11 +265,33 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
   } catch (e) {
     error = String(e);
   }
+
+  // Move the scene back and confirm the "preview" compositor still renders the
+  // shared video (fork didn't break it, no re-decode needed).
+  c3.removeTrack(track);
+  c2.addTrack(track);
+  await c2.prepare(0);
+  c2.renderSync(0);
+  const oc = document.createElement('canvas');
+  oc.width = W;
+  oc.height = H;
+  const octx = oc.getContext('2d')!;
+  octx.drawImage(c2.view, 0, 0);
+  const pd = octx.getImageData(0, 0, W, H).data;
+  let previewLit = false;
+  for (let i = 0; i < pd.length; i += 4) {
+    if (pd[i]! > 40 || pd[i + 1]! > 40 || pd[i + 2]! > 40) {
+      previewLit = true;
+      break;
+    }
+  }
+
+  c3.dispose();
   c2.dispose();
   source.dispose();
   // Most frames must have visible content (the moving red box), not be black.
-  const okRoundTrip = !error && size > 500 && frames > 0 && litFrames >= frames - 1;
-  return { okRoundTrip, error, size, frames, litFrames, duration: meta.duration };
+  const okRoundTrip = !error && size > 500 && frames > 0 && litFrames >= frames - 1 && previewLit;
+  return { okRoundTrip, error, size, frames, litFrames, previewLit, duration: meta.duration };
 }
 
 /** A VideoClip whose pooled texture gets evicted (destroyed) while a later frame

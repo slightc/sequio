@@ -349,6 +349,15 @@ describe('Compositor', () => {
     expect(c.textures.usage.budgetBytes).toBe(1234);
   });
 
+  it('shares an injected texture pool and does not dispose it (fork export)', () => {
+    const shared = makeCompositor().textures;
+    const disposeSpy = vi.spyOn(shared, 'dispose');
+    const fork = new Compositor({ width: 320, height: 240, timebase: new Timebase(30), textures: shared });
+    expect(fork.textures).toBe(shared); // reuses the pool → no second decode/upload
+    fork.dispose();
+    expect(disposeSpy).not.toHaveBeenCalled(); // the shared pool outlives the fork
+  });
+
   it('routes active sources onto its shared texture pool during prepare', async () => {
     const c = makeCompositor();
     const source = new SpySource();
