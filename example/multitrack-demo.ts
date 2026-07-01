@@ -7,7 +7,7 @@
  * for a decoded video (object-fit: cover). Mutations don't auto-repaint (SDK
  * contract #5), so every control change calls renderPreview explicitly.
  */
-import { CanvasSource, Texture } from 'pixi.js';
+import { Texture } from 'pixi.js';
 import type { BLEND_MODES } from 'pixi.js';
 import {
   Compositor,
@@ -40,25 +40,31 @@ const BLEND_MODES_LIST: BLEND_MODES[] = [
 
 /**
  * A source wrapping a single, drawn-on-canvas texture. The canvas is rendered at
- * `devicePixelRatio` and the texture tagged with that resolution, so generated
- * art (e.g. the circle's hard edge) stays crisp on HiDPI screens instead of
- * being upscaled from a 1x bitmap.
+ * `devicePixelRatio` supersampling ({@link ss}) so generated art (e.g. the
+ * circle's hard edge) has enough texels to stay crisp on HiDPI screens; the
+ * clip then scales the texture down by `1/ss` to occupy its logical size.
  */
 class DrawnSource extends VisualSource {
+  /** Supersample factor the texture was drawn at (clips scale by 1/ss). */
+  readonly ss = globalThis.devicePixelRatio || 1;
   private texture: Texture | null = null;
   constructor(private readonly draw: (ctx: CanvasRenderingContext2D) => void, private readonly w = W, private readonly h = H) {
     super();
   }
   async load(): Promise<SourceMetadata> {
-    const ss = globalThis.devicePixelRatio || 1;
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(this.w * ss);
-    canvas.height = Math.round(this.h * ss);
+    canvas.width = Math.round(this.w * this.ss);
+    canvas.height = Math.round(this.h * this.ss);
     const ctx = canvas.getContext('2d')!;
-    ctx.scale(ss, ss); // draw in logical coordinates
+    ctx.scale(this.ss, this.ss); // draw in logical coordinates
     this.draw(ctx);
-    this.texture = new Texture({ source: new CanvasSource({ resource: canvas, resolution: ss }) });
-    this.metadata = { width: this.w, height: this.h, duration: Infinity, hasAudio: false };
+    this.texture = Texture.from(canvas); // plain canvas source: uploads on any backend
+    this.metadata = {
+      width: canvas.width,
+      height: canvas.height,
+      duration: Infinity,
+      hasAudio: false,
+    };
     return this.metadata;
   }
   async prepare(): Promise<void> {}
@@ -69,6 +75,11 @@ class DrawnSource extends VisualSource {
     this.texture?.destroy(true);
     this.texture = null;
   }
+}
+
+/** Scale a clip so an `ss`×-supersampled texture occupies its logical size. */
+function unscale(clip: VisualClip, ss: number): void {
+  clip.transform.scale.setStatic([1 / ss, 1 / ss]);
 }
 
 interface TrackDef {
@@ -99,14 +110,20 @@ async function main(): Promise<void> {
     height: H,
     timebase: new Timebase(FPS),
     background: 0x0b0b0e,
-    preferWebGPU: true,
+    preferWebGPU: false, // WebGL: reliable everywhere (incl. software rasterizers)
   });
   await compositor.init();
   document.getElementById('stage')!.append(compositor.view);
 
   const clock = new RealtimeClock();
   clock.duration = DURATION;
-  const render = () => compositor.renderPreview(clock.currentTime);
+  // Clips are active on [start, end); at exactly t=DURATION every clip has ended
+  // → an empty (black) frame. Like a video player, the playhead at the very end
+  // shows the last frame, so clamp the *render* time to the last frame while the
+  // clock still reports the full DURATION.
+  const LAST_FRAME = DURATION - 1 / FPS;
+  const renderAt = (t: number) => compositor.renderPreview(Math.min(t, LAST_FRAME));
+  const render = () => renderAt(clock.currentTime);
 
   // ── Build three tracks, bottom → top ──────────────────────────────────────
   const bgSource = new DrawnSource((ctx) => {
@@ -139,6 +156,7 @@ async function main(): Promise<void> {
   bgClip.start = 0;
   bgClip.end = DURATION;
   bgClip.transform.anchor.setStatic([0, 0]);
+  unscale(bgClip, bgSource.ss);
   bgTrack.add(bgClip);
   defs.push({ name: 'Background (gradient)', track: bgTrack, clip: bgClip, source: bgSource });
 
@@ -155,6 +173,7 @@ async function main(): Promise<void> {
     { time: 0, value: 0 },
     { time: DURATION, value: Math.PI * 2 },
   ]);
+  unscale(circleClip, circleSource.ss);
   circleTrack.add(circleClip);
   defs.push({ name: 'Circle (animated)', track: circleTrack, clip: circleClip, source: circleSource });
 
@@ -166,28 +185,9 @@ async function main(): Promise<void> {
   tintClip.transform.anchor.setStatic([0, 0]);
   tintClip.opacity.setStatic(0.4);
   tintClip.blendMode = 'screen';
+  unscale(tintClip, tintSource.ss);
   tintTrack.add(tintClip);
   defs.push({ name: 'Tint (screen 40%)', track: tintTrack, clip: tintClip, source: tintSource });
-
-  // Title in a real web font (Google Fonts, falling back to self-hosted).
-  const family = await loadTitleFont();
-  const titleTrack = new VisualTrack();
-  titleTrack.zIndex = 3;
-  // Breathe via GPU scale, not fontSize: rasterize once at the max size and
-  // animate scale in [0.7, 1] (never upscale a raster) — smooth and crisp, no
-  // per-frame re-rasterization jitter.
-  const titleClip = new TextClip({ text: 'video-editor-canvas', fontFamily: family, fontSize: 40, fill: 0xffffff });
-  titleClip.start = 0;
-  titleClip.end = DURATION;
-  titleClip.transform.anchor.setStatic([0.5, 0.5]);
-  titleClip.transform.position.setStatic([W / 2, H - 34]);
-  titleClip.transform.scale.setKeyframes([
-    { time: 0, value: [0.7, 0.7] },
-    { time: DURATION / 2, value: [1, 1] },
-    { time: DURATION, value: [0.7, 0.7] },
-  ]);
-  titleTrack.add(titleClip);
-  defs.push({ name: `Title (${family})`, track: titleTrack, clip: titleClip });
 
   for (const d of defs) compositor.addTrack(d.track);
 
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
   scrub.max = String(DURATION);
 
   clock.onTick((t) => {
-    compositor.renderPreview(t);
+    renderAt(t);
     scrub.value = String(t);
     timeLabel.textContent = `${t.toFixed(2)} / ${DURATION.toFixed(2)}s`;
   });
@@ -230,7 +230,30 @@ async function main(): Promise<void> {
   // Render top-of-stack first so the UI order matches what's on top.
   [...defs].reverse().forEach((d) => panel.append(buildTrackCard(d, render, compositor)));
 
-  clock.seek(0); // paint first frame
+  clock.seek(0); // paint the visual tracks immediately
+
+  // A title in a real web font, added asynchronously — a slow/failed font load
+  // must never block the rest of the scene from rendering.
+  loadTitleFont().then((family) => {
+    const titleTrack = new VisualTrack();
+    titleTrack.zIndex = 3;
+    // Breathe via GPU scale, not fontSize: rasterize once at the max size and
+    // animate scale in [0.7, 1] (never upscale a raster) — smooth and crisp.
+    const titleClip = new TextClip({ text: 'video-editor-canvas', fontFamily: family, fontSize: 40, fill: 0xffffff });
+    titleClip.start = 0;
+    titleClip.end = DURATION;
+    titleClip.transform.anchor.setStatic([0.5, 0.5]);
+    titleClip.transform.position.setStatic([W / 2, H - 34]);
+    titleClip.transform.scale.setKeyframes([
+      { time: 0, value: [0.7, 0.7] },
+      { time: DURATION / 2, value: [1, 1] },
+      { time: DURATION, value: [0.7, 0.7] },
+    ]);
+    titleTrack.add(titleClip);
+    compositor.addTrack(titleTrack);
+    panel.prepend(buildTrackCard({ name: `Title (${family})`, track: titleTrack, clip: titleClip }, render, compositor));
+    render(); // repaint with the title once the font is ready
+  });
 }
 
 function buildTrackCard(d: TrackDef, render: () => void, compositor: Compositor): HTMLElement {
