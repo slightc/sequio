@@ -165,15 +165,18 @@ async function main(): Promise<void> {
   const family = await loadTitleFont();
   const titleTrack = new VisualTrack();
   titleTrack.zIndex = 3;
-  const titleClip = new TextClip({ text: 'video-editor-canvas', fontFamily: family, fill: 0xffffff });
+  // Breathe via GPU scale, not fontSize: rasterize once at the max size and
+  // animate scale in [0.7, 1] (never upscale a raster) — smooth and crisp, no
+  // per-frame re-rasterization jitter.
+  const titleClip = new TextClip({ text: 'video-editor-canvas', fontFamily: family, fontSize: 40, fill: 0xffffff });
   titleClip.start = 0;
   titleClip.end = DURATION;
   titleClip.transform.anchor.setStatic([0.5, 0.5]);
   titleClip.transform.position.setStatic([W / 2, H - 34]);
-  titleClip.fontSize.setKeyframes([
-    { time: 0, value: 28 },
-    { time: DURATION / 2, value: 40 },
-    { time: DURATION, value: 28 },
+  titleClip.transform.scale.setKeyframes([
+    { time: 0, value: [0.7, 0.7] },
+    { time: DURATION / 2, value: [1, 1] },
+    { time: DURATION, value: [0.7, 0.7] },
   ]);
   titleTrack.add(titleClip);
   defs.push({ name: `Title (${family})`, track: titleTrack, clip: titleClip });
