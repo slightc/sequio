@@ -41,6 +41,27 @@ class SourceClip extends VisualClip {
   override unmount(): void {}
 }
 
+/** A source whose `prepare` resolves only when released — models a slow decode. */
+class GatedSource extends VisualSource {
+  private readonly resolves: Array<() => void> = [];
+  async load(): Promise<SourceMetadata> {
+    return { width: 1, height: 1, duration: 5, hasAudio: false };
+  }
+  prepare(): Promise<void> {
+    return new Promise((r) => this.resolves.push(r));
+  }
+  releaseAll(): void {
+    this.resolves.splice(0).forEach((r) => r());
+  }
+  getTextureAt(): Texture | null {
+    return null; // always a miss until "decoded"
+  }
+  dispose(): void {}
+  adoptTextureManager(): void {}
+}
+
+const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+
 /** Minimal visual clip that records mount/update/unmount for assertions. */
 class TestClip extends VisualClip {
   mountCount = 0;
@@ -345,6 +366,91 @@ describe('Compositor', () => {
     a.addTrack(track);
     a.renderSync(0.5);
     expect(clip.mountCount).toBe(3);
+  });
+
+  it('renderPreview repaints the same frame once its async decode resolves (seek to unbuffered)', async () => {
+    const c = makeCompositor();
+    const source = new GatedSource();
+    const clip = new SourceClip(source);
+    clip.start = 0;
+    clip.end = 5;
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    const spy = vi.spyOn(c, 'renderSync');
+    c.renderPreview(0.5);
+    expect(spy).toHaveBeenCalledTimes(1); // immediate best-effort (miss → black)
+
+    source.releaseAll(); // the decode finishes
+    await flush();
+    expect(spy).toHaveBeenCalledTimes(2); // repainted after the decode
+    expect(spy).toHaveBeenLastCalledWith(0.5);
+  });
+
+  it('a newer renderPreview supersedes an earlier pending post-decode repaint', async () => {
+    const c = makeCompositor();
+    const source = new GatedSource();
+    const clip = new SourceClip(source);
+    clip.start = 0;
+    clip.end = 5;
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    const spy = vi.spyOn(c, 'renderSync');
+    c.renderPreview(0.5); // token 1 (superseded)
+    c.renderPreview(1.0); // token 2 (current)
+    expect(spy).toHaveBeenCalledTimes(2); // two immediate renders
+
+    source.releaseAll(); // both decodes resolve
+    await flush();
+    expect(spy).toHaveBeenCalledTimes(3); // only the latest frame repaints, not the stale 0.5
+    expect(spy).toHaveBeenLastCalledWith(1.0);
+  });
+
+  it('continuous seeking repaints only the final frame (no race between decodes)', async () => {
+    const c = makeCompositor();
+    const source = new GatedSource();
+    const clip = new SourceClip(source);
+    clip.start = 0;
+    clip.end = 5;
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    const spy = vi.spyOn(c, 'renderSync');
+    c.renderPreview(0.2);
+    c.renderPreview(0.4);
+    c.renderPreview(0.6); // rapid seeks
+    expect(spy).toHaveBeenCalledTimes(3); // three immediate renders
+
+    source.releaseAll(); // all decodes resolve (possibly out of order)
+    await flush();
+    expect(spy).toHaveBeenCalledTimes(4); // only the latest seek repaints
+    expect(spy).toHaveBeenLastCalledWith(0.6);
+  });
+
+  it('an export/direct render supersedes a pending preview repaint (export unaffected)', async () => {
+    const c = makeCompositor();
+    const source = new GatedSource();
+    const clip = new SourceClip(source);
+    clip.start = 0;
+    clip.end = 5;
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    const spy = vi.spyOn(c, 'renderSync');
+    c.renderPreview(0.5); // schedules a repaint once 0.5 decodes
+    expect(spy).toHaveBeenCalledTimes(1);
+    c.renderSync(1.0); // an export frame renders directly on the same compositor
+    expect(spy).toHaveBeenCalledTimes(2);
+
+    source.releaseAll(); // 0.5's decode now resolves
+    await flush();
+    expect(spy).toHaveBeenCalledTimes(2); // the stale 0.5 repaint is skipped — no clobber
+    expect(spy).toHaveBeenLastCalledWith(1.0);
   });
 
   it('dispose unmounts clips and clears tracks', () => {

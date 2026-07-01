@@ -317,6 +317,9 @@ resolution 1)。
 1. **异步 prepare 与同步 render 必须分离**。视频解码是异步的：预览时
    `prepare(t)` 尽力而为、miss 就用上一帧/降级，`renderSync` 立即出帧保流畅；
    导出时 `await prepare(t)` 保证所有源就绪后再 `renderToTexture`，绝不丢帧。
+   `renderPreview(t)` 立即出一帧后,还会在**该帧解码完成时补渲一次**——否则(暂停时)seek
+   到还没解码的位置会一直黑屏。补渲带一个 token:任何后续渲染(再次 seek、播放推进、或导出的
+   `renderSync`/`renderToTexture`)都会让待补渲失效,所以连续 seek 无竞态、导出也不受影响。
 2. **`render(t)` 对当前对象图纯函数**。不依赖上一帧的隐式状态、不依赖真实时间，
    只看对象图 + t。否则导出不可重放、没法做帧级回归测试。
 3. **预览与导出共用同一渲染核心**。分辨率、色彩管线（sRGB↔linear、预乘 alpha）、
