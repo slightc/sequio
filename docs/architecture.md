@@ -103,6 +103,12 @@ clock.play();
 （`fontFamily` 指向该 family）→ 再 `renderPreview`;导出前 `await fonts.ready()`（里程碑 08
 的 Exporter 会在定步循环前等齐）。
 
+**Google Fonts**:`await fonts.loadGoogleFont({ family: 'Roboto', weights: [400, 700], italic? })`
+—— 注入 css2 样式表(`buildGoogleCss2Url` 构建 URL）并 `document.fonts.load` 等齐指定字重,
+同样去重、计入 `ready()`。它只是 `load` 的便捷封装,走相同的 `document.fonts` 机制。
+（渲染校验见 `pnpm verify:font`:用自托管的 Pacifico 走同一路径上屏——本沙盒浏览器无外网,
+但 Google css2 端点经代理 curl 可达。）
+
 ### 分组 / 子合成（GroupClip）
 
 `GroupClip` 本身是一个 `VisualClip`，可放在轨道上或嵌进另一个 `GroupClip`，把一组

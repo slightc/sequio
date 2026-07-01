@@ -33,3 +33,6 @@
 - **字体加载**：新增全局 `FontManager`（默认 `fonts`）——`await fonts.load({family, src})`
   用 `FontFace` API 注册进 `document.fonts`，去重；`fonts.ready()` 等齐。字体必须在渲染前
   一次性加载（契约 #1/#2，不能中途换字体）。单测 `tests/font-manager.test.ts`。
+  - **Google Fonts**：`fonts.loadGoogleFont({ family, weights, italic })` 注入 css2 样式表 +
+    `document.fonts.load` 等齐（`buildGoogleCss2Url` 建 URL）。渲染校验 `pnpm verify:font`
+    （自托管 Pacifico 走同一路径；沙盒浏览器无外网，Google 端点经代理 curl 可达）。

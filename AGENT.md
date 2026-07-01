@@ -83,6 +83,7 @@ pnpm dev            # vite dev server (for example/playground)
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
 pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen
+pnpm verify:font    # Puppeteer e2e: custom/Google web-font renders in a TextClip
 ```
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's

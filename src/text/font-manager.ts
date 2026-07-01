@@ -7,6 +7,29 @@ export interface FontSpec {
   style?: string;
 }
 
+export interface GoogleFontSpec {
+  /** Family name as on fonts.google.com, e.g. `'Roboto'`, `'Playfair Display'`. */
+  family: string;
+  /** Weights to load (default `[400]`). */
+  weights?: number[];
+  /** Load the italic variants of the requested weights. */
+  italic?: boolean;
+  /** Text to guarantee is subsetted in (Google serves per-unicode-range subsets). */
+  text?: string;
+  /** Override the CSS endpoint (self-hosting / a proxy). Default Google Fonts css2. */
+  cssBase?: string;
+}
+
+/** Build a Google Fonts css2 stylesheet URL for a spec. Pure / testable. */
+export function buildGoogleCss2Url(base: string, spec: GoogleFontSpec): string {
+  const family = spec.family.trim().replace(/\s+/g, '+');
+  const weights = spec.weights?.length ? [...spec.weights].sort((a, b) => a - b) : [400];
+  const axis = spec.italic
+    ? `ital,wght@${weights.map((w) => `1,${w}`).join(';')}`
+    : `wght@${weights.join(';')}`;
+  return `${base}?family=${family}:${axis}&display=block`;
+}
+
 /**
  * Loads and registers web fonts into `document.fonts` so `TextClip`'s Canvas
  * text measurement sees them.
@@ -28,6 +51,7 @@ export interface FontSpec {
  */
 export class FontManager {
   private readonly loaded = new Map<string, Promise<void>>();
+  private readonly stylesheets = new Set<string>();
 
   /** Load + register a font once. Repeat calls return the same promise. */
   load(spec: FontSpec): Promise<void> {
@@ -35,6 +59,22 @@ export class FontManager {
     let p = this.loaded.get(key);
     if (!p) {
       p = this.loadFace(spec);
+      this.loaded.set(key, p);
+    }
+    return p;
+  }
+
+  /**
+   * Load a font from Google Fonts by family name: injects the css2 stylesheet
+   * and awaits the requested weights via `document.fonts.load`. Deduped like
+   * {@link load} and covered by {@link ready}.
+   */
+  loadGoogleFont(spec: GoogleFontSpec): Promise<void> {
+    const weights = spec.weights?.length ? spec.weights : [400];
+    const key = `google:${spec.family}|${[...weights].sort((a, b) => a - b).join(',')}|${spec.italic ? 'i' : 'n'}`;
+    let p = this.loaded.get(key);
+    if (!p) {
+      p = this.loadGoogle(spec);
       this.loaded.set(key, p);
     }
     return p;
@@ -60,6 +100,33 @@ export class FontManager {
     const face = new FontFace(spec.family, source, { weight: spec.weight, style: spec.style });
     await face.load();
     globalThis.document?.fonts?.add(face);
+  }
+
+  /** Inject the Google css2 stylesheet + await the faces. Overridable for tests. */
+  protected async loadGoogle(spec: GoogleFontSpec): Promise<void> {
+    const base = spec.cssBase ?? 'https://fonts.googleapis.com/css2';
+    await this.injectStylesheet(buildGoogleCss2Url(base, spec));
+    const weights = spec.weights?.length ? spec.weights : [400];
+    const style = spec.italic ? 'italic' : 'normal';
+    const doc = globalThis.document;
+    await Promise.all(
+      weights.map((w) => doc?.fonts?.load(`${style} ${w} 16px "${spec.family}"`, spec.text ?? 'Aa') ?? Promise.resolve()),
+    );
+  }
+
+  /** Append a stylesheet `<link>` once and resolve when it has loaded. */
+  protected injectStylesheet(href: string): Promise<void> {
+    const doc = globalThis.document;
+    if (!doc || this.stylesheets.has(href)) return Promise.resolve();
+    this.stylesheets.add(href);
+    return new Promise<void>((resolve, reject) => {
+      const link = doc.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = href;
+      link.addEventListener('load', () => resolve());
+      link.addEventListener('error', () => reject(new Error(`font stylesheet failed: ${href}`)));
+      doc.head.appendChild(link);
+    });
   }
 }
 

@@ -44,7 +44,13 @@ export { FrameCache, type Closable } from './media/frame-cache';
 export { TextureManager } from './texture/texture-manager';
 
 // ── Text / Fonts ────────────────────────────────────────────────────────────
-export { FontManager, fonts, type FontSpec } from './text/font-manager';
+export {
+  FontManager,
+  fonts,
+  buildGoogleCss2Url,
+  type FontSpec,
+  type GoogleFontSpec,
+} from './text/font-manager';
 
 // ── Compositor graph ─────────────────────────────────────────────────────────
 export { Compositor, type CompositorOptions } from './compositor/compositor';
