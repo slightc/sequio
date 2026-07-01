@@ -337,6 +337,57 @@ describe('Compositor', () => {
     expect(source.prepared).toContain(1);
   });
 
+  it('pre-warms clips upcoming within prewarmSeconds (at their first frame)', async () => {
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      prewarmSeconds: 0.5,
+    });
+    const s1 = new SpySource();
+    const clip1 = new SourceClip(s1);
+    clip1.start = 0;
+    clip1.end = 1;
+    const s2 = new SpySource();
+    const clip2 = new SourceClip(s2);
+    clip2.start = 1;
+    clip2.end = 2;
+    const track = new VisualTrack();
+    track.add(clip1);
+    track.add(clip2);
+    c.addTrack(track);
+
+    // t=0.6: clip1 active (source time 0.6); clip2 upcoming (starts at 1, within
+    // 0.6+0.5=1.1) → warmed at its first frame (sourceIn = 0).
+    await c.prepare(0.6);
+    expect(s1.prepared).toContain(0.6);
+    expect(s2.prepared).toEqual([0]);
+  });
+
+  it('does not warm clips beyond the window, and the threshold is adjustable', async () => {
+    const c = new Compositor({ width: 320, height: 240, timebase: new Timebase(30) });
+    const s2 = new SpySource();
+    const clip2 = new SourceClip(s2);
+    clip2.start = 1;
+    clip2.end = 2;
+    const track = new VisualTrack();
+    track.add(clip2);
+    c.addTrack(track);
+
+    c.prewarmSeconds = 0.2;
+    await c.prepare(0.6); // clip2 starts at 1, outside 0.6+0.2=0.8 → not warmed
+    expect(s2.prepared).toEqual([]);
+
+    c.prewarmSeconds = 0.5;
+    await c.prepare(0.6); // now within 0.6+0.5=1.1 → warmed
+    expect(s2.prepared).toEqual([0]);
+
+    c.prewarmSeconds = 0; // disabled
+    s2.prepared.length = 0;
+    await c.prepare(0.6);
+    expect(s2.prepared).toEqual([]);
+  });
+
   it('recurses into groups: nested sources are prepared at local time', async () => {
     const c = makeCompositor();
     const inner = new SpySource();
