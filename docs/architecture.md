@@ -92,6 +92,27 @@ clock.play();
   且不用每帧测量 bounds；`Graphics`/`Container` 无原生 anchor，则按 `getLocalBounds()`
   映射成未缩放局部 `pivot`。
 
+### Clip 时间区间与边界（半开 `[start, end)`）
+
+`Clip.isActiveAt(t) = t >= start && t < end`——**start 含、end 不含**。这决定了相邻 clip
+在边界处的行为：
+
+- **无重叠、无缝隙**：相邻 clip `[0, 10.5)` 与 `[10.5, 20)` 在任意 t **恰好一个**活跃。
+  边界 `t=10.5` 归**后一个** clip（前一个 `10.5 < 10.5` = false 已失活）。所以边界那一刻
+  不会两个都在（重叠/双画）也不会都不在（缝隙/黑帧）；Reconciler 干净切换（前者 unmount、
+  后者 mount）。见 `tests/compositor.test.ts`。
+- **半帧边界（如 10.5f）无歧义**：渲染帧落在整数帧序号上（导出 `t = frame/fps`），没有帧
+  正好落在 10.5——切换发生在帧 10（属前 clip）与帧 11（属后 clip）之间，每帧唯一归属一个 clip。
+- **末端最后一帧**：内容在 `[0, end)` 上，最后可显示帧是 `end - 1/fps`；播放头正好停在 `end`
+  时该帧已失活（空/黑）。播放器式 UX 应让"播放头到末尾显示最后一帧"（示例见 `example/`）。
+- **预览的过渡观感（非崩溃）**：跨到新 clip 的那一刻，新 clip 的源可能**还没解码好**
+  （`prepare` 只预解码当前活跃 clip 的源），预览是尽力而为（fire-and-forget prepare +
+  立即 renderSync，契约 #1），故切换后的头几帧可能 miss → 短暂空白，随后追上。**导出**
+  `await prepare` 等齐、帧级精确、无此现象。跨 clip 预热（提前 prepare 紧邻的下一个 clip）
+  是后续可选增强。
+- **边界值实践**：让 `clip2.start === clip1.end`（共用同一数值，别分别算）以免浮点 sub-epsilon
+  的缝/叠；边界尽量用 `Timebase.toSeconds(frame)` 对齐到帧。
+
 ### 文字与字体加载（TextClip / FontManager）
 
 `TextClip` 用 `PIXI.Text` 渲染;`fontSize` 可关键帧动画,`text`/`fontFamily`/`fill` 为可设
