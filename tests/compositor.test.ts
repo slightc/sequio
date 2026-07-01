@@ -2,6 +2,7 @@ import { Container, type Texture } from 'pixi.js';
 import { describe, expect, it } from 'vitest';
 import { Compositor } from '../src/compositor/compositor';
 import { VisualClip } from '../src/compositor/clip';
+import { GroupClip } from '../src/compositor/group-clip';
 import { Reconciler } from '../src/compositor/reconciler';
 import { VisualTrack } from '../src/compositor/track';
 import { VisualSource, type SourceMetadata } from '../src/media/media-source';
@@ -209,5 +210,29 @@ describe('Compositor', () => {
     await c.prepare(1);
     expect(source.adopted).toBe(c.textures); // shared VRAM budget across sources
     expect(source.prepared).toContain(1);
+  });
+
+  it('recurses into groups: nested sources are prepared at local time', async () => {
+    const c = makeCompositor();
+    const inner = new SpySource();
+    const clip = new SourceClip(inner);
+    clip.start = 1; // local to the group
+    clip.end = 5;
+    const group = new GroupClip();
+    group.start = 2; // group localTime(t) = t - 2
+    group.end = 20;
+    group.add(clip);
+    const track = new VisualTrack();
+    track.add(group);
+    c.addTrack(track);
+
+    // timeline 4 → group local 2 → clip active [1,5) → sourceTime 2-1 = 1
+    await c.prepare(4);
+    expect(inner.adopted).toBe(c.textures);
+    expect(inner.prepared).toEqual([1]);
+
+    // group inactive at timeline 0 → nested source untouched
+    await c.prepare(0);
+    expect(inner.prepared).toEqual([1]);
   });
 });

@@ -3,6 +3,8 @@ import type { Disposable } from '../core/disposable';
 import type { Timebase } from '../time/timebase';
 import { Reconciler } from './reconciler';
 import type { Track } from './track';
+import type { VisualClip } from './clip';
+import { GroupClip } from './group-clip';
 import { VisualSource } from '../media/media-source';
 import { VisualTrack } from './track';
 import { TextureManager } from '../texture/texture-manager';
@@ -114,19 +116,37 @@ export class Compositor implements Disposable {
   async prepare(t: number): Promise<void> {
     const jobs: Promise<void>[] = [];
     for (const track of this.tracks) {
-      if (track instanceof VisualTrack) {
-        for (const clip of track.activeAt(t)) {
-          const source = (clip as { source?: VisualSource }).source;
-          if (source instanceof VisualSource) {
-            // Route every source's texture uploads through one VRAM budget.
-            if (isTextureManagerAware(source)) source.adoptTextureManager(this.textures);
-            const sourceTime = t - clip.start + clip.sourceIn;
-            jobs.push(source.prepare(sourceTime));
-          }
-        }
+      if (track instanceof VisualTrack && track.enabled) {
+        this.collectPrepareJobs(track.clips, t, jobs);
       }
     }
     await Promise.all(jobs);
+  }
+
+  /**
+   * Walk clips active at local time `localT`, prepping their sources. Recurses
+   * into {@link GroupClip} children at the group's local time, mirroring how the
+   * reconciler renders the same subtree (so nested video decodes too).
+   */
+  private collectPrepareJobs(
+    clips: readonly VisualClip[],
+    localT: number,
+    jobs: Promise<void>[],
+  ): void {
+    for (const clip of clips) {
+      if (!clip.isActiveAt(localT)) continue;
+      if (clip instanceof GroupClip) {
+        this.collectPrepareJobs(clip.children, clip.localTime(localT), jobs);
+        continue;
+      }
+      const source = (clip as { source?: VisualSource }).source;
+      if (source instanceof VisualSource) {
+        // Route every source's texture uploads through one VRAM budget.
+        if (isTextureManagerAware(source)) source.adoptTextureManager(this.textures);
+        const sourceTime = localT - clip.start + clip.sourceIn;
+        jobs.push(source.prepare(sourceTime));
+      }
+    }
   }
 
   /**

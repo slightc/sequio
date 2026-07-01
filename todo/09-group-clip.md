@@ -31,5 +31,7 @@ animation，并可任意嵌套。
 - `render(t)` 幂等：同一 t 重复 reconcile 复用子树。✅
 
 ## 备注
+- `Compositor.prepare(t)` 已递归进 group（用 `group.localTime(t)` 预解码嵌套子 clip 的源
+  并收编共享 `TextureManager`），与 reconcile 同坐标；见 `tests/compositor.test.ts`。
 - 与「根据 clip 总时长更新 duration」联动：后续可加 `GroupClip.contentEnd`
   （= 子 clip 最大 end）与 `Compositor.duration`，再驱动 `Clock.duration`。

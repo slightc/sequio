@@ -85,6 +85,9 @@ clock.play();
 - **递归 reconcile**：每个 `GroupClip` 持有一个内部 `Reconciler`，在 `update(t)` 里把
   活跃子 clip diff 进自己的 container；`Reconciler.reconcileClips(activeClips, t, stage)`
   是轨道层与分组层共用的扁平 diff 入口。group 失活时其子树整体卸载。
+- **递归 prepare**：`Compositor.prepare(t)` 同样递归进 group，用 `group.localTime(t)`
+  预解码嵌套子 clip 的源（并收编到共享 `TextureManager`），与 reconcile 走同一套坐标，
+  保证嵌套视频也会被 prepare。
 - **单一父级**：一个 clip 只能挂在一个父级（一条轨道或一个 group）下。
 - `render(t)` 仍是 (对象图, t) 的纯函数：同一 t 重复 reconcile 复用已挂载子树（契约 #2）。
 
