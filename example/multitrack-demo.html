@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>multi-track playground</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 28px;
+        font-family: system-ui, sans-serif;
+        background: #0b0b0e;
+        color: #e6e6ea;
+      }
+      h1 { font-size: 16px; font-weight: 600; opacity: 0.85; margin: 0 0 4px; }
+      p.hint { opacity: 0.55; font-size: 13px; margin: 0 0 18px; }
+      .layout { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+      #stage canvas { border-radius: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55); }
+      .transport {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 14px;
+        width: 480px;
+      }
+      .transport #scrub { flex: 1; }
+      #time { font-variant-numeric: tabular-nums; opacity: 0.7; min-width: 96px; }
+      button {
+        background: #2b6cff;
+        color: #fff;
+        border: 0;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      label.loop { display: flex; align-items: center; gap: 6px; font-size: 13px; opacity: 0.8; }
+      #tracks { display: flex; flex-direction: column; gap: 12px; min-width: 300px; }
+      .card {
+        background: #16161c;
+        border: 1px solid #24242d;
+        border-radius: 10px;
+        padding: 12px 14px;
+      }
+      .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+      .card-title { font-size: 13px; font-weight: 600; }
+      .field { display: flex; align-items: center; gap: 10px; margin: 7px 0; font-size: 12px; }
+      .field .lbl { width: 64px; opacity: 0.65; }
+      .field input[type='range'] { flex: 1; }
+      .field .val { width: 34px; text-align: right; font-variant-numeric: tabular-nums; opacity: 0.75; }
+      .field select, .field input[type='number'] {
+        background: #0f0f14;
+        color: #e6e6ea;
+        border: 1px solid #2a2a34;
+        border-radius: 5px;
+        padding: 4px 6px;
+        font-size: 12px;
+      }
+      .field input[type='number'] { width: 64px; }
+    </style>
+  </head>
+  <body>
+    <h1>Multi-track playground (milestone 04)</h1>
+    <p class="hint">
+      Three stacked tracks. Toggle a track, drag opacity, switch blendMode, or change z-index —
+      the canvas repaints on every change (the SDK never auto-repaints). Press play to animate.
+    </p>
+    <div class="layout">
+      <div>
+        <div id="stage"></div>
+        <div class="transport">
+          <button id="play">▶ Play</button>
+          <input id="scrub" type="range" min="0" max="6" step="0.01" value="0" />
+          <span id="time">0.00 / 6.00s</span>
+          <label class="loop"><input id="loop" type="checkbox" checked /> loop</label>
+        </div>
+      </div>
+      <div id="tracks"></div>
+    </div>
+    <script type="module" src="/example/multitrack-demo.ts"></script>
+  </body>
+</html>
