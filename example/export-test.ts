@@ -207,6 +207,8 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
 
   let error: string | null = null;
   let size = 0;
+  let litFrames = 0;
+  let frames = 0;
   try {
     const out = await new Exporter(c2, new AudioEngine(new Timebase(FPS))).export({
       fps: FPS,
@@ -216,12 +218,41 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
       ...codec,
     });
     size = out.size;
+
+    // Decode the re-exported video and count NON-black frames — frame-sync bugs
+    // (prepare not awaiting an in-flight decode) show up as dropped/black frames.
+    const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } = await import('mediabunny');
+    const input = new Input({ source: new BlobSource(out), formats: ALL_FORMATS });
+    const vtrack = await input.getPrimaryVideoTrack();
+    if (vtrack) {
+      const sink = new VideoSampleSink(vtrack);
+      const cv = document.createElement('canvas');
+      cv.width = W;
+      cv.height = H;
+      const cx = cv.getContext('2d')!;
+      for await (const sample of sink.samples(0, Math.min(meta.duration, 1))) {
+        frames++;
+        sample.draw(cx, 0, 0, W, H);
+        const d = cx.getImageData(0, 0, W, H).data;
+        let lit = false;
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i]! > 40 || d[i + 1]! > 40 || d[i + 2]! > 40) {
+            lit = true;
+            break;
+          }
+        }
+        if (lit) litFrames++;
+        sample.close();
+      }
+    }
   } catch (e) {
     error = String(e);
   }
   c2.dispose();
   source.dispose();
-  return { okRoundTrip: !error && size > 500, error, size, duration: meta.duration };
+  // Most frames must have visible content (the moving red box), not be black.
+  const okRoundTrip = !error && size > 500 && frames > 0 && litFrames >= frames - 1;
+  return { okRoundTrip, error, size, frames, litFrames, duration: meta.duration };
 }
 
 /** A VideoClip whose pooled texture gets evicted (destroyed) while a later frame

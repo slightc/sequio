@@ -44,6 +44,25 @@ class TestTextureManager extends TextureManager {
   }
 }
 
+/** Backend whose decodes block until explicitly released (per source-second). */
+class GatedBackend implements VideoDecoderBackend {
+  decodeCalls: number[] = [];
+  private readonly gates = new Map<number, () => void>();
+  async load(): Promise<SourceMetadata> {
+    return META;
+  }
+  decode(sec: number): Promise<DecodedFrame | null> {
+    this.decodeCalls.push(sec);
+    return new Promise((resolve) => {
+      this.gates.set(sec, () => resolve({ timestamp: sec, image: {} as CanvasImageSource, close: () => {} }));
+    });
+  }
+  release(sec: number): void {
+    this.gates.get(sec)?.();
+  }
+  dispose(): void {}
+}
+
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 const has = (arr: number[], v: number) => arr.some((x) => Math.abs(x - v) < 1e-9);
 
@@ -106,6 +125,32 @@ describe('VideoSource', () => {
     await source.prepare(0.5);
     await source.prepare(0.5);
     expect(backend.decodeCalls.filter((s) => s === 0.5)).toHaveLength(1);
+  });
+
+  it('prepare awaits an already-in-flight (prewarm) decode instead of returning early', async () => {
+    // The bug this guards: on export, prewarm starts decoding frame N+1; a later
+    // prepare(N+1) must AWAIT that decode, not resolve before the frame exists
+    // (which would render a dropped/black frame).
+    const backend = new GatedBackend();
+    const textures = new TestTextureManager();
+    const source = new VideoSource({ src: 'x', backend, textureManager: textures, lookahead: 1 });
+    await source.load();
+
+    const p1 = source.prepare(0.5); // decode idx15; prewarm idx16 fires after idx15 resolves
+    backend.release(0.5);
+    await p1;
+    expect(source.getTextureAt(0.5)).not.toBeNull();
+    expect(source.getTextureAt(16 / 30)).toBeNull(); // idx16 still decoding (gated)
+
+    // Explicitly prepare the in-flight frame — it must stay pending until decoded.
+    const p2 = source.prepare(16 / 30);
+    const raced = await Promise.race([p2.then(() => 'resolved'), tick().then(() => 'pending')]);
+    expect(raced).toBe('pending');
+
+    backend.release(16 / 30);
+    await p2;
+    expect(source.getTextureAt(16 / 30)).not.toBeNull(); // now resident, in sync
+    expect(backend.decodeCalls.filter((s) => Math.abs(s - 16 / 30) < 1e-9)).toHaveLength(1); // decoded once
   });
 
   it('evicting a frame past budget closes it and releases its texture', async () => {
