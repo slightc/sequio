@@ -31,9 +31,20 @@ export class AnimatableProperty<T> {
     return this.keyframes.length > 1;
   }
 
-  /** Update the static (un-keyframed) value. */
+  /**
+   * Make the property a constant `value`. This also **clears any keyframes** —
+   * a static value and keyframes are mutually exclusive, and `valueAt` prefers
+   * keyframes, so a lingering keyframe set would otherwise shadow the static
+   * value (e.g. toggling an animation off would stay stuck on the last curve).
+   */
   setStatic(value: T): void {
     this.staticValue = value;
+    if (this.keyframes.length > 0) this.keyframes = [];
+  }
+
+  /** Drop keyframes and fall back to the current static value. */
+  clearKeyframes(): void {
+    this.keyframes = [];
   }
 
   valueAt(t: number): T {

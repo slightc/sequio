@@ -189,10 +189,12 @@ async function setupEffects(): Promise<void> {
       clock.seek(0);
       clock.play();
       playBtn.disabled = false;
+      playBtn.textContent = '⏸ Pause';
     } else {
       clock.pause();
-      applyStatic();
+      applyStatic(); // setStatic clears the keyframes → back to slider values
       playBtn.disabled = true;
+      playBtn.textContent = '▶ Play';
     }
   }
 
@@ -207,8 +209,9 @@ async function setupEffects(): Promise<void> {
     }
   });
 
-  applyStatic(); // initial paint
+  applyStatic(); // initial paint (manual mode)
   playBtn.disabled = true;
+  playBtn.textContent = '▶ Play';
 }
 
 // ── Panel B: crossfade transition ───────────────────────────────────────────
