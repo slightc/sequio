@@ -73,6 +73,20 @@ export { Effect } from './effects/effect';
 export { EffectRegistry, type EffectFactory } from './effects/effect-registry';
 export { ColorEffect } from './effects/color-effect';
 export { BlurEffect } from './effects/blur-effect';
+export { BulgeEffect } from './effects/bulge-effect';
+export { PerspectiveEffect } from './effects/perspective-effect';
+export { DisplacementEffect, type DisplacementEffectOptions } from './effects/displacement-effect';
+export {
+  type Mat3,
+  type Quad,
+  type Vec2,
+  UNIT_QUAD,
+  squareToQuad,
+  invert3x3,
+  applyHomography,
+  perspectiveSampleMatrix,
+} from './effects/warp/homography';
+export { bulgeSourceUv } from './effects/warp/distortion';
 export { registerBuiltins, BUILTIN_EFFECTS } from './effects/builtins';
 export { Transition } from './effects/transition';
 export { CrossfadeTransition, crossfadeAlpha } from './effects/crossfade-transition';

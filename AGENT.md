@@ -44,7 +44,7 @@ src/
   texture/     TextureManager (GPU budget + LRU)             ✅ implemented
   text/        FontManager (web-font loading)                ✅ implemented
   compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips done, transitions TODO
-  effects/     Effect, EffectRegistry, Transition            🚧 color/blur effects + crossfade done, chroma/LUT/wipe TODO
+  effects/     Effect, EffectRegistry, Transition            🚧 color/blur + warp (bulge/perspective/displacement) + crossfade done, chroma/LUT/wipe TODO
   audio/       AudioEngine + scheduling                      ✅ implemented (Web Audio + OfflineAudioContext)
   export/      Exporter                                      🚧 interface only
   index.ts     public barrel

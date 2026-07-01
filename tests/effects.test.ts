@@ -69,7 +69,8 @@ describe('EffectRegistry + builtins', () => {
   it('registers color and blur, creates them, and is idempotent', () => {
     const reg = new EffectRegistry();
     registerBuiltins(reg);
-    expect(reg.types().sort()).toEqual(['blur', 'color']);
+    expect(reg.types()).toContain('color');
+    expect(reg.types()).toContain('blur');
     expect(reg.create('color')).toBeInstanceOf(ColorEffect);
     expect(reg.create('blur')).toBeInstanceOf(BlurEffect);
     expect(() => registerBuiltins(reg)).not.toThrow(); // no double-register

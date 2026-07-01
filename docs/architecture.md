@@ -34,7 +34,7 @@
 | 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
 | 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）已实现；转场待后续里程碑 |
-| 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
+| 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
 | 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
 
@@ -183,10 +183,33 @@ clock.play();
   WebGL 上用 `ColorEffect` 压暗白块、`BlurEffect` 让红块边缘外溢、`CrossfadeTransition`
   把红→蓝在 `progress=0.5` 混成 `(128,0,127)`。
 
-尚未落地（后续里程碑）:`ChromaKeyEffect` / `LUTEffect` / `TransformEffect`（需自定义
-`GlProgram`/`GpuProgram`）、`WipeTransition`，以及把 `Transition` 接进 Compositor 让相邻
-clip 在重叠区间按 `durationFrames` **自动**过渡——当前 `Transition` 是可独立调用的构件，
-还没有由 Compositor 驱动。
+**Warp 效果（透视 / 扭曲 / 畸变）**——`Transform2D` 只能做仿射（平移/缩放/旋转），
+warp 处理的是仿射做不到的几何形变，都通过自写 `GlProgram` 片元着色器采样源纹理实现。
+关键约定：着色器把 `vTextureCoord` 用系统 uniform `uInputClamp` 归一化成 clip 自身
+bounds 上的 `[0,1]` 坐标，distort 后再映回采样——**所以 warp 的作用范围是 clip 的包围盒**
+（贴合形状的 clip 会把外溢裁掉；要整帧 warp 就让 clip 铺满帧）。纯几何数学与着色器分离，
+可脱离 GPU 单测：
+
+- **`PerspectiveEffect`（透视/corner-pin）**：四角（TL/TR/BR/BL，`[0,1]`，可动画）定义目标
+  四边形。纯函数 `squareToQuad`（Heckbert 闭式解，单位方→四边形的 3×3 单应）+ `invert3x3`
+  求 dest→source 单应，`perspectiveSampleMatrix` 打包成列主序上传；着色器做 `uMatrix*vec3(uv,1)`
+  透视除法采样，落在四边形外的输出透明。默认单位方=恒等；向外拉出 bounds 的 corner-pin
+  （padding）留作后续。
+- **`BulgeEffect`（畸变/fisheye）**：绕 `center` 在 `radius` 内做径向放大（`strength>0` 凸起）/
+  收缩（`<0` 挤压），`aspect` 修正保持圆形；纯函数 `bulgeSourceUv` 是着色器的 CPU 参照，
+  单测「凸起→采样点更靠近中心（放大）」。
+- **`DisplacementEffect`（扭曲）**：薄封装 Pixi 内置 `DisplacementFilter`，用一张位移贴图
+  （R/G 通道 = 横/纵偏移）驱动，`strength` 可动画；无贴图时用中性灰 `(0.5,0.5)`→零位移。
+  适合波纹/热浪/动态扭曲。
+- 校验:`tests/effects-warp.test.ts`（单应恒等/角点映射/`M·M⁻¹=I`/列主序、bulge 放大与挤压、
+  各 effect `valuesAt`/`matrixAt`、注册五个内置）+ e2e `pnpm verify:effects` warp 段——真实
+  WebGL 上 bulge 把圆盘外一个黑点放大成白、perspective 把整帧白矩形顶角切成透明而中心保持、
+  displacement 让红蓝分界沿行位移。
+
+尚未落地（后续里程碑）:`ChromaKeyEffect` / `LUTEffect`（需自定义采样着色器/贴图）、
+向外 corner-pin 的 padding、warp 的 WGSL（WebGPU）变体、`WipeTransition`，以及把
+`Transition` 接进 Compositor 让相邻 clip 在重叠区间按 `durationFrames` **自动**过渡
+——当前 `Transition` 是可独立调用的构件，还没有由 Compositor 驱动。
 
 ### 分组 / 子合成（GroupClip）
 

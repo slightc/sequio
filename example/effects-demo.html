@@ -42,6 +42,14 @@
         cursor: pointer;
       }
       button:disabled { opacity: 0.4; cursor: default; }
+      select {
+        background: #0f0f14;
+        color: #e6e6ea;
+        border: 1px solid #2a2a34;
+        border-radius: 5px;
+        padding: 4px 6px;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
@@ -50,7 +58,9 @@
       Left: a clip carrying a <code>ColorEffect</code> + <code>BlurEffect</code> — drag the sliders to
       drive their animatable params (the canvas repaints on each change; the SDK never auto-repaints).
       Tick <b>Animate</b> to keyframe them and let the render clock sweep <code>updateAt(t)</code>.
-      Right: a <code>CrossfadeTransition</code> blends A→B — scrub the mix or press Play to ping-pong it.
+      Middle: a <code>CrossfadeTransition</code> blends A→B — scrub the mix or press Play to ping-pong it.
+      Right: geometric <b>warps</b> — perspective corner-pin, bulge/pinch, or a displacement-map ripple
+      (things <code>Transform2D</code>'s affine transform can't do). Pick a type and drag the amount.
     </p>
 
     <div class="panels">
@@ -96,6 +106,29 @@
           </div>
           <div class="row">
             <button id="xf-play">▶ Play</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Warp (perspective / bulge / displacement)</h2>
+        <div id="warp-stage"></div>
+        <div class="card">
+          <div class="field">
+            <span class="lbl">type</span>
+            <select id="warp-type">
+              <option value="perspective">perspective</option>
+              <option value="bulge">bulge / pinch</option>
+              <option value="displacement">displacement</option>
+            </select>
+          </div>
+          <div class="field">
+            <span class="lbl">amount</span>
+            <input id="warp-amount" type="range" min="-1" max="1" step="0.01" value="0.5" />
+            <span class="val" id="warp-amount-v">0.50</span>
+          </div>
+          <div class="row">
+            <button id="warp-play">▶ Play</button>
           </div>
         </div>
       </div>

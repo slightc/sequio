@@ -16,10 +16,14 @@
 import { Container, Sprite, Texture, type Renderer, type RenderTexture, autoDetectRenderer } from 'pixi.js';
 import {
   BlurEffect,
+  BulgeEffect,
   ColorEffect,
   Compositor,
   CrossfadeTransition,
+  DisplacementEffect,
   ImageClip,
+  ImageSource,
+  PerspectiveEffect,
   RealtimeClock,
   Timebase,
   VisualSource,
@@ -287,9 +291,159 @@ async function setupCrossfade(): Promise<void> {
   paint(0.5); // initial mix
 }
 
+// ── Panel C: warps (perspective / bulge / displacement) ──────────────────────
+
+/** A full-frame grid + colour blocks so warps read clearly. */
+async function gridBitmap(): Promise<ImageBitmap> {
+  const c = document.createElement('canvas');
+  c.width = WIDTH;
+  c.height = HEIGHT;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#f4f4f8';
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  const blocks: [number, number, number, number, string][] = [
+    [0, 0, WIDTH / 2, HEIGHT / 2, '#ff5d73'],
+    [WIDTH / 2, 0, WIDTH / 2, HEIGHT / 2, '#ffd166'],
+    [0, HEIGHT / 2, WIDTH / 2, HEIGHT / 2, '#2b6cff'],
+    [WIDTH / 2, HEIGHT / 2, WIDTH / 2, HEIGHT / 2, '#06d6a0'],
+  ];
+  for (const [x, y, w, h, fill] of blocks) {
+    ctx.fillStyle = fill;
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(x, y, w, h);
+  }
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= WIDTH; x += 28) {
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, HEIGHT);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= HEIGHT; y += 28) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + 0.5);
+    ctx.lineTo(WIDTH, y + 0.5);
+    ctx.stroke();
+  }
+  return createImageBitmap(c);
+}
+
+/** A concentric ripple displacement map (R/G = horizontal/vertical offset). */
+function rippleMap(): Texture {
+  const c = document.createElement('canvas');
+  c.width = WIDTH;
+  c.height = HEIGHT;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(WIDTH, HEIGHT);
+  const cx = WIDTH / 2;
+  const cy = HEIGHT / 2;
+  for (let y = 0; y < HEIGHT; y++) {
+    for (let x = 0; x < WIDTH; x++) {
+      const r = Math.hypot(x - cx, y - cy);
+      const a = r * 0.18;
+      const i = (y * WIDTH + x) * 4;
+      img.data[i] = 128 + 90 * Math.sin(a);
+      img.data[i + 1] = 128 + 90 * Math.cos(a);
+      img.data[i + 2] = 128;
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return Texture.from(c);
+}
+
+async function setupWarp(): Promise<void> {
+  const compositor = new Compositor({
+    width: WIDTH,
+    height: HEIGHT,
+    timebase: new Timebase(FPS),
+    background: 0x101014,
+    preferWebGPU: false,
+  });
+  await compositor.init();
+  document.getElementById('warp-stage')!.append(compositor.view);
+
+  const track = new VisualTrack();
+  compositor.addTrack(track);
+
+  const source = new ImageSource({ src: await gridBitmap() });
+  await source.load();
+  const clip = new ImageClip(source);
+  clip.start = 0;
+  clip.end = DURATION;
+  clip.transform.anchor.setStatic([0.5, 0.5]);
+  clip.transform.position.setStatic([WIDTH / 2, HEIGHT / 2]); // fills the frame at scale 1
+
+  const bulge = new BulgeEffect();
+  const persp = new PerspectiveEffect();
+  const disp = new DisplacementEffect({ map: rippleMap(), strength: 0 });
+  clip.effects.push(bulge, persp, disp);
+  track.add(clip);
+
+  const sel = document.getElementById('warp-type') as HTMLSelectElement;
+  const amount = bind('warp-amount');
+  const amountV = document.getElementById('warp-amount-v')!;
+  const playBtn = document.getElementById('warp-play') as HTMLButtonElement;
+
+  /** Reset every warp to identity (so only the selected one is active). */
+  function identity(): void {
+    bulge.strength.setStatic(0);
+    persp.topLeft.setStatic([0, 0]);
+    persp.topRight.setStatic([1, 0]);
+    persp.bottomRight.setStatic([1, 1]);
+    persp.bottomLeft.setStatic([0, 1]);
+    disp.strength.setStatic(0);
+  }
+
+  /** Apply the selected warp at signed intensity `a ∈ [-1,1]`, then repaint. */
+  function applyAmount(a: number): void {
+    identity();
+    if (sel.value === 'bulge') {
+      bulge.strength.setStatic(a); // + bulge, − pinch
+    } else if (sel.value === 'perspective') {
+      const k = Math.abs(a) * 0.4; // pull the top edge in
+      persp.topLeft.setStatic([k, 0]);
+      persp.topRight.setStatic([1 - k, 0]);
+    } else {
+      disp.strength.setStatic(a * 60);
+    }
+    compositor.renderPreview(0);
+  }
+
+  amount.addEventListener('input', () => {
+    amountV.textContent = Number(amount.value).toFixed(2);
+    applyAmount(Number(amount.value));
+  });
+  sel.addEventListener('change', () => applyAmount(Number(amount.value)));
+
+  const clock = new RealtimeClock();
+  clock.duration = DURATION;
+  clock.onTick((t) => {
+    const phase = Math.sin((t / clock.duration) * Math.PI * 2); // −1 … 1
+    amount.value = String(phase);
+    amountV.textContent = phase.toFixed(2);
+    applyAmount(phase);
+  });
+  clock.onEnded(() => clock.play());
+  playBtn.addEventListener('click', () => {
+    if (clock.paused) {
+      clock.play();
+      playBtn.textContent = '⏸ Pause';
+    } else {
+      clock.pause();
+      playBtn.textContent = '▶ Play';
+    }
+  });
+
+  applyAmount(Number(amount.value)); // initial paint
+}
+
 async function main(): Promise<void> {
   await setupEffects();
   await setupCrossfade();
+  await setupWarp();
   // Readiness flag: lets `scripts/verify-page.cjs` smoke-test that both panels
   // wire up and paint without throwing (pixel correctness is covered by
   // `pnpm verify:effects`).
