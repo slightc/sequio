@@ -88,6 +88,9 @@ export class Compositor implements Disposable {
   private renderer: Renderer | null = null;
   private initPromise: Promise<void> | null = null;
   private dirty = true;
+  /** Bumped on every renderPreview so a stale post-decode repaint can be skipped. */
+  private previewToken = 0;
+  private destroyed = false;
 
   constructor(readonly options: CompositorOptions) {
     // Hold a (possibly detached) canvas synchronously so the object graph can
@@ -212,6 +215,9 @@ export class Compositor implements Disposable {
    * (SDK contract #2). Draws pixels only once {@link init} has resolved.
    */
   renderSync(t: number): void {
+    // Any render supersedes a pending post-decode preview repaint (so a stale
+    // seek — or an export driving this same compositor — can't be clobbered).
+    this.previewToken++;
     this.reconciler.reconcile(this.tracks, t, this.stage, this.renderContext());
     this.syncStageEffects(t);
     this.renderer?.render({ container: this.stage });
@@ -237,6 +243,7 @@ export class Compositor implements Disposable {
     if (!this.renderer) {
       throw new Error('Compositor.renderToTexture requires init() first — see todo/01-skeleton.md');
     }
+    this.previewToken++; // an offscreen/export render also supersedes a pending repaint
     this.reconciler.reconcile(this.tracks, t, this.stage, this.renderContext());
     this.syncStageEffects(t);
     const target = RenderTexture.create({
@@ -265,10 +272,24 @@ export class Compositor implements Disposable {
     }
   }
 
-  /** Preview: best-effort prepare + immediate renderSync (may drop frames). */
+  /**
+   * Preview: best-effort prepare + immediate renderSync (may drop frames), then
+   * a single repaint of the SAME frame once its async decode resolves. Without
+   * that follow-up, seeking (while paused) to a not-yet-decoded position would
+   * render a miss and **stay black forever**, since the SDK never repaints on its
+   * own. The repaint is skipped if a newer `renderPreview` (seek / playback tick)
+   * superseded this one, so smooth playback pays nothing.
+   */
   renderPreview(t: number): void {
-    void this.prepare(t); // fire-and-forget; misses fall back to last frame
-    this.renderSync(t);
+    const ready = this.prepare(t); // kick off decodes first
+    this.renderSync(t); // immediate best-effort (a miss shows the last/empty frame); bumps the token
+    const token = this.previewToken; // this render's generation
+    void ready.then(() => {
+      // Repaint the same frame now that it's decoded — unless a newer render
+      // (another seek, a playback tick, or an export) superseded us, or we were
+      // disposed. So continuous seeking can't race, and export is untouched.
+      if (token === this.previewToken && !this.destroyed) this.renderSync(t);
+    });
   }
 
   resize(w: number, h: number): void {
@@ -288,6 +309,7 @@ export class Compositor implements Disposable {
   }
 
   dispose(): void {
+    this.destroyed = true; // stop any pending post-decode repaint
     for (const effect of this.attachedEffects) effect.detach(this.stage);
     this.attachedEffects.clear();
     this.reconciler.clear(this.stage);

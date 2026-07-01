@@ -50,11 +50,28 @@ export class VideoSource extends VisualSource {
   private ownsTextures: boolean;
   private fps = 30;
   private lastSec: number | null = null;
+  /**
+   * Serializes decode dispatch AND lets a newer seek shed a stale backlog: a
+   * fast scrub fires many `prepare`s, and without this every intermediate
+   * position (plus its look-ahead) would queue a decode, so the decoder keeps
+   * chewing through frames nobody wants long after the drag ends. Each queued
+   * decode re-checks {@link wanted} at the head of the lane and skips itself if
+   * a later seek has moved the playhead far away — so scrubbing settles on the
+   * final frame instead of piling up.
+   */
+  private decodeLane: Promise<unknown> = Promise.resolve();
+  /** Frame index of the most recent {@link prepare} target (the live playhead). */
+  private currentIdx = 0;
+  /** How far a queued decode may fall behind the playhead before it's dropped. */
+  private readonly dropHorizon: number;
 
   constructor(private readonly options: VideoSourceOptions) {
     super();
     this.backend = options.backend ?? new MediabunnyVideoDecoder(options.src);
     this.lookahead = options.lookahead ?? 3;
+    // Keep the whole look-ahead window (and a little slack for playback drift)
+    // decodable; only genuine seek jumps beyond it get shed.
+    this.dropHorizon = this.lookahead + 8;
     this.textures = options.textureManager ?? new TextureManager();
     this.ownsTextures = options.textureManager === undefined;
     // When a frame leaves the decode cache, release its GPU texture so VRAM
@@ -102,6 +119,7 @@ export class VideoSource extends VisualSource {
     const idx = this.frameIndexAt(sourceTime);
     const dir = this.lastSec === null || sourceTime >= this.lastSec ? 1 : -1;
     this.lastSec = sourceTime;
+    this.currentIdx = idx; // move the playhead so stale queued decodes shed themselves
 
     await this.ensure(idx, sourceTime);
 
@@ -143,7 +161,15 @@ export class VideoSource extends VisualSource {
     if (pending) return pending;
     const p = (async () => {
       try {
-        const frame = await this.backend.decode(sec);
+        // Take a turn in the single decode lane; when we reach the head, skip
+        // the decode if a newer seek has left this frame far behind the playhead
+        // (drop-stale). This keeps a fast scrub from backing up the decoder.
+        const run = this.decodeLane.then(() => (this.wanted(idx) ? this.backend.decode(sec) : null));
+        this.decodeLane = run.then(
+          () => undefined,
+          () => undefined,
+        );
+        const frame = await run;
         if (frame) this.cache.put(idx, frame);
       } finally {
         this.inFlight.delete(idx);
@@ -151,6 +177,11 @@ export class VideoSource extends VisualSource {
     })();
     this.inFlight.set(idx, p);
     return p;
+  }
+
+  /** Whether frame `idx` is still close enough to the live playhead to decode. */
+  private wanted(idx: number): boolean {
+    return Math.abs(idx - this.currentIdx) <= this.dropHorizon;
   }
 
   dispose(): void {
