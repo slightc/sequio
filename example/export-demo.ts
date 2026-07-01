@@ -252,18 +252,35 @@ async function main(): Promise<void> {
 
   exportBtn.addEventListener('click', async () => {
     if (!scene) return;
+    // Export drives the shared compositor, so remember the preview's playback
+    // state and restore it afterward — exporting must not change where you were.
+    const wasPlaying = !clock.paused;
+    const playhead = clock.currentTime;
     clock.pause();
     audio.pause();
-    playBtn.textContent = '▶ Play';
     exportBtn.disabled = true;
     result.innerHTML = '';
     bar.style.width = '0%';
+
+    // Put the preview back exactly where it was — same frame, and playing again
+    // if it was playing.
+    const restore = () => {
+      exportBtn.disabled = false;
+      clock.seek(playhead); // re-renders the preview frame at the playhead
+      if (wasPlaying) {
+        clock.play();
+        audio.play(playhead);
+        playBtn.textContent = '⏸ Pause';
+      } else {
+        playBtn.textContent = '▶ Play';
+      }
+    };
 
     const withAudio = !!(scene.audioClip && scene.audioSource);
     const codec = await pickCodec(containerSel.value, withAudio);
     if (!codec) {
       status.textContent = 'No encodable codec in this browser.';
-      exportBtn.disabled = false;
+      restore();
       return;
     }
     status.textContent = `Encoding ${codec.container} / ${codec.videoCodec}${withAudio ? ` + ${codec.audioCodec}` : ''}…`;
@@ -298,8 +315,7 @@ async function main(): Promise<void> {
     } catch (err) {
       status.textContent = `Export failed: ${String(err)}`;
     } finally {
-      exportBtn.disabled = false;
-      renderAt(Number(scrub.value)); // restore the preview frame
+      restore(); // playhead + play/pause + audio, exactly as before export
     }
   });
 
