@@ -338,10 +338,60 @@ async function runWarps(): Promise<Record<string, unknown>> {
   };
 }
 
+/** B2) a CrossfadeTransition driven by the compositor over two overlapping clips. */
+async function runTrackTransition(): Promise<Record<string, unknown>> {
+  // Red A on [0,2), blue B on [1,3) → overlap [1,2). A fresh compositor per
+  // sample (WebGL readback is only reliable on the just-rendered frame).
+  const sampleAt = async (t: number) => {
+    const compositor = new Compositor({
+      width: W,
+      height: H,
+      timebase: new Timebase(30),
+      background: 0x000000,
+      preferWebGPU: false,
+    });
+    await compositor.init();
+    const track = new VisualTrack();
+    const a = new ShapeClip({ kind: 'rect', width: W, height: H, fill: 0xff0000 });
+    place(a, W / 2, H / 2); // NOTE: place() sets start/end, so override them after
+    a.start = 0;
+    a.end = 2;
+    const b = new ShapeClip({ kind: 'rect', width: W, height: H, fill: 0x0000ff });
+    place(b, W / 2, H / 2);
+    b.start = 1;
+    b.end = 3;
+    track.add(a);
+    track.add(b);
+    track.addTransition(new CrossfadeTransition().between(a, b)); // overlap [1,2)
+    compositor.addTrack(track);
+
+    compositor.renderSync(t);
+    const off = document.createElement('canvas');
+    off.width = W;
+    off.height = H;
+    const ctx = off.getContext('2d')!;
+    ctx.drawImage(compositor.view, 0, 0);
+    const p = px(ctx.getImageData(0, 0, W, H).data, W, W / 2, H / 2);
+    compositor.dispose();
+    return p;
+  };
+
+  const before = await sampleAt(0.5); // only A → red
+  const mid = await sampleAt(1.5); // overlap midpoint, progress 0.5 → purple
+  const after = await sampleAt(2.5); // only B → blue
+
+  const okBefore = before.r > 200 && before.b < 60;
+  const okMid = mid.r > 90 && mid.r < 170 && mid.b > 90 && mid.b < 170;
+  const okAfter = after.b > 200 && after.r < 60;
+
+  return { okBefore, okMid, okAfter, before, mid, after };
+}
+
 async function run(): Promise<void> {
   const clip = await runClipEffects();
   const global = await runGlobalEffect();
   const fade = await runCrossfade();
+  const trackTr = await runTrackTransition();
   const warp = await runWarps();
   const ok = Boolean(
     clip.okDim &&
@@ -350,11 +400,21 @@ async function run(): Promise<void> {
       fade.okStart &&
       fade.okEnd &&
       fade.okMid &&
+      trackTr.okBefore &&
+      trackTr.okMid &&
+      trackTr.okAfter &&
       warp.okBulge &&
       warp.okPerspective &&
       warp.okDisplacement,
   );
-  (window as unknown as { __EFFECTS_TEST__: unknown }).__EFFECTS_TEST__ = { ok, clip, global, fade, warp };
+  (window as unknown as { __EFFECTS_TEST__: unknown }).__EFFECTS_TEST__ = {
+    ok,
+    clip,
+    global,
+    fade,
+    trackTr,
+    warp,
+  };
 }
 
 run().catch((err) => {

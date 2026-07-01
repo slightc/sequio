@@ -13,7 +13,7 @@
  *      {@link CrossfadeTransition}; the progress slider scrubs the mix and Play
  *      ping-pongs it. `out = A*(1-p) + B*p`.
  */
-import { Container, Sprite, Texture, type Renderer, type RenderTexture, autoDetectRenderer } from 'pixi.js';
+import { Texture } from 'pixi.js';
 import {
   BlurEffect,
   BulgeEffect,
@@ -89,10 +89,10 @@ class DrawnSource extends VisualSource {
   }
 }
 
-/** Fill the frame with an `SS`×-supersampled clip: center it and scale by 1/SS. */
-function fillFrame(clip: VisualClip, ss: number): void {
+/** Fill a `w×h` frame with an `SS`×-supersampled clip: center it, scale by 1/SS. */
+function fillFrame(clip: VisualClip, ss: number, w = WIDTH, h = HEIGHT): void {
   clip.transform.anchor.setStatic([0.5, 0.5]);
-  clip.transform.position.setStatic([WIDTH / 2, HEIGHT / 2]);
+  clip.transform.position.setStatic([w / 2, h / 2]);
   clip.transform.scale.setStatic([1 / ss, 1 / ss]);
 }
 
@@ -266,79 +266,79 @@ async function setupEffects(): Promise<void> {
 
 const XF_W = 320;
 const XF_H = 180;
+const XF_DUR = 3; // A on [0,2), B on [1,3) → crossfade over the overlap [1,2)
 
-/** A warm/cool gradient texture labelled A / B, drawn at `SS`× for HiDPI. */
-function gradientTexture(label: string, a: string, b: string): Texture {
-  const c = document.createElement('canvas');
-  c.width = Math.round(XF_W * SS);
-  c.height = Math.round(XF_H * SS);
-  const ctx = c.getContext('2d')!;
-  ctx.scale(SS, SS); // draw in logical coordinates
-  const g = ctx.createLinearGradient(0, 0, XF_W, XF_H);
-  g.addColorStop(0, a);
-  g.addColorStop(1, b);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, XF_W, XF_H);
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.font = 'bold 96px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(label, XF_W / 2, XF_H / 2);
-  return Texture.from(c);
+/** A warm/cool gradient + big label, drawn in logical coords (for a clip source). */
+function gradientDraw(label: string, a: string, b: string) {
+  return (ctx: CanvasRenderingContext2D): void => {
+    const g = ctx.createLinearGradient(0, 0, XF_W, XF_H);
+    g.addColorStop(0, a);
+    g.addColorStop(1, b);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, XF_W, XF_H);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.font = 'bold 96px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, XF_W / 2, XF_H / 2);
+  };
 }
 
 async function setupCrossfade(): Promise<void> {
-  // HiDPI: render at devicePixelRatio with autoDensity (canvas stays XF_W×XF_H
-  // in CSS px, backing store is SS×). The SS×-supersampled textures below keep
-  // the output crisp.
-  const renderer = (await autoDetectRenderer({
+  // Real track-driven transition: two overlapping clips on one track with a
+  // CrossfadeTransition bound between them; the compositor blends them over the
+  // overlap. The Compositor is HiDPI by default; DrawnSource supersamples art.
+  const compositor = new Compositor({
     width: XF_W,
     height: XF_H,
-    resolution: SS,
-    autoDensity: true,
-    preference: 'webgl',
+    timebase: new Timebase(FPS),
     background: 0x101014,
-  })) as Renderer;
-  document.getElementById('xf-stage')!.append(renderer.canvas as HTMLCanvasElement);
+    preferWebGPU: false,
+  });
+  await compositor.init();
+  document.getElementById('xf-stage')!.append(compositor.view);
 
-  const texA = gradientTexture('A', '#ff5d73', '#ff9e2c');
-  const texB = gradientTexture('B', '#2b6cff', '#7c4dff');
-  const transition = new CrossfadeTransition();
+  const track = new VisualTrack();
+  compositor.addTrack(track);
 
-  // Display the transition's output texture on the visible canvas. The output is
-  // SS×-sized, so scale the sprite by 1/SS to occupy the logical XF_W×XF_H.
-  const screen = new Container();
-  const view = new Sprite();
-  view.scale.set(1 / SS);
-  screen.addChild(view);
+  const srcA = new DrawnSource(gradientDraw('A', '#ff5d73', '#ff9e2c'), XF_W, XF_H);
+  const srcB = new DrawnSource(gradientDraw('B', '#2b6cff', '#7c4dff'), XF_W, XF_H);
+  await srcA.load();
+  await srcB.load();
 
-  function drawAt(progress: number): void {
-    const out: RenderTexture = transition.render(renderer, texA, texB, progress);
-    view.texture = out;
-    renderer.render({ container: screen });
-  }
+  const clipA = new ImageClip(srcA);
+  clipA.start = 0;
+  clipA.end = 2;
+  fillFrame(clipA, srcA.ss, XF_W, XF_H);
+  const clipB = new ImageClip(srcB);
+  clipB.start = 1;
+  clipB.end = 3;
+  fillFrame(clipB, srcB.ss, XF_W, XF_H);
+  track.add(clipA);
+  track.add(clipB);
+  track.addTransition(new CrossfadeTransition().between(clipA, clipB));
 
   const scrub = bind('xf-progress');
+  scrub.max = String(XF_DUR);
   const readout = document.getElementById('xf-progress-v')!;
   const playBtn = document.getElementById('xf-play') as HTMLButtonElement;
 
-  function paint(p: number): void {
-    scrub.value = String(p);
-    readout.textContent = p.toFixed(2);
-    drawAt(p);
+  function paint(t: number): void {
+    scrub.value = String(t);
+    readout.textContent = `${t.toFixed(2)}s`;
+    compositor.renderPreview(t);
   }
 
-  scrub.addEventListener('input', () => paint(Number(scrub.value)));
-
-  // Ping-pong the progress on play via a looping clock (0→1→0).
   const clock = new RealtimeClock();
-  clock.duration = 2;
-  clock.onTick((t) => {
-    const half = clock.duration / 2;
-    const p = t <= half ? t / half : 1 - (t - half) / half;
-    paint(p);
-  });
+  clock.duration = XF_DUR;
+  clock.onTick((t) => paint(t));
   clock.onEnded(() => clock.play());
+
+  scrub.addEventListener('input', () => {
+    clock.pause();
+    playBtn.textContent = '▶ Play';
+    paint(Number(scrub.value));
+  });
 
   playBtn.addEventListener('click', () => {
     if (clock.paused) {
@@ -350,7 +350,7 @@ async function setupCrossfade(): Promise<void> {
     }
   });
 
-  paint(0.5); // initial mix
+  paint(1.5); // start mid-crossfade (the overlap [1,2) midpoint)
 }
 
 // ── Panel C: warps (perspective / bulge / displacement) ──────────────────────

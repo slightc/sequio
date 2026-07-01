@@ -33,7 +33,7 @@
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
 | 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
-| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）已实现；转场待后续里程碑 |
+| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）+ 轨道内重叠驱动转场（`track.addTransition`）已实现 |
 | 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
 | 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
 | 导出 | `src/export/` | 🚧 接口已定，编码封装待实现 |
@@ -181,17 +181,27 @@ clock.play();
     渲染同一个 stage，所以全局效果在预览与导出一致（契约 #3）。同一 effect 实例只应属于一个
     作用域（它只持有一个 filter、一次挂一个目标）。warp 的作用范围是目标 `Container` 的包围盒，
     整帧 warp 需内容铺满帧（见 warp 小节的 caveat）。
-- **`Transition`**：`render(renderer, from, to, progress ∈ [0,1]) → RenderTexture`，在 GPU 上把
-  两路纹理混成一张。内置 **`CrossfadeTransition`**：`from` 铺满、`to` 以 `alpha=progress`
-  叠加（`out = from*(1-p) + to*p`）；纯函数 `crossfadeAlpha(p)` 做 clamp。返回的
-  `RenderTexture` 由 transition 自己复用/持有（`dispose` 释放），调用方不得销毁。
+- **`Transition`**（轨道内、重叠驱动）：`transition.between(A, B)` 绑定相邻两 clip(顺序=方向
+  `from→to`),`track.addTransition(transition)` 挂到轨道。**转场窗口 = 两 clip 的重叠区间**
+  `[max(starts), min(ends))`,由 `windowAt()` 每帧从 clip 现算(不缓存,所以移动/裁剪 clip 会
+  实时更新窗口,`render(t)` 仍是纯函数);`progressAt(t)` 把窗口映射成 0→1(半开、clamp)。
+  想要 N 帧转场就让两 clip 重叠 N 帧(`durationFrames` 只是作者提示)。
+  - **渲染管线**:`Reconciler` 在窗口内把 A、B 的容器**各自离屏渲成一张帧尺寸 `RenderTexture`**,
+    调 `transition.render(renderer, texA, texB, progress)` 混合,结果贴到一个 Sprite 上、把两个
+    clip 隐藏;窗口外照常直渲。需要 GPU 上下文(`RenderContext`:renderer + 帧尺寸 + 分辨率),
+    由 `Compositor.renderSync`/`renderToTexture` 传入——所以预览与导出一致(契约 #3)。无 renderer
+    的 headless 环境下转场跳过,两 clip 直接叠。
+  - 内置 **`CrossfadeTransition`**:`render(renderer, from, to, progress)` 把 `from` 铺满、`to` 以
+    `alpha=progress` 叠加(`out = from*(1-p) + to*p`);纯函数 `crossfadeAlpha(p)` 做 clamp。返回的
+    `RenderTexture` 由 transition 自己复用/持有(`dispose` 释放),调用方不得销毁。
 - 校验:`tests/effects.test.ts`（`valuesAt`、惰性创建、写矩阵、注册幂等、clip 接线的
-  attach/update/detach 次数、`crossfadeAlpha` clamp）+ `tests/compositor.test.ts`（全局
-  `compositor.effects` 挂 stage：一次 attach、每帧 update、移除后 detach）+ e2e
-  `pnpm verify:effects`（含全局段：一个 `compositor.effects` 的 desaturate 让红/蓝两个 clip
-  同时变灰，证明作用于整帧）——真实
-  WebGL 上用 `ColorEffect` 压暗白块、`BlurEffect` 让红块边缘外溢、`CrossfadeTransition`
-  把红→蓝在 `progress=0.5` 混成 `(128,0,127)`。
+  attach/update/detach 次数、`crossfadeAlpha` clamp）+ `tests/transition.test.ts`（`between`、
+  `windowAt` 取重叠且随 clip 移动实时变、`activeAt` 半开、`progressAt` clamp、`track.addTransition`）
+  + `tests/compositor.test.ts`（全局 `compositor.effects` 挂 stage：一次 attach、每帧 update、
+  移除后 detach）+ e2e `pnpm verify:effects`——真实 WebGL 上用 `ColorEffect` 压暗白块、
+  `BlurEffect` 让红块边缘外溢、全局 desaturate 让红/蓝两 clip 同时变灰、`CrossfadeTransition`
+  独立混红→蓝、以及**轨道转场**(红 A `[0,2)` + 蓝 B `[1,3)`,`t=1.5` 重叠中点混成 `(128,0,127)`,
+  `t=0.5` 全红、`t=2.5` 全蓝)。
 
 **Warp 效果（透视 / 扭曲 / 畸变）**——`Transform2D` 只能做仿射（平移/缩放/旋转），
 warp 处理的是仿射做不到的几何形变，都通过自写 `GlProgram` 片元着色器采样源纹理实现。
@@ -217,9 +227,9 @@ bounds 上的 `[0,1]` 坐标，distort 后再映回采样——**所以 warp 的
   displacement 让红蓝分界沿行位移。
 
 尚未落地（后续里程碑）:`ChromaKeyEffect` / `LUTEffect`（需自定义采样着色器/贴图）、
-向外 corner-pin 的 padding、warp 的 WGSL（WebGPU）变体、`WipeTransition`，以及把
-`Transition` 接进 Compositor 让相邻 clip 在重叠区间按 `durationFrames` **自动**过渡
-——当前 `Transition` 是可独立调用的构件，还没有由 Compositor 驱动。
+向外 corner-pin 的 padding、warp 的 WGSL（WebGPU）变体、其它转场类型(`WipeTransition` 等,
+基类与轨道驱动已就位,只差各自的 `render`)、以及转场输出的 HiDPI 分辨率(当前离屏混合按
+resolution 1)。
 
 ### 分组 / 子合成（GroupClip）
 

@@ -2,7 +2,7 @@ import { autoDetectRenderer, Container, type Renderer, RenderTexture } from 'pix
 import type { Disposable } from '../core/disposable';
 import type { Effect } from '../effects/effect';
 import type { Timebase } from '../time/timebase';
-import { Reconciler } from './reconciler';
+import { Reconciler, type RenderContext } from './reconciler';
 import type { Track } from './track';
 import type { VisualClip } from './clip';
 import { GroupClip } from './group-clip';
@@ -199,10 +199,21 @@ export class Compositor implements Disposable {
    * (SDK contract #2). Draws pixels only once {@link init} has resolved.
    */
   renderSync(t: number): void {
-    this.reconciler.reconcile(this.tracks, t, this.stage);
+    this.reconciler.reconcile(this.tracks, t, this.stage, this.renderContext());
     this.syncStageEffects(t);
     this.renderer?.render({ container: this.stage });
     this.dirty = false;
+  }
+
+  /** The GPU context transitions need for offscreen passes (null before init). */
+  private renderContext(): RenderContext | undefined {
+    if (!this.renderer) return undefined;
+    return {
+      renderer: this.renderer,
+      width: this.options.width,
+      height: this.options.height,
+      resolution: this.resolution,
+    };
   }
 
   /**
@@ -213,7 +224,7 @@ export class Compositor implements Disposable {
     if (!this.renderer) {
       throw new Error('Compositor.renderToTexture requires init() first — see todo/01-skeleton.md');
     }
-    this.reconciler.reconcile(this.tracks, t, this.stage);
+    this.reconciler.reconcile(this.tracks, t, this.stage, this.renderContext());
     this.syncStageEffects(t);
     const target = RenderTexture.create({
       width: this.options.width,
