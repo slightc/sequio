@@ -186,10 +186,13 @@ clock.play();
   `[max(starts), min(ends))`,由 `windowAt()` 每帧从 clip 现算(不缓存,所以移动/裁剪 clip 会
   实时更新窗口,`render(t)` 仍是纯函数);`progressAt(t)` 把窗口映射成 0→1(半开、clamp)。
   想要 N 帧转场就让两 clip 重叠 N 帧(`durationFrames` 只是作者提示)。
-  - **渲染管线**:`Reconciler` 在窗口内把 A、B 的容器**各自离屏渲成一张帧尺寸 `RenderTexture`**,
-    调 `transition.render(renderer, texA, texB, progress)` 混合,结果贴到一个 Sprite 上、把两个
-    clip 隐藏;窗口外照常直渲。需要 GPU 上下文(`RenderContext`:renderer + 帧尺寸 + 分辨率),
-    由 `Compositor.renderSync`/`renderToTexture` 传入——所以预览与导出一致(契约 #3)。无 renderer
+  - **渲染管线**:`Reconciler` 在窗口内把 A、B **各自离屏渲成一张帧尺寸 `RenderTexture`**——
+    做法是**渲染整个轨道容器、但只留目标 clip 可见**(`renderIsolated`,临时屏蔽轨道滤镜),
+    走的是和最终上屏完全相同的路径,所以 clip 落位精确、且对 unmount/remount(循环重播)稳健
+    (直接把带父级/带变换的 clip 容器渲到 target 在 remount 后会错位)。再调
+    `transition.render(renderer, texA, texB, progress)` 混合,结果贴到一个 Sprite、把两个 clip
+    隐藏;窗口外照常直渲。需要 GPU 上下文(`RenderContext`:renderer + 帧尺寸 + 分辨率),由
+    `Compositor.renderSync`/`renderToTexture` 传入——所以预览与导出一致(契约 #3)。无 renderer
     的 headless 环境下转场跳过,两 clip 直接叠。
   - 内置 **`CrossfadeTransition`**:`render(renderer, from, to, progress)` 把 `from` 铺满、`to` 以
     `alpha=progress` 叠加(`out = from*(1-p) + to*p`);纯函数 `crossfadeAlpha(p)` 做 clamp。返回的

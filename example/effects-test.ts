@@ -339,52 +339,92 @@ async function runWarps(): Promise<Record<string, unknown>> {
 }
 
 /** B2) a CrossfadeTransition driven by the compositor over two overlapping clips. */
-async function runTrackTransition(): Promise<Record<string, unknown>> {
-  // Red A on [0,2), blue B on [1,3) → overlap [1,2). A fresh compositor per
-  // sample (WebGL readback is only reliable on the just-rendered frame).
-  const sampleAt = async (t: number) => {
-    const compositor = new Compositor({
-      width: W,
-      height: H,
-      timebase: new Timebase(30),
-      background: 0x000000,
-      preferWebGPU: false,
-    });
-    await compositor.init();
-    const track = new VisualTrack();
-    const a = new ShapeClip({ kind: 'rect', width: W, height: H, fill: 0xff0000 });
-    place(a, W / 2, H / 2); // NOTE: place() sets start/end, so override them after
-    a.start = 0;
-    a.end = 2;
-    const b = new ShapeClip({ kind: 'rect', width: W, height: H, fill: 0x0000ff });
-    place(b, W / 2, H / 2);
-    b.start = 1;
-    b.end = 3;
-    track.add(a);
-    track.add(b);
-    track.addTransition(new CrossfadeTransition().between(a, b)); // overlap [1,2)
-    compositor.addTrack(track);
+const SSF = 2; // supersample factor — mimics HiDPI clips (scaled texture)
 
-    compositor.renderSync(t);
+/** A W·SSF × H·SSF solid bitmap → a clip scaled by 1/SSF (like a HiDPI source). */
+async function solidBitmap(color: string): Promise<ImageBitmap> {
+  const c = document.createElement('canvas');
+  c.width = W * SSF;
+  c.height = H * SSF;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, c.width, c.height);
+  return createImageBitmap(c);
+}
+
+/** A full-frame image clip from a supersampled bitmap: anchor center, scale 1/SSF. */
+async function fullFrameClip(bmp: ImageBitmap, start: number, end: number): Promise<VisualClip> {
+  const src = new ImageSource({ src: bmp });
+  await src.load();
+  const clip = new ImageClip(src);
+  place(clip, W / 2, H / 2); // NOTE: place() sets start/end, override after
+  clip.start = start;
+  clip.end = end;
+  clip.transform.scale.setStatic([1 / SSF, 1 / SSF]);
+  return clip;
+}
+
+async function runTrackTransition(): Promise<Record<string, unknown>> {
+  // Red A [0,2), blue B [1,3) → overlap [1,2). Scaled ImageClips (like the demo)
+  // so the offscreen clip render must honor the clip's transform.
+  const redBmp = await solidBitmap('#ff0000');
+  const blueBmp = await solidBitmap('#0000ff');
+
+  const read = (compositor: Compositor) => {
     const off = document.createElement('canvas');
     off.width = W;
     off.height = H;
     const ctx = off.getContext('2d')!;
     ctx.drawImage(compositor.view, 0, 0);
-    const p = px(ctx.getImageData(0, 0, W, H).data, W, W / 2, H / 2);
-    compositor.dispose();
+    return ctx.getImageData(0, 0, W, H).data;
+  };
+
+  // Fresh compositor per single sample (reliable readback).
+  const sampleAt = async (t: number) => {
+    const c = new Compositor({ width: W, height: H, timebase: new Timebase(30), background: 0, preferWebGPU: false });
+    await c.init();
+    const track = new VisualTrack();
+    track.add(await fullFrameClip(redBmp, 0, 2));
+    track.add(await fullFrameClip(blueBmp, 1, 3));
+    track.addTransition(new CrossfadeTransition().between(track.clips[0]!, track.clips[1]!));
+    c.addTrack(track);
+    c.renderSync(t);
+    const p = px(read(c), W, W / 2, H / 2);
+    c.dispose();
     return p;
   };
 
   const before = await sampleAt(0.5); // only A → red
-  const mid = await sampleAt(1.5); // overlap midpoint, progress 0.5 → purple
   const after = await sampleAt(2.5); // only B → blue
 
-  const okBefore = before.r > 200 && before.b < 60;
-  const okMid = mid.r > 90 && mid.r < 170 && mid.b > 90 && mid.b < 170;
-  const okAfter = after.b > 200 && after.r < 60;
+  // Replay on ONE compositor: play through the timeline TWICE (forces the clips
+  // to unmount at the end and remount), then read the *second* overlap midpoint
+  // and sample the corners too — the replay/quadrant bug shows up here.
+  const c = new Compositor({ width: W, height: H, timebase: new Timebase(30), background: 0, preferWebGPU: false });
+  await c.init();
+  const track = new VisualTrack();
+  track.add(await fullFrameClip(redBmp, 0, 2));
+  track.add(await fullFrameClip(blueBmp, 1, 3));
+  track.addTransition(new CrossfadeTransition().between(track.clips[0]!, track.clips[1]!));
+  c.addTrack(track);
+  for (const t of [0.5, 1.5, 2.5, 0.5, 1.5]) c.renderSync(t); // read after the 2nd mid
+  const data = read(c);
+  const pts = [
+    px(data, W, W / 2, H / 2), // center
+    px(data, W, 30, 30), // corners
+    px(data, W, W - 30, 30),
+    px(data, W, 30, H - 30),
+    px(data, W, W - 30, H - 30),
+  ];
+  c.dispose();
 
-  return { okBefore, okMid, okAfter, before, mid, after };
+  const isPurple = (p: { r: number; b: number; g: number }) =>
+    p.r > 90 && p.r < 170 && p.b > 90 && p.b < 170 && p.g < 60;
+  const okBefore = before.r > 200 && before.b < 60;
+  const okAfter = after.b > 200 && after.r < 60;
+  const okReplayMid = pts.every(isPurple); // full-frame blend on the second play
+
+  return { okBefore, okAfter, okReplayMid, before, after, replay: pts };
 }
 
 async function run(): Promise<void> {
@@ -401,8 +441,8 @@ async function run(): Promise<void> {
       fade.okEnd &&
       fade.okMid &&
       trackTr.okBefore &&
-      trackTr.okMid &&
       trackTr.okAfter &&
+      trackTr.okReplayMid &&
       warp.okBulge &&
       warp.okPerspective &&
       warp.okDisplacement,

@@ -1,4 +1,4 @@
-import { Container, type Renderer, RenderTexture, Sprite } from 'pixi.js';
+import { Container, type Filter, type Renderer, RenderTexture, Sprite } from 'pixi.js';
 import type { Effect } from '../effects/effect';
 import type { Transition } from '../effects/transition';
 import type { VisualClip } from './clip';
@@ -186,8 +186,13 @@ export class Reconciler {
       }
       node.texA = ensureRT(node.texA, ctx!);
       node.texB = ensureRT(node.texB, ctx!);
-      ctx!.renderer.render({ container: cA!, target: node.texA, clear: true });
-      ctx!.renderer.render({ container: cB!, target: node.texB, clear: true });
+      // Render each clip exactly as it composites on-screen — draw the whole
+      // track container with only that clip visible. Rendering the parented,
+      // transformed clip container *directly* to a target mishandles its
+      // transform (notably after an unmount/remount on replay), so use the same
+      // path as the final frame render instead.
+      renderIsolated(entry.container, cA!, node.texA, ctx!);
+      renderIsolated(entry.container, cB!, node.texB, ctx!);
 
       node.sprite.texture = transition.render(ctx!.renderer, node.texA, node.texB, transition.progressAt(t));
       node.sprite.visible = true;
@@ -216,6 +221,23 @@ export class Reconciler {
     entry.container.destroy();
     this.trackEntries.delete(track);
   }
+}
+
+/**
+ * Render `container` to `rt` with only `keep` visible, then restore visibility.
+ * Track-level filters are bypassed for this pass (they apply once, to the blended
+ * result) so an isolated clip is captured raw. This reuses the on-screen render
+ * path, so the clip lands exactly where it composites in the final frame.
+ */
+function renderIsolated(container: Container, keep: Container, rt: RenderTexture, ctx: RenderContext): void {
+  const kids = container.children;
+  const savedVisible = kids.map((k) => k.visible);
+  const savedFilters = container.filters as Filter[];
+  container.filters = [];
+  for (const k of kids) k.visible = k === keep;
+  ctx.renderer.render({ container, target: rt, clear: true });
+  container.filters = savedFilters;
+  for (let i = 0; i < kids.length; i++) kids[i]!.visible = savedVisible[i]!;
 }
 
 /** Create/reuse a frame-sized RenderTexture matching the render context. */
