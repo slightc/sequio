@@ -216,11 +216,21 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
     timebase: new Timebase(FPS),
     background: 0x000000,
     preferWebGPU: false,
-    textures: c2.textures, // share the pool → no second decode/upload
+    textures: c2.textures, // share the pool → no second upload of the same key
   });
   await c3.init();
-  c2.removeTrack(track); // move the scene to the fork for export
-  c3.addTrack(track);
+  // Fork the decoder: c3 exports from its OWN clip over a FORKED VideoSource
+  // (shares the demux, own sink), so c2 (preview) is never touched and both
+  // decode in parallel.
+  const forked = source.fork();
+  await forked.load();
+  const forkTrack = new VisualTrack();
+  const forkClip = new VideoClip(forked);
+  forkClip.start = 0;
+  forkClip.end = meta.duration;
+  applyCover(forkClip, meta.width, meta.height, W, H);
+  forkTrack.add(forkClip);
+  c3.addTrack(forkTrack);
 
   let error: string | null = null;
   let size = 0;
@@ -266,11 +276,9 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
     error = String(e);
   }
 
-  // Move the scene back and confirm the "preview" compositor still *animates* the
-  // shared video (fork didn't break it). Rendering two different times must give
-  // different frames — a broken move-back would freeze on a stale/dead sprite.
-  c3.removeTrack(track);
-  c2.addTrack(track);
+  // The preview (c2) was NEVER touched — confirm it still *animates* the video on
+  // its own decoder (two times → different frames), independent of the fork.
+  c3.removeTrack(forkTrack);
   const readAt = async (t: number) => {
     await c2.prepare(t);
     c2.renderSync(t);
@@ -292,6 +300,7 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
   const previewOk = previewLit && previewDiff > 20; // shows content AND advances
 
   c3.dispose();
+  forked.dispose(); // fork decoder torn down — must not affect the shared demux
   c2.dispose();
   source.dispose();
   // Most frames must have visible content (the moving red box), not be black.

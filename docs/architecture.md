@@ -159,9 +159,12 @@ clock.play();
     各自上传,所以同一 source 能被预览和导出两个 renderer 同时用。
   - fork 用**自己的 clip**(引用同一批 source),而不是把预览的 track 挪过去——这样预览保留自己
     的 track/时钟/音频/画布,导出期间照常播放。fork 有独立的 renderer/reconciler。
-  - `MediabunnyVideoDecoder.decode` 内部对 `getSample` **串行化**(sink 有解码状态,不能并发),
-    所以预览与导出同时驱动同一个视频 source 也安全。
-  `example/export-demo.ts` 即用此模式(默认旋律场景导出期间可继续播放)。
+  - **`VideoSource.fork()`**:视频再进一步——导出用一个 fork 出来的 `VideoSource`,它**共享
+    已 demux 的 `Input`(文件只解析一次)但有自己的 `VideoSampleSink`(解码器)+ 自己的
+    `FrameCache`**,所以预览和导出**并行解码**、互不抢占。`MediabunnyVideoDecoder.fork()` 造出
+    共享 demux、独立 sink 的解码器;fork 的 `dispose()` 不拆共享 demux。`decode` 内部对
+    `getSample` 串行化(sink 有解码状态,单个 sink 不能并发)。
+  `example/export-demo.ts` 即用此模式(旋律场景 + 加载视频都能在导出期间继续播放)。
 - 校验:`tests/exporter.test.ts`(纯 `exportFrameTimes`;用假 compositor/audio/sink 断言
   **每帧 prepare→render→addFrame 的顺序**、帧时刻、progress 单调到 1、`audio:false` 跳过音频、
   `range` 覆盖时长、`cancel` 中止且不 finalize)+ e2e `pnpm verify:export`——真实导出:

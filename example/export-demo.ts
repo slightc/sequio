@@ -55,11 +55,11 @@ interface Scene {
   /** The track shown in the live preview. */
   visualTrack: VisualTrack;
   /**
-   * Build a *fresh* visual track with its own clips but the SAME sources — used
-   * by the export fork so the preview keeps its own track (and can keep playing)
-   * while export runs on a separate compositor.
+   * Build a track for the export fork: its own clips over the same demux but a
+   * FORKED decoder (so preview + export decode in parallel, file parsed once).
+   * `dispose` tears down the fork's decoder (not the shared demux).
    */
-  makeVisualTrack(): VisualTrack;
+  makeExportTrack(): Promise<{ track: VisualTrack; dispose(): void }>;
   audioClip?: AudioClip;
   audioSource?: AudioSource;
   dispose(): void;
@@ -109,17 +109,23 @@ function buildMelodyScene(): Scene {
   audioClip.start = 0;
   audioClip.end = MELODY_DUR;
 
-  return { duration: MELODY_DUR, visualTrack: makeVisualTrack(), makeVisualTrack, audioClip, audioSource, dispose: () => {} };
+  return {
+    duration: MELODY_DUR,
+    visualTrack: makeVisualTrack(),
+    makeExportTrack: async () => ({ track: makeVisualTrack(), dispose: () => {} }), // procedural, nothing to fork
+    audioClip,
+    audioSource,
+    dispose: () => {},
+  };
 }
 
 async function buildVideoScene(file: File): Promise<Scene> {
   const videoSource = new VideoSource({ src: file });
   const meta = await videoSource.load();
 
-  // Each track has its own VideoClip but shares the one decoded VideoSource.
-  const makeVisualTrack = (): VisualTrack => {
+  const makeVisualTrack = (src: VideoSource): VisualTrack => {
     const track = new VisualTrack();
-    const clip = new VideoClip(videoSource);
+    const clip = new VideoClip(src);
     clip.start = 0;
     clip.end = meta.duration;
     applyCover(clip, meta.width, meta.height, W, H);
@@ -142,8 +148,12 @@ async function buildVideoScene(file: File): Promise<Scene> {
 
   return {
     duration: meta.duration,
-    visualTrack: makeVisualTrack(),
-    makeVisualTrack,
+    visualTrack: makeVisualTrack(videoSource), // preview uses the original decoder
+    makeExportTrack: async () => {
+      const forked = videoSource.fork(); // shares the demux, own decoder → parallel decode
+      await forked.load();
+      return { track: makeVisualTrack(forked), dispose: () => forked.dispose() };
+    },
     audioClip,
     audioSource,
     dispose: () => {
@@ -288,7 +298,7 @@ async function main(): Promise<void> {
       textures: compositor.textures,
     });
     await fork.init();
-    const forkTrack = scene.makeVisualTrack();
+    const { track: forkTrack, dispose: disposeForkTrack } = await scene.makeExportTrack();
     fork.addTrack(forkTrack);
 
     const exporter = new Exporter(fork, audio); // audio.renderOffline reads the shared mix
@@ -323,6 +333,7 @@ async function main(): Promise<void> {
     } finally {
       fork.removeTrack(forkTrack);
       fork.dispose(); // its own clips/renderer; the shared texture pool is kept
+      disposeForkTrack(); // tear down the forked decoder (not the shared demux)
       exportBtn.disabled = false;
     }
   });

@@ -71,6 +71,19 @@ export class VideoSource extends VisualSource {
     return meta;
   }
 
+  /**
+   * A second `VideoSource` over the SAME demuxed input (no re-parse) but with its
+   * own decoder + frame cache, so a preview and an export can decode the source
+   * in parallel without contending on one decoder. The fork starts with a private
+   * texture pool (a compositor adopts a shared one on `prepare`); `await` its
+   * `load()` before use and `dispose()` it when done — that won't tear down the
+   * shared demux. Throws if the backend can't fork.
+   */
+  fork(): VideoSource {
+    if (!this.backend.fork) throw new Error('this VideoSource cannot be forked (backend has no fork())');
+    return new VideoSource({ ...this.options, backend: this.backend.fork(), textureManager: undefined });
+  }
+
   /** Adopt a shared texture pool (unless one was explicitly injected). */
   adoptTextureManager(manager: TextureManager): void {
     if (!this.ownsTextures || this.textures === manager) return;
