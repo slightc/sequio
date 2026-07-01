@@ -117,12 +117,10 @@ async function main(): Promise<void> {
 
   const clock = new RealtimeClock();
   clock.duration = DURATION;
-  // Clips are active on [start, end); at exactly t=DURATION every clip has ended
-  // → an empty (black) frame. Like a video player, the playhead at the very end
-  // shows the last frame, so clamp the *render* time to the last frame while the
-  // clock still reports the full DURATION.
-  const LAST_FRAME = DURATION - 1 / FPS;
-  const renderAt = (t: number) => compositor.renderPreview(Math.min(t, LAST_FRAME));
+  // At t=DURATION every clip has ended ([start, end)) → the Compositor holds the
+  // last frame by default (holdLastFrameAtEnd), so the playhead can run to the
+  // end without a black frame — no consumer-side clamp needed.
+  const renderAt = (t: number) => compositor.renderPreview(t);
   const render = () => renderAt(clock.currentTime);
 
   // ── Build three tracks, bottom → top ──────────────────────────────────────

@@ -7,6 +7,7 @@ import { Reconciler } from '../src/compositor/reconciler';
 import { Effect } from '../src/effects/effect';
 import { VisualTrack } from '../src/compositor/track';
 import { VisualSource, type SourceMetadata } from '../src/media/media-source';
+import { exportFrameTimes } from '../src/export/frame-times';
 import type { TextureManager } from '../src/texture/texture-manager';
 import { Timebase } from '../src/time/timebase';
 
@@ -300,6 +301,88 @@ describe('Compositor', () => {
 
     expect(clip.mountCount).toBe(1); // same graph + t → same display tree
     expect(c.isDirty).toBe(false); // a draw clears the dirty flag
+  });
+
+  it('holds the last frame at the timeline end (default), not the black boundary', () => {
+    const c = makeCompositor(); // timebase 30fps
+    const track = new VisualTrack();
+    const clip = new TestClip(0, 1); // active on [0,1); last real frame at 29/30
+    track.add(clip);
+    c.addTrack(track);
+
+    c.renderSync(1); // playhead at the exclusive end
+    expect(clip.mountCount).toBe(1); // stays lit — not an empty/black frame
+    expect(clip.updates.at(-1)).toBeCloseTo(29 / 30); // rendered the last real frame
+  });
+
+  it('holds the last frame *boundary* for an off-grid end (matches export final frame)', () => {
+    const c = makeCompositor(); // 30fps
+    const track = new VisualTrack();
+    const clip = new TestClip(0, 0.98); // end off the frame grid: N = round(29.4) = 29
+    track.add(clip);
+    c.addTrack(track);
+
+    c.renderSync(0.98); // held at frame N-1 = 28 → 28/30, a clean boundary (not 0.98 - 1/30)
+    expect(clip.updates.at(-1)).toBeCloseTo(28 / 30);
+    // Same as exportFrameTimes([0, 0.98], 30)'s last entry (contract #3).
+    const exportLast = exportFrameTimes([0, 0.98], 30).at(-1)!;
+    expect(clip.updates.at(-1)).toBeCloseTo(exportLast);
+  });
+
+  it('does not hold at an internal cut — the next clip shows (clean cut)', () => {
+    const c = makeCompositor();
+    const track = new VisualTrack();
+    const a = new TestClip(0, 1, 'a');
+    const b = new TestClip(1, 2, 'b');
+    track.add(a);
+    track.add(b);
+    c.addTrack(track);
+
+    c.renderSync(1); // A ends, B starts — B wins, A is not held
+    expect(b.updates.at(-1)).toBe(1);
+    expect(a.mountCount).toBe(0);
+
+    c.renderSync(2); // the real end → hold B's last frame
+    expect(b.updates.at(-1)).toBeCloseTo(2 - 1 / 30);
+  });
+
+  it('does not hold in a gap — renders black there', () => {
+    const c = makeCompositor();
+    const track = new VisualTrack();
+    const a = new TestClip(0, 1, 'a');
+    const b = new TestClip(2, 3, 'b'); // gap over [1,2)
+    track.add(a);
+    track.add(b);
+    c.addTrack(track);
+
+    c.renderSync(1.5); // in the gap, well before the end → nothing active
+    expect(a.mountCount).toBe(0);
+    expect(b.mountCount).toBe(0);
+  });
+
+  it('holdLastFrameAtEnd:false renders the black boundary (opt-out for trailing black)', () => {
+    const c = new Compositor({ width: 320, height: 240, timebase: new Timebase(30), holdLastFrameAtEnd: false });
+    const track = new VisualTrack();
+    const clip = new TestClip(0, 1);
+    track.add(clip);
+    c.addTrack(track);
+
+    c.renderSync(1); // exact end, no hold → clip inactive → empty frame
+    expect(clip.mountCount).toBe(0);
+  });
+
+  it('prepare holds the last frame at the end too (decodes end - 1/fps)', async () => {
+    const c = makeCompositor();
+    const src = new SpySource();
+    const clip = new SourceClip(src);
+    clip.start = 0;
+    clip.end = 1;
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    await c.prepare(1); // at the end → prep the last real frame, not "nothing"
+    expect(src.prepared.at(-1)).toBeCloseTo(29 / 30);
   });
 
   it('applies global effects to the whole composite (adjustment over the stage)', () => {
