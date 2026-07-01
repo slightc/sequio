@@ -173,7 +173,9 @@ async function main(): Promise<void> {
 
   let scene: Scene | null = null;
 
-  const renderAt = (t: number) => compositor.renderPreview(Math.min(t, (scene?.duration ?? 0) - 1 / FPS));
+  // The Compositor holds the last frame at the timeline end by default
+  // (holdLastFrameAtEnd), so no consumer-side last-frame clamp is needed.
+  const renderAt = (t: number) => compositor.renderPreview(t);
 
   function setScene(next: Scene): void {
     clock.pause();
