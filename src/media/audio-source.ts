@@ -16,7 +16,8 @@ export class AudioSource extends MediaSource {
   }
 
   async load(): Promise<SourceMetadata> {
-    // TODO(audio): fetch + decodeAudioData into `this.buffer`, fill metadata.
+    // TODO(audio): Mediabunny Input + AudioBufferSink.getBuffer() → `this.buffer`,
+    // fill metadata.
     throw new Error('AudioSource.load not implemented — see todo/06-audio-engine.md');
   }
 

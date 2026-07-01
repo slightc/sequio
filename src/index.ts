@@ -3,8 +3,8 @@
  * editors on top of PixiJS.
  *
  * Public surface only. Internal helpers (Reconciler, FrameCache,
- * TextureManager, demuxers, muxers) are exported for advanced extension but
- * are not part of the stable API.
+ * TextureManager, Mediabunny read/write adapters) are exported for advanced
+ * extension but are not part of the stable API.
  */
 
 // ── Core ──────────────────────────────────────────────────────────────────
@@ -34,9 +34,11 @@ export { Transform2D } from './animation/transform2d';
 // ── Media ─────────────────────────────────────────────────────────────────
 export { MediaSource, VisualSource, type SourceMetadata } from './media/media-source';
 export { VideoSource, type VideoSourceOptions } from './media/video-source';
+export { type DecodedFrame, type VideoDecoderBackend } from './media/video-decoder';
+export { MediabunnyVideoDecoder, type VideoInput } from './media/mediabunny-decoder';
 export { ImageSource, type ImageSourceOptions } from './media/image-source';
 export { AudioSource, type AudioSourceOptions } from './media/audio-source';
-export { FrameCache } from './media/frame-cache';
+export { FrameCache, type Closable } from './media/frame-cache';
 
 // ── Texture ─────────────────────────────────────────────────────────────────
 export { TextureManager } from './texture/texture-manager';
@@ -46,6 +48,7 @@ export { Compositor, type CompositorOptions } from './compositor/compositor';
 export { Track, VisualTrack, AudioTrack } from './compositor/track';
 export { Clip, VisualClip, AudioClip } from './compositor/clip';
 export { VideoClip, ImageClip, TextClip, ShapeClip, type TextStyleLike } from './compositor/clips';
+export { GroupClip } from './compositor/group-clip';
 export { Reconciler } from './compositor/reconciler';
 
 // ── Effects & Transitions ────────────────────────────────────────────────────

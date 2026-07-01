@@ -3,8 +3,11 @@ import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
 
 // Library build: the SDK ships as ESM + CJS with type declarations.
-// `pixi.js` is a peer dependency and must stay external.
+// `pixi.js` (peer) and `mediabunny` (runtime dep) stay external.
 export default defineConfig({
+  server: {
+    port: 6173,
+  },
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -24,9 +27,11 @@ export default defineConfig({
       fileName: (format) => (format === 'es' ? 'index.js' : 'index.cjs'),
     },
     rollupOptions: {
-      external: ['pixi.js'],
+      // `pixi.js` is a peer dependency; `mediabunny` is a runtime dependency.
+      // Both stay external so consumers dedupe a single copy.
+      external: ['pixi.js', 'mediabunny'],
       output: {
-        globals: { 'pixi.js': 'PIXI' },
+        globals: { 'pixi.js': 'PIXI', mediabunny: 'Mediabunny' },
       },
     },
     sourcemap: true,

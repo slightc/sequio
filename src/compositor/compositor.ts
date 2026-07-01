@@ -1,10 +1,22 @@
-import type { RenderTexture } from 'pixi.js';
+import { autoDetectRenderer, Container, type Renderer, RenderTexture } from 'pixi.js';
 import type { Disposable } from '../core/disposable';
 import type { Timebase } from '../time/timebase';
 import { Reconciler } from './reconciler';
 import type { Track } from './track';
+import type { VisualClip } from './clip';
+import { GroupClip } from './group-clip';
 import { VisualSource } from '../media/media-source';
 import { VisualTrack } from './track';
+import { TextureManager } from '../texture/texture-manager';
+
+/** A source that can adopt the compositor's shared GPU texture pool. */
+interface TextureManagerAware {
+  adoptTextureManager(manager: TextureManager): void;
+}
+
+function isTextureManagerAware(source: unknown): source is TextureManagerAware {
+  return typeof (source as TextureManagerAware).adoptTextureManager === 'function';
+}
 
 export interface CompositorOptions {
   width: number;
@@ -14,6 +26,8 @@ export interface CompositorOptions {
   /** Prefer the PixiJS v8 WebGPU backend when available. */
   preferWebGPU?: boolean;
   colorSpace?: 'srgb' | 'display-p3';
+  /** GPU texture-pool budget in bytes (default 256 MiB). */
+  textureBudgetBytes?: number;
 }
 
 /**
@@ -22,21 +36,57 @@ export interface CompositorOptions {
  * The two-phase `prepare` / `renderSync` split is the heart of the engine
  * (SDK contract #1): preview does best-effort prepare then renders immediately;
  * export awaits prepare so no frame is ever dropped.
+ *
+ * Construction is synchronous so the object graph can be built (and unit-tested)
+ * without a GPU. The renderer is created lazily by {@link init}; until then
+ * `renderSync` still reconciles the scene graph but draws no pixels.
  */
 export class Compositor implements Disposable {
+  /** The output canvas. Stable across the lifetime of the compositor. */
   readonly view: HTMLCanvasElement;
+  /** Root of the PixiJS display tree; reconciled every frame. */
+  private readonly stage = new Container();
   private readonly tracks: Track[] = [];
   private readonly reconciler = new Reconciler();
+  /** Shared GPU texture pool; every video source under this compositor uses it. */
+  readonly textures: TextureManager;
+  private renderer: Renderer | null = null;
+  private initPromise: Promise<void> | null = null;
   private dirty = true;
 
   constructor(readonly options: CompositorOptions) {
-    // TODO(compositor): create a PIXI.Application / Renderer (WebGPU→WebGL
-    // fallback), a root stage Container, and size the canvas. For now we hold
-    // a detached canvas so the object graph can be built and unit-tested.
+    // Hold a (possibly detached) canvas synchronously so the object graph can
+    // be built and unit-tested before any GPU context exists. `init()` adopts
+    // this canvas as the renderer's output surface.
     this.view = (globalThis.document?.createElement?.('canvas') ??
       ({ width: options.width, height: options.height } as HTMLCanvasElement)) as HTMLCanvasElement;
     this.view.width = options.width;
     this.view.height = options.height;
+    this.textures = new TextureManager(options.textureBudgetBytes);
+  }
+
+  /**
+   * Create the GPU renderer (WebGPU preferred, WebGL fallback) bound to
+   * {@link view}. Must be awaited before any pixels are produced. Idempotent:
+   * concurrent / repeat calls share one initialization.
+   */
+  init(): Promise<void> {
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = autoDetectRenderer({
+      preference: this.options.preferWebGPU === false ? 'webgl' : 'webgpu',
+      canvas: this.view,
+      width: this.options.width,
+      height: this.options.height,
+      background: this.options.background ?? 0x000000,
+    }).then((renderer) => {
+      this.renderer = renderer;
+    });
+    return this.initPromise;
+  }
+
+  /** Whether the GPU renderer has been created. */
+  get isInitialized(): boolean {
+    return this.renderer !== null;
   }
 
   // ── Track graph ────────────────────────────────────────────────────────
@@ -66,28 +116,66 @@ export class Compositor implements Disposable {
   async prepare(t: number): Promise<void> {
     const jobs: Promise<void>[] = [];
     for (const track of this.tracks) {
-      if (track instanceof VisualTrack) {
-        for (const clip of track.activeAt(t)) {
-          const source = (clip as { source?: VisualSource }).source;
-          if (source instanceof VisualSource) {
-            const sourceTime = t - clip.start + clip.sourceIn;
-            jobs.push(source.prepare(sourceTime));
-          }
-        }
+      if (track instanceof VisualTrack && track.enabled) {
+        this.collectPrepareJobs(track.clips, t, jobs);
       }
     }
     await Promise.all(jobs);
   }
 
-  /** Synchronously reconcile + draw one frame using already-ready frames. */
-  renderSync(_t: number): void {
-    // TODO(compositor): this.reconciler.reconcile(...); this.renderer.render(stage)
-    throw new Error('Compositor.renderSync not implemented — see todo/01-skeleton.md');
+  /**
+   * Walk clips active at local time `localT`, prepping their sources. Recurses
+   * into {@link GroupClip} children at the group's local time, mirroring how the
+   * reconciler renders the same subtree (so nested video decodes too).
+   */
+  private collectPrepareJobs(
+    clips: readonly VisualClip[],
+    localT: number,
+    jobs: Promise<void>[],
+  ): void {
+    for (const clip of clips) {
+      if (!clip.isActiveAt(localT)) continue;
+      if (clip instanceof GroupClip) {
+        this.collectPrepareJobs(clip.children, clip.localTime(localT), jobs);
+        continue;
+      }
+      const source = (clip as { source?: VisualSource }).source;
+      if (source instanceof VisualSource) {
+        // Route every source's texture uploads through one VRAM budget.
+        if (isTextureManagerAware(source)) source.adoptTextureManager(this.textures);
+        const sourceTime = localT - clip.start + clip.sourceIn;
+        jobs.push(source.prepare(sourceTime));
+      }
+    }
   }
 
-  /** Render to an offscreen texture (export / pre-composition). */
-  renderToTexture(_t: number): RenderTexture {
-    throw new Error('Compositor.renderToTexture not implemented — see todo/07-exporter.md');
+  /**
+   * Synchronously reconcile the scene graph for time `t` and draw one frame
+   * using already-ready frames. `render(t)` is a pure function of (graph, t):
+   * calling it twice for the same graph and `t` produces the same display tree
+   * (SDK contract #2). Draws pixels only once {@link init} has resolved.
+   */
+  renderSync(t: number): void {
+    this.reconciler.reconcile(this.tracks, t, this.stage);
+    this.renderer?.render({ container: this.stage });
+    this.dirty = false;
+  }
+
+  /**
+   * Render to an offscreen texture (export / pre-composition). Caller owns the
+   * returned {@link RenderTexture} and must `destroy()` it. Requires {@link init}.
+   */
+  renderToTexture(t: number): RenderTexture {
+    if (!this.renderer) {
+      throw new Error('Compositor.renderToTexture requires init() first — see todo/01-skeleton.md');
+    }
+    this.reconciler.reconcile(this.tracks, t, this.stage);
+    const target = RenderTexture.create({
+      width: this.options.width,
+      height: this.options.height,
+    });
+    this.renderer.render({ container: this.stage, target });
+    return target;
   }
 
   /** Preview: best-effort prepare + immediate renderSync (may drop frames). */
@@ -99,6 +187,7 @@ export class Compositor implements Disposable {
   resize(w: number, h: number): void {
     this.view.width = w;
     this.view.height = h;
+    this.renderer?.resize(w, h);
     this.invalidate();
   }
 
@@ -112,7 +201,12 @@ export class Compositor implements Disposable {
   }
 
   dispose(): void {
-    // reconciler.clear(stage); renderer.destroy(); etc.
+    this.reconciler.clear(this.stage);
     this.tracks.length = 0;
+    this.textures.dispose();
+    this.renderer?.destroy();
+    this.renderer = null;
+    this.initPromise = null;
+    this.stage.destroy();
   }
 }

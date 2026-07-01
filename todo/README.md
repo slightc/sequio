@@ -8,14 +8,15 @@
 | # | 里程碑 | 文件 | 状态 |
 |---|---|---|---|
 | 0 | 项目骨架 / 工具链 | [00-project-scaffold.md](00-project-scaffold.md) | ✅ Done |
-| 1 | 时间 + 时钟 + Compositor 渲染核心 + 单路视频上屏 | [01-skeleton.md](01-skeleton.md) | 🚧 In progress |
-| 2 | VideoSource（WebCodecs 解码） | [02-video-source.md](02-video-source.md) | ⬜ Todo |
-| 3 | TextureManager + FrameCache 预算 | [03-texture-frame-budget.md](03-texture-frame-budget.md) | ⬜ Todo |
+| 1 | 时间 + 时钟 + Compositor 渲染核心 + 单路视频上屏 | [01-skeleton.md](01-skeleton.md) | ✅ Done |
+| 2 | VideoSource（WebCodecs 解码） | [02-video-source.md](02-video-source.md) | ✅ Done |
+| 3 | TextureManager + FrameCache 预算 | [03-texture-frame-budget.md](03-texture-frame-budget.md) | ✅ Done |
 | 4 | Reconciler + 多轨叠层 + Transform | [04-reconciler-multitrack.md](04-reconciler-multitrack.md) | ⬜ Todo |
 | 5 | Image / Text / Shape clips | [05-image-text-shape.md](05-image-text-shape.md) | ⬜ Todo |
 | 6 | AudioEngine 音画同步 | [06-audio-engine.md](06-audio-engine.md) | ⬜ Todo |
 | 7 | Effects + EffectRegistry + Transition | [07-effects-transitions.md](07-effects-transitions.md) | ⬜ Todo |
 | 8 | Exporter（FixedStep + 编码封装） | [08-exporter.md](08-exporter.md) | ⬜ Todo |
+| 9 | GroupClip 子合成（嵌套分组） | [09-group-clip.md](09-group-clip.md) | ✅ Done |
 
 状态约定：`⬜ Todo` / `🚧 In progress` / `✅ Done` / `🅿️ Blocked`。
 
