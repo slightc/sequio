@@ -76,6 +76,8 @@ export interface EditorExportOptions {
   range: [number, number];
   background?: number;
   bitrate?: number;
+  /** Normalized coordinate origin; must match the preview so export aligns. */
+  origin?: [number, number];
   /** Mux the AudioEngine's offline mix into the output. @default false */
   audio?: boolean;
   onProgress?: (p: number) => void;
@@ -133,6 +135,7 @@ export async function buildExportCompositor(
     timebase: opts.timebase,
     background: opts.background ?? 0x101014,
     preferWebGPU: true,
+    origin: opts.origin,
   });
   await comp.init();
   const forked: VisualSource[] = [];

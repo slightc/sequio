@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>origin check</title>
+    <style>
+      body { margin: 0; padding: 24px; background: #0b0b0e; font-family: system-ui, sans-serif; color: #e6e6ea; }
+      h1 { font-size: 15px; opacity: 0.85; }
+      #stage canvas { border-radius: 6px; margin: 6px; }
+    </style>
+  </head>
+  <body>
+    <h1>Compositor origin — [0,0] renders centred when origin=[0.5,0.5]</h1>
+    <p style="opacity: 0.55; font-size: 13px; max-width: 620px;">
+      A clip at position [0,0] with a centre origin sits in the middle; with the default origin it
+      centres on the top-left corner. Result on <code>window.__ORIGIN_TEST__</code>.
+    </p>
+    <div id="stage"></div>
+    <script type="module" src="/example/origin-test.ts"></script>
+  </body>
+</html>

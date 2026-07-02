@@ -61,6 +61,15 @@ export interface CompositorOptions {
    * a timeline that intends trailing black past its content.
    */
   holdLastFrameAtEnd?: boolean;
+  /**
+   * Normalized origin of the coordinate frame, `[x, y]` in `0..1` of the canvas.
+   * A clip at `transform.position = [0, 0]` renders at `origin · (width, height)`.
+   * Default `[0, 0]` (top-left, the PixiJS convention). Set `[0.5, 0.5]` to put
+   * the origin at the canvas centre — positions become centre-relative, which is
+   * what most editor UIs want. Applied as a translation on the render root, so
+   * preview, `renderToTexture`/export and transitions all share it (contract #3).
+   */
+  origin?: [number, number];
 }
 
 /**
@@ -99,6 +108,8 @@ export class Compositor implements Disposable {
   prewarmSeconds: number;
   /** Freeze the final frame at the timeline end instead of showing black. */
   holdLastFrameAtEnd: boolean;
+  /** Normalized coordinate-frame origin (`0..1` of the canvas); default `[0,0]`. */
+  readonly origin: readonly [number, number];
   private renderer: Renderer | null = null;
   private initPromise: Promise<void> | null = null;
   private dirty = true;
@@ -119,6 +130,19 @@ export class Compositor implements Disposable {
     this.holdLastFrameAtEnd = options.holdLastFrameAtEnd ?? true;
     this.ownsTextures = options.textures === undefined;
     this.textures = options.textures ?? new TextureManager(options.textureBudgetBytes);
+    // Translate the render root so a clip at position [0,0] lands on the origin.
+    this.origin = options.origin ?? [0, 0];
+    this.applyOrigin(options.width, options.height);
+  }
+
+  /** Offset the stage so `[0,0]` maps to `origin · (width, height)`. */
+  private applyOrigin(width: number, height: number): void {
+    this.stage.position.set(this.origin[0] * width, this.origin[1] * height);
+  }
+
+  /** The origin in canvas pixels: `origin · (width, height)`. */
+  originPixels(): [number, number] {
+    return [this.origin[0] * this.options.width, this.origin[1] * this.options.height];
   }
 
   /**
@@ -349,6 +373,7 @@ export class Compositor implements Disposable {
     this.view.width = w;
     this.view.height = h;
     this.renderer?.resize(w, h);
+    this.applyOrigin(w, h); // keep the origin at the same normalized point
     this.invalidate();
   }
 
