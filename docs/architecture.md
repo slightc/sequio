@@ -95,6 +95,10 @@ clock.play();
   `Sprite`/`Text` 用它们**原生的比例 `anchor`**——尺寸动画（如字号呼吸）下位置稳定、
   且不用每帧测量 bounds；`Graphics`/`Container` 无原生 anchor，则按 `getLocalBounds()`
   映射成未缩放局部 `pivot`。
+- **坐标原点 `origin`**：`CompositorOptions.origin`（归一化 `0..1`，默认 `[0,0]` 左上）把
+  渲染根 `stage` 平移 `origin·(w,h)`，于是 `position=[0,0]` 落在该点。设 `[0.5,0.5]` 即以
+  画布中心为原点（编辑器 UI 常用）。因为是**根平移**，预览、`renderToTexture`/导出、转场
+  offscreen 合成都共享同一坐标系（契约 #3）；`originPixels()` 返回其像素偏移。
 
 ### Clip 时间区间与边界（半开 `[start, end)`）
 

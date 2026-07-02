@@ -9,7 +9,8 @@
  *   - add tracks (stacked, later track renders on top via zIndex)
  *   - move / trim a clip on the timeline, including dragging it across tracks
  *   - move & resize a clip directly on the canvas (drag body, drag corner
- *     handles) or numerically in the inspector (transform position / scale)
+ *     handles) or numerically in the inspector (X/Y are centre-relative — the
+ *     compositor is created with `origin: [0.5, 0.5]`, so [0,0] is the middle)
  *   - export the timeline to MP4 / WebM via the SDK's Exporter, on a forked
  *     offscreen graph (video sources are `fork()`ed) so export never contends
  *     with the live preview's decoder; cancelable, with progress
@@ -46,6 +47,8 @@ const FPS = 30;
 const PX_PER_SEC = 80; // timeline horizontal scale
 const MIN_TIMELINE = 8; // seconds of ruler shown even when empty
 const DEFAULT_CLIP_DURATION = 3; // seconds for newly-added clips
+/** Coordinate origin at the canvas centre — clip position [0,0] is the middle. */
+const ORIGIN: [number, number] = [0.5, 0.5];
 
 const CLIP_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444'];
 
@@ -87,6 +90,9 @@ async function main(): Promise<void> {
     // Freeze the final real frame at the timeline end (SDK default) so playing
     // to the very end doesn't flash black on the [start, end) boundary.
     holdLastFrameAtEnd: true,
+    // Origin at the canvas centre: a clip at position [0,0] sits in the middle,
+    // so inspector X/Y are centre-relative (SDK handles the frame, not the app).
+    origin: ORIGIN,
   });
   await compositor.init();
   document.getElementById('stage')!.append(compositor.view);
@@ -181,7 +187,7 @@ async function main(): Promise<void> {
   /** Center a fresh clip on the canvas at a given uniform scale. */
   function placeCentered(clip: VisualClip, scale = 1): void {
     clip.transform.anchor.setStatic([0.5, 0.5]);
-    clip.transform.position.setStatic([W / 2, H / 2]);
+    clip.transform.position.setStatic([0, 0]); // origin is the canvas centre
     clip.transform.scale.setStatic([scale, scale]);
   }
 
@@ -508,11 +514,14 @@ async function main(): Promise<void> {
     return { kx: cw / W, ky: ch / H };
   }
 
-  /** Axis-aligned bounds of a clip in logical canvas px (anchor is centered). */
+  /** Axis-aligned bounds of a clip in logical canvas px (anchor is centered).
+   *  Positions are origin-relative, so add the origin offset to reach the DOM's
+   *  top-left canvas pixels used by the overlay and hit-testing. */
   function clipBounds(m: ClipModel): { cx: number; cy: number; w: number; h: number } {
-    const [cx, cy] = m.clip.transform.position.valueAt(clock.currentTime);
+    const [px, py] = m.clip.transform.position.valueAt(clock.currentTime);
     const [sx, sy] = m.clip.transform.scale.valueAt(clock.currentTime);
-    return { cx, cy, w: m.iw * Math.abs(sx), h: m.ih * Math.abs(sy) };
+    const [ox, oy] = compositor.originPixels();
+    return { cx: px + ox, cy: py + oy, w: m.iw * Math.abs(sx), h: m.ih * Math.abs(sy) };
   }
 
   /** Position the selection box over the selected clip (hidden if not shown). */
@@ -677,7 +686,8 @@ async function main(): Promise<void> {
       })),
     );
 
-    // Position (clip center in canvas px).
+    // Position — origin-relative (SDK origin is the canvas centre), so a centered
+    // clip reads 0,0. No app-side conversion: the compositor owns the frame.
     const pos = c.transform.position.valueAt(clock.currentTime);
     insX = numberInput(Math.round(pos[0]), 1, (v) => {
       const p = c.transform.position.valueAt(clock.currentTime);
@@ -883,6 +893,7 @@ async function main(): Promise<void> {
         fps: FPS,
         container,
         range: [0, timelineEnd()],
+        origin: ORIGIN,
         audio: hasAnyAudio(),
         onProgress: (p) => setStatus(`Exporting… ${Math.round(p * 100)}%`),
         onExporter: (e) => (activeExporter = e),

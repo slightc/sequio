@@ -113,6 +113,22 @@ class TestEffect extends Effect {
   updateAt = vi.fn();
 }
 
+describe('Compositor origin', () => {
+  it('defaults the origin to the top-left [0,0]', () => {
+    const c = new Compositor({ width: 200, height: 100, timebase: new Timebase(30) });
+    expect(c.origin).toEqual([0, 0]);
+    expect(c.originPixels()).toEqual([0, 0]);
+    c.dispose();
+  });
+
+  it('exposes a centre origin in canvas pixels when origin=[0.5,0.5]', () => {
+    const c = new Compositor({ width: 200, height: 100, timebase: new Timebase(30), origin: [0.5, 0.5] });
+    expect(c.origin).toEqual([0.5, 0.5]);
+    expect(c.originPixels()).toEqual([100, 50]); // 0.5·200, 0.5·100
+    c.dispose();
+  });
+});
+
 describe('Reconciler', () => {
   it('mounts active clips into a per-track container and reuses them (idempotent)', () => {
     const r = new Reconciler();
