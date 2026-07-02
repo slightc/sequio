@@ -35,6 +35,7 @@ import {
   type VisualSource,
   VisualTrack,
 } from '../src/index';
+import { exportTimeline } from './editor-export';
 
 const W = 640;
 const H = 360;
@@ -743,61 +744,6 @@ async function main(): Promise<void> {
   const audioEngine = new AudioEngine(timebase);
   let activeExporter: Exporter | null = null;
 
-  /** Copy timing + (static) transform from a live clip onto an export clone. */
-  function copyVisual(src: VisualClip, dst: VisualClip): void {
-    dst.start = src.start;
-    dst.end = src.end;
-    dst.sourceIn = src.sourceIn;
-    dst.sourceOut = src.sourceOut;
-    dst.speed = src.speed;
-    dst.transform.anchor.setStatic(src.transform.anchor.valueAt(0));
-    dst.transform.position.setStatic(src.transform.position.valueAt(0));
-    dst.transform.scale.setStatic(src.transform.scale.valueAt(0));
-    dst.transform.rotation.setStatic(src.transform.rotation.valueAt(0));
-    dst.opacity.setStatic(src.opacity.valueAt(0));
-    dst.blendMode = src.blendMode;
-  }
-
-  /**
-   * Clone a clip for the export graph. Video sources are **forked** — a second
-   * decoder + cache over the same demuxed input — so export decodes in parallel
-   * without contending on the preview's single decode lane (the cause of long
-   * exports appearing to hang). Image sources (one static texture) are shared.
-   */
-  async function cloneClipForExport(m: ClipModel, forked: VisualSource[]): Promise<VisualClip> {
-    let clip: VisualClip;
-    if (m.kind === 'text') {
-      const t = m.clip as TextClip;
-      clip = new TextClip({ text: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize.valueAt(0), fill: t.fill });
-    } else if (m.kind === 'shape') {
-      clip = new ShapeClip((m.clip as ShapeClip).spec);
-    } else if (m.kind === 'image') {
-      clip = new ImageClip(m.source as VisualSource);
-    } else {
-      const fv = (m.source as VideoSource).fork();
-      await fv.load();
-      forked.push(fv);
-      clip = new VideoClip(fv);
-    }
-    copyVisual(m.clip, clip);
-    return clip;
-  }
-
-  /** Build an offscreen compositor mirroring the timeline for export. */
-  async function buildExportCompositor(): Promise<{ comp: Compositor; forked: VisualSource[] }> {
-    const comp = new Compositor({ width: W, height: H, timebase, background: 0x101014, preferWebGPU: true });
-    await comp.init();
-    const forked: VisualSource[] = [];
-    for (const tm of tracks) {
-      if (tm.clips.length === 0) continue;
-      const et = new VisualTrack();
-      et.zIndex = tm.track.zIndex;
-      for (const m of tm.clips) et.add(await cloneClipForExport(m, forked));
-      comp.addTrack(et);
-    }
-    return { comp, forked };
-  }
-
   async function doExport(): Promise<void> {
     if (activeExporter) {
       activeExporter.cancel(); // second click = cancel an in-flight export
@@ -818,17 +764,20 @@ async function main(): Promise<void> {
     exportBtn.textContent = '⏹ Cancel';
     const container = exportFormat.value as 'mp4' | 'webm';
 
-    let exp: Compositor | null = null;
-    let forked: VisualSource[] = [];
     try {
       setStatus('Preparing export…');
-      ({ comp: exp, forked } = await buildExportCompositor());
-      const exporter = new Exporter(exp, audioEngine);
-      activeExporter = exporter;
-      const blob = await exporter.export(
-        { fps: FPS, container, audio: false, range: [0, timelineEnd()] },
-        (p) => setStatus(`Exporting… ${Math.round(p * 100)}%`),
-      );
+      // Map the editor's tracks onto the exporter's minimal view and run the
+      // forked offscreen export (see editor-export.ts).
+      const blob = await exportTimeline(tracks.map((tm) => ({ zIndex: tm.track.zIndex, clips: tm.clips })), audioEngine, {
+        width: W,
+        height: H,
+        timebase,
+        fps: FPS,
+        container,
+        range: [0, timelineEnd()],
+        onProgress: (p) => setStatus(`Exporting… ${Math.round(p * 100)}%`),
+        onExporter: (e) => (activeExporter = e),
+      });
       downloadBlob(blob, `export.${container}`);
       setStatus(`Exported ${(blob.size / 1e6).toFixed(1)} MB ✓`);
     } catch (err) {
@@ -837,8 +786,6 @@ async function main(): Promise<void> {
     } finally {
       activeExporter = null;
       exportBtn.textContent = '⬇ Export';
-      for (const s of forked) s.dispose(); // forked decoders/caches (shared demux stays)
-      exp?.dispose(); // offscreen compositor + its private texture pool
       render(); // repaint the preview (untouched by the offscreen export)
     }
   }
