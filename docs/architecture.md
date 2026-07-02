@@ -31,7 +31,7 @@
 |---|---|---|
 | 时间与时钟 | `src/time/` | ✅ Timebase / RealtimeClock / FixedStepClock 已实现（视频元素式控制面：play / pause / seek + 到 `duration` 自动停止）|
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
-| 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现 |
+| 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现。`load()` 的帧率从**首段 packet 前缀**估计（`computePacketStats(120)`），不扫全文件——否则长/高分辨率大文件导入会卡住 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
 | 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）+ 轨道内重叠驱动转场（`track.addTransition`）已实现 |
 | 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
@@ -86,6 +86,10 @@ clock.play();
 - **z 序每帧重申**：无论 clip/轨道的挂载历史如何，`reconcile` 都用 `setChildIndex` 把
   容器与 clip 重排成当前 z/数组顺序，所以「后激活的低层 clip」也会落到正确层级；
   启用/禁用轨道、改 `zIndex` 立即反映。对象跨帧复用，每帧几乎零分配。
+- **两阶段（先全卸载、再全挂载）**：`reconcile` 跨所有轨道先卸载各轨离场的 clip，再统一
+  挂载/更新剩余的 clip。`VisualClip` 只有一个 backing 对象，若边卸边挂，一个 clip 在同一趟
+  里从 A 轨移到 B 轨时，B 轨先重挂出新对象、A 轨随后的卸载会把这个新对象 `destroy` 掉
+  （`getChildIndex` 抛「must be a child of the caller」）。先排空所有卸载即杜绝此竞态。
 - **anchor 语义**：`Transform2D.applyTo` 把归一化 anchor（0..1）作用为「把 anchor 点放到
   `position`」（如 anchor `[0.5,0.5]` 使内容居中于 `position`，缩放/旋转绕它进行）。
   `Sprite`/`Text` 用它们**原生的比例 `anchor`**——尺寸动画（如字号呼吸）下位置稳定、

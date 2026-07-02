@@ -87,6 +87,9 @@ pnpm verify:font    # Puppeteer e2e: custom/Google web-font renders in a TextCli
 pnpm verify:audio   # Puppeteer e2e: AudioEngine offline mix + AudioSource decode
 pnpm verify:effects # Puppeteer e2e: color/blur effect on a clip + crossfade blend
 pnpm verify:export  # Puppeteer e2e: Exporter → MP4/WebM, decoded back and checked
+pnpm verify:editor-export # Puppeteer e2e: editor's forked export (video+text+shape) → decoded back
+pnpm verify:video-import  # Puppeteer e2e: import estimates fps from a packet prefix (no full-file scan)
+pnpm verify:editor-audio  # Puppeteer e2e: video imports with sound; export muxes the audio track
 ```
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's

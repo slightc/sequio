@@ -131,6 +131,66 @@ describe('Reconciler', () => {
     expect(clip.updates).toEqual([0.5, 0.5]); // update runs every frame
   });
 
+  it('re-parents a clip to a lower-z track without destroying its object', () => {
+    // A clip owns a single backing object. Moving it to a LOWER-z track makes the
+    // destination reconcile first; the old single-phase order remounted it there
+    // and then the source track's unmount destroyed that fresh object, so the
+    // next z-order re-assert threw "Container must be a child of the caller".
+    const r = new Reconciler();
+    const stage = new Container();
+    const clip = new TestClip(0, 5, 'x');
+    const hi = new VisualTrack();
+    hi.zIndex = 2;
+    hi.add(clip);
+    const lo = new VisualTrack();
+    lo.zIndex = 1;
+
+    r.reconcile([hi, lo], 1, stage);
+    expect(clip.mountCount).toBe(1);
+
+    hi.remove(clip); // move to the lower-z track (the crash direction)
+    lo.add(clip);
+
+    expect(() => {
+      r.reconcile([hi, lo], 1, stage);
+      r.reconcile([hi, lo], 1, stage); // the crash surfaced on the pass AFTER the move
+    }).not.toThrow();
+
+    // Remounted exactly once, its object alive, and now under lo's container.
+    expect(clip.mountCount).toBe(2);
+    expect(clip.unmountCount).toBe(1);
+    expect(clip.obj).not.toBeNull();
+    expect(clip.obj!.destroyed).toBe(false);
+    const [loC, hiC] = stage.children as Container[]; // z-ordered ascending → [lo, hi]
+    expect(loC!.children).toEqual([clip.obj]); // clip lives under lo (z=1)
+    expect(hiC!.children.length).toBe(0); // hi (z=2) is empty
+  });
+
+  it('re-parents a clip to a higher-z track cleanly too', () => {
+    const r = new Reconciler();
+    const stage = new Container();
+    const clip = new TestClip(0, 5, 'y');
+    const lo = new VisualTrack();
+    lo.zIndex = 1;
+    lo.add(clip);
+    const hi = new VisualTrack();
+    hi.zIndex = 2;
+
+    r.reconcile([lo, hi], 1, stage);
+    lo.remove(clip);
+    hi.add(clip);
+    expect(() => {
+      r.reconcile([lo, hi], 1, stage);
+      r.reconcile([lo, hi], 1, stage);
+    }).not.toThrow();
+
+    expect(clip.obj).not.toBeNull();
+    expect(clip.obj!.destroyed).toBe(false);
+    const [loC, hiC] = stage.children as Container[];
+    expect(loC!.children.length).toBe(0);
+    expect(hiC!.children).toEqual([clip.obj]);
+  });
+
   it('unmounts clips but keeps the (empty) track container', () => {
     const r = new Reconciler();
     const stage = new Container();

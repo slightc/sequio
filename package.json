@@ -32,6 +32,9 @@
     "verify:audio": "node scripts/verify-page.cjs example/audio-test.html __AUDIO_TEST__ \"audio engine\"",
     "verify:effects": "node scripts/verify-page.cjs example/effects-test.html __EFFECTS_TEST__ \"effects & transitions\"",
     "verify:export": "node scripts/verify-page.cjs example/export-test.html __EXPORT_TEST__ \"exporter\"",
+    "verify:editor-export": "node scripts/verify-page.cjs example/editor-export-test.html __EDITOR_EXPORT_TEST__ \"editor forked export\"",
+    "verify:video-import": "node scripts/verify-page.cjs example/video-import-test.html __VIDEO_IMPORT_TEST__ \"video import (bounded fps scan)\"",
+    "verify:editor-audio": "node scripts/verify-page.cjs example/editor-audio-test.html __EDITOR_AUDIO_TEST__ \"editor audio (import + export mux)\"",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\""
   },

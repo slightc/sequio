@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>video import check</title>
+    <style>
+      body { margin: 0; padding: 24px; background: #0b0b0e; font-family: system-ui, sans-serif; color: #e6e6ea; }
+      h1 { font-size: 15px; opacity: 0.85; }
+    </style>
+  </head>
+  <body>
+    <h1>Video import — bounded fps estimate (WebCodecs)</h1>
+    <p style="opacity: 0.55; font-size: 13px; max-width: 620px;">
+      Encode a 150-frame CFR clip, import it as a VideoSource, and assert the fps estimated from a
+      packet prefix is exact and a frame decodes — i.e. load() no longer scans the whole file.
+      Result on <code>window.__VIDEO_IMPORT_TEST__</code>.
+    </p>
+    <div id="stage"></div>
+    <script type="module" src="/example/video-import-test.ts"></script>
+  </body>
+</html>

@@ -43,6 +43,13 @@ interface TrackEntry {
  *
  * Incremental add/remove keeps per-frame allocations near zero; z-order is
  * re-asserted every frame so it stays stable regardless of mount history.
+ *
+ * `reconcile` runs in two phases across all tracks — unmount every track's
+ * departed clips, THEN mount/update the rest — so a clip re-parented between
+ * tracks in one pass is torn down from its old track before its new track mounts
+ * a fresh object. A `VisualClip` owns a single backing object; interleaving
+ * unmounts with mounts would let the source track destroy the object the
+ * destination just created.
  */
 export class Reconciler {
   /** clip → mounted pixi object (clip level). */
@@ -61,21 +68,40 @@ export class Reconciler {
       if (!activeSet.has(track)) this.disposeTrackEntry(track, entry, stage);
     }
 
-    // Mount / update each active track (adjustment layer + its clips + transitions).
+    // Ensure a scene-graph entry per active track (container may be empty).
     for (const track of active) {
-      let entry = this.trackEntries.get(track);
-      if (!entry) {
-        entry = {
-          container: new Container(),
-          clips: new Reconciler(),
-          attached: new Set(),
-          transitions: new Map(),
-        };
-        this.trackEntries.set(track, entry);
-        stage.addChild(entry.container);
-      }
+      if (this.trackEntries.has(track)) continue;
+      const entry: TrackEntry = {
+        container: new Container(),
+        clips: new Reconciler(),
+        attached: new Set(),
+        transitions: new Map(),
+      };
+      this.trackEntries.set(track, entry);
+      stage.addChild(entry.container);
+    }
+
+    // Snapshot each track's active clips once (used by both phases below).
+    const activeClips = new Map<VisualTrack, VisualClip[]>();
+    for (const track of active) activeClips.set(track, track.activeAt(t));
+
+    // PHASE 1 — unmount clips that left each track, across ALL tracks, BEFORE any
+    // (re)mount. A VisualClip owns a single backing pixi object; when a clip
+    // moves between tracks the destination would otherwise mount a fresh object
+    // (reassigning the clip's object) and the source track's later unmount would
+    // then destroy that fresh object — the cross-track "Container must be a child
+    // of the caller" crash. Draining all unmounts first means no clip's object is
+    // reassigned before its old track has let go of it.
+    for (const track of active) {
+      const entry = this.trackEntries.get(track)!;
+      entry.clips.unmountInactive(activeClips.get(track)!, entry.container);
+    }
+
+    // PHASE 2 — mount/update/z-order remaining clips + track effects + transitions.
+    for (const track of active) {
+      const entry = this.trackEntries.get(track)!;
       this.syncTrackEffects(track, entry, t);
-      entry.clips.reconcileClips(track.activeAt(t), t, entry.container);
+      entry.clips.mountAndOrder(activeClips.get(track)!, t, entry.container);
       this.syncTransitions(track, entry, t, ctx);
     }
 
@@ -88,11 +114,32 @@ export class Reconciler {
 
   /**
    * Reconcile a pre-filtered, ordered list of **active** clips into `stage`:
-   * mount new ones, reuse mounted ones, unmount the rest, then re-assert z-order
-   * to match `activeClips` (list order = bottom-to-top).
+   * unmount the ones that left, mount new ones, reuse the rest, then re-assert
+   * z-order to match `activeClips` (list order = bottom-to-top).
+   *
+   * Unmount runs first so that, within one container, a freshly-mounted object
+   * is never torn down by a stale entry (matches the two-phase ordering the
+   * top-level {@link reconcile} uses across tracks). {@link GroupClip} drives its
+   * children through this single-call form.
    */
   reconcileClips(activeClips: VisualClip[], t: number, stage: Container): void {
+    this.unmountInactive(activeClips, stage);
+    this.mountAndOrder(activeClips, t, stage);
+  }
+
+  /** Phase 1: unmount every mounted clip not in `activeClips` (frees its object). */
+  private unmountInactive(activeClips: VisualClip[], stage: Container): void {
     const active = new Set(activeClips);
+    for (const [clip, obj] of this.mounted) {
+      if (active.has(clip)) continue;
+      stage.removeChild(obj);
+      clip.unmount();
+      this.mounted.delete(clip);
+    }
+  }
+
+  /** Phase 2: mount new clips, update all, then z-order to `activeClips` order. */
+  private mountAndOrder(activeClips: VisualClip[], t: number, stage: Container): void {
     for (const clip of activeClips) {
       let obj = this.mounted.get(clip);
       if (!obj) {
@@ -102,15 +149,6 @@ export class Reconciler {
       }
       clip.update(t);
     }
-
-    // Unmount clips that are no longer active.
-    for (const [clip, obj] of this.mounted) {
-      if (active.has(clip)) continue;
-      stage.removeChild(obj);
-      clip.unmount();
-      this.mounted.delete(clip);
-    }
-
     // Keep z-order stable = activeClips order, regardless of mount history.
     for (let i = 0; i < activeClips.length; i++) {
       const obj = this.mounted.get(activeClips[i]!)!;

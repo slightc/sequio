@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>editor export check</title>
+    <style>
+      body { margin: 0; padding: 24px; background: #0b0b0e; font-family: system-ui, sans-serif; color: #e6e6ea; }
+      h1 { font-size: 15px; opacity: 0.85; }
+      #stage canvas { border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
+    </style>
+  </head>
+  <body>
+    <h1>Editor forked export (WebCodecs)</h1>
+    <p style="opacity: 0.55; font-size: 13px; max-width: 620px;">
+      Render a timeline (forked video + text + shape) to MP4/WebM via the editor's export module,
+      decode it back and check frames are non-black — and confirm the live preview's decoder is
+      untouched. Result on <code>window.__EDITOR_EXPORT_TEST__</code>.
+    </p>
+    <div id="stage"></div>
+    <script type="module" src="/example/editor-export-test.ts"></script>
+  </body>
+</html>

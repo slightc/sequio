@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>editor audio check</title>
+    <style>
+      body { margin: 0; padding: 24px; background: #0b0b0e; font-family: system-ui, sans-serif; color: #e6e6ea; }
+      h1 { font-size: 15px; opacity: 0.85; }
+    </style>
+  </head>
+  <body>
+    <h1>Editor audio — import with sound + export muxes audio (WebCodecs)</h1>
+    <p style="opacity: 0.55; font-size: 13px; max-width: 640px;">
+      Encode an A/V clip, import it as VideoSource + AudioSource, schedule the audio, and export with
+      <code>audio: true</code>; assert the output decodes back with both a video and an audio track.
+      Result on <code>window.__EDITOR_AUDIO_TEST__</code>.
+    </p>
+    <div id="stage"></div>
+    <script type="module" src="/example/editor-audio-test.ts"></script>
+  </body>
+</html>
