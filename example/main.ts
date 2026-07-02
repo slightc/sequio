@@ -414,14 +414,10 @@ async function main(): Promise<void> {
   function moveClipToTrack(model: ClipModel, to: TrackModel): void {
     const from = tracks.find((t) => t.clips.includes(model));
     if (!from || from === to) return;
-    // Detach from the old track and FLUSH a reconcile so its mounted pixi object
-    // is torn down before the destination mounts a fresh one. A VisualClip has a
-    // single backing object; if the destination track (lower zIndex) reconciles
-    // first it would remount the clip, then the source track's deferred unmount
-    // would destroy that fresh object → "Container must be a child" crash.
+    // The reconciler drains all cross-track unmounts before any remount, so a
+    // plain remove+add is safe — no manual flush needed (see Reconciler).
     from.track.remove(model.clip);
     from.clips.splice(from.clips.indexOf(model), 1);
-    compositor.renderSync(clock.currentTime);
     to.clips.push(model);
     to.track.add(model.clip);
     activeTrack = to;

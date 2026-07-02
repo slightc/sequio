@@ -86,6 +86,10 @@ clock.play();
 - **z 序每帧重申**：无论 clip/轨道的挂载历史如何，`reconcile` 都用 `setChildIndex` 把
   容器与 clip 重排成当前 z/数组顺序，所以「后激活的低层 clip」也会落到正确层级；
   启用/禁用轨道、改 `zIndex` 立即反映。对象跨帧复用，每帧几乎零分配。
+- **两阶段（先全卸载、再全挂载）**：`reconcile` 跨所有轨道先卸载各轨离场的 clip，再统一
+  挂载/更新剩余的 clip。`VisualClip` 只有一个 backing 对象，若边卸边挂，一个 clip 在同一趟
+  里从 A 轨移到 B 轨时，B 轨先重挂出新对象、A 轨随后的卸载会把这个新对象 `destroy` 掉
+  （`getChildIndex` 抛「must be a child of the caller」）。先排空所有卸载即杜绝此竞态。
 - **anchor 语义**：`Transform2D.applyTo` 把归一化 anchor（0..1）作用为「把 anchor 点放到
   `position`」（如 anchor `[0.5,0.5]` 使内容居中于 `position`，缩放/旋转绕它进行）。
   `Sprite`/`Text` 用它们**原生的比例 `anchor`**——尺寸动画（如字号呼吸）下位置稳定、
