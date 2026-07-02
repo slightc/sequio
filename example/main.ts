@@ -7,7 +7,7 @@
  *   - upload local files as Image / Video sources and add them as clips; a
  *     video's audio track is decoded and played with it (AudioEngine)
  *   - add tracks (stacked, later track renders on top via zIndex)
- *   - move / trim a clip on the timeline (edit its start / end)
+ *   - move / trim a clip on the timeline, including dragging it across tracks
  *   - move & resize a clip directly on the canvas (drag body, drag corner
  *     handles) or numerically in the inspector (transform position / scale)
  *   - export the timeline to MP4 / WebM via the SDK's Exporter, on a forked
@@ -340,6 +340,7 @@ async function main(): Promise<void> {
     if (model) activeTrack = tracks.find((t) => t.clips.includes(model)) ?? activeTrack;
     rebuildTimeline();
     rebuildInspector();
+    updateOverlay(); // show/move the box on select, hide it immediately on deselect
   }
 
   function setStatus(msg: string): void {
@@ -399,6 +400,29 @@ async function main(): Promise<void> {
     });
   }
 
+  /** The TrackModel whose lane contains a viewport Y coordinate (or null). */
+  function trackAtClientY(clientY: number): TrackModel | null {
+    const lanes = tracksEl.querySelectorAll('.track-lane');
+    for (let i = 0; i < lanes.length; i++) {
+      const r = lanes[i]!.getBoundingClientRect();
+      if (clientY >= r.top && clientY <= r.bottom) return tracks[i] ?? null;
+    }
+    return null;
+  }
+
+  /** Re-parent a clip to another track (visual graph + model + z-stacking). */
+  function moveClipToTrack(model: ClipModel, to: TrackModel): void {
+    const from = tracks.find((t) => t.clips.includes(model));
+    if (!from || from === to) return;
+    from.track.remove(model.clip);
+    from.clips.splice(from.clips.indexOf(model), 1);
+    to.clips.push(model);
+    to.track.add(model.clip);
+    activeTrack = to;
+    // Audio isn't per-track (scheduled globally by the AudioEngine), so nothing
+    // to reschedule here.
+  }
+
   function buildClipBlock(model: ClipModel): HTMLElement {
     const block = document.createElement('div');
     block.className = 'clip-block' + (model === selected ? ' selected' : '');
@@ -411,7 +435,8 @@ async function main(): Promise<void> {
     handle.className = 'resize';
     block.append(handle);
 
-    // Move: drag the block body → shift start (duration preserved, clamped ≥ 0).
+    // Move: drag the block body → shift start (duration preserved, clamped ≥ 0)
+    // and, when the pointer crosses into another lane, re-parent to that track.
     block.addEventListener('pointerdown', (e) => {
       if (e.target === handle) return;
       e.preventDefault();
@@ -425,6 +450,8 @@ async function main(): Promise<void> {
         model.clip.start = ns;
         model.clip.end = ns + dur;
         mirrorAudio(model);
+        const target = trackAtClientY(ev.clientY);
+        if (target) moveClipToTrack(model, target); // vertical → change track
         refreshDuration();
         rebuildTimeline();
         render();
