@@ -31,7 +31,7 @@
 |---|---|---|
 | 时间与时钟 | `src/time/` | ✅ Timebase / RealtimeClock / FixedStepClock 已实现（视频元素式控制面：play / pause / seek + 到 `duration` 自动停止）|
 | 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
-| 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现 |
+| 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现。`load()` 的帧率从**首段 packet 前缀**估计（`computePacketStats(120)`），不扫全文件——否则长/高分辨率大文件导入会卡住 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
 | 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）+ 轨道内重叠驱动转场（`track.addTransition`）已实现 |
 | 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |

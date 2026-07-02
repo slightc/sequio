@@ -7,6 +7,12 @@ import type { DecodedFrame, VideoDecoderBackend } from './video-decoder';
 export type VideoInput = string | ArrayBuffer | Blob;
 
 /**
+ * How many leading packets to sample when estimating the frame rate in
+ * {@link MediabunnyVideoDecoder.load}. Enough for a stable average even at high
+ * fps, but tiny to read — so `load()` never scans a whole large file. */
+const FPS_ESTIMATE_PACKETS = 120;
+
+/**
  * Default {@link VideoDecoderBackend}: demux + hardware decode via
  * [Mediabunny](https://mediabunny.dev) (a zero-dependency WebCodecs wrapper).
  *
@@ -72,7 +78,12 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
 
     const [duration, stats, audioTrack] = await Promise.all([
       this.input.computeDuration(),
-      track.computePacketStats(),
+      // Estimate the frame rate from a PREFIX of packets, not the whole file.
+      // The default (`Infinity`) walks every packet's metadata — for a long or
+      // high-res source (e.g. a 4K/1080p multi-hundred-MB file) that scan can
+      // take many seconds and freezes import. A CFR prefix gives an exact rate;
+      // VFR is estimated (frame keying already assumes CFR — see class docs).
+      track.computePacketStats(FPS_ESTIMATE_PACKETS),
       this.input.getPrimaryAudioTrack(),
     ]);
 

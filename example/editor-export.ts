@@ -26,6 +26,28 @@ import {
   VisualTrack,
 } from '../src/index';
 
+/**
+ * Bound a video's decode-cache so a high-resolution source can't pile up
+ * gigabytes of decoded frames and freeze the tab. A decoded frame is ~`w*h*4`
+ * bytes; the default {@link FrameCache} holds 60 of them — for 4K that's ~2 GB.
+ * Size the ring to a fixed memory budget instead (and the look-ahead with it).
+ *
+ * Constructor options are the right lever because `VideoSource.fork()` inherits
+ * them, so the export fork stays bounded too. Pure + deterministic → unit-tested.
+ *
+ * @param budgetBytes decoded-frame memory budget (default ~160 MiB).
+ */
+export function videoCacheSettings(
+  width: number,
+  height: number,
+  budgetBytes = 160 * 1024 * 1024,
+): { cacheFrames: number; lookahead: number } {
+  const bytesPerFrame = Math.max(1, width * height * 4);
+  const cacheFrames = Math.max(2, Math.min(60, Math.floor(budgetBytes / bytesPerFrame)));
+  const lookahead = Math.max(1, Math.min(3, Math.floor(cacheFrames / 3)));
+  return { cacheFrames, lookahead };
+}
+
 export type ExportClipKind = 'text' | 'shape' | 'image' | 'video';
 
 /** The minimal view of a timeline clip the exporter needs. */

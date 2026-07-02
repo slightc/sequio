@@ -35,7 +35,7 @@ import {
   type VisualSource,
   VisualTrack,
 } from '../src/index';
-import { exportTimeline } from './editor-export';
+import { exportTimeline, videoCacheSettings } from './editor-export';
 
 const W = 640;
 const H = 360;
@@ -230,8 +230,19 @@ async function main(): Promise<void> {
 
   async function addVideo(file: File): Promise<void> {
     setStatus(`Decoding ${file.name}…`);
-    const source = new VideoSource({ src: file });
-    const meta = await source.load();
+    // Probe metadata first (cheap — reads the container header, not the whole
+    // file), then size the decode cache to the resolution so a 4K/large source
+    // can't accumulate gigabytes of decoded frames and freeze the tab.
+    let source = new VideoSource({ src: file });
+    let meta = await source.load();
+    const { cacheFrames, lookahead } = videoCacheSettings(meta.width, meta.height);
+    if (cacheFrames < 60) {
+      // Cache size is a constructor-only knob → rebuild with a bounded ring.
+      // The export fork() inherits these options, so export stays bounded too.
+      source.dispose();
+      source = new VideoSource({ src: file, cacheFrames, lookahead });
+      meta = await source.load();
+    }
     const clip = new VideoClip(source);
     const scale = Math.min(W / meta.width, H / meta.height) * 0.8;
     placeCentered(clip, scale);
@@ -239,7 +250,9 @@ async function main(): Promise<void> {
     // dominate the timeline; the user can trim it on the timeline anyway).
     const dur = Number.isFinite(meta.duration) ? Math.min(meta.duration, 10) : DEFAULT_CLIP_DURATION;
     addClip('video', clip, source, file.name, dur, meta.width, meta.height);
-    setStatus('');
+    setStatus(
+      cacheFrames < 60 ? `${meta.width}×${meta.height} · decode cache ${cacheFrames} frames` : '',
+    );
   }
 
   /** Approximate a text clip's unscaled pixel size (for the selection box). */
