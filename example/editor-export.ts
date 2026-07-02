@@ -71,9 +71,13 @@ export interface EditorExportOptions {
   container: 'mp4' | 'webm';
   /** WebCodecs/Mediabunny codec name; defaults to the container's default. */
   videoCodec?: string;
+  /** Audio codec name; defaults to the container's default (aac/opus). */
+  audioCodec?: string;
   range: [number, number];
   background?: number;
   bitrate?: number;
+  /** Mux the AudioEngine's offline mix into the output. @default false */
+  audio?: boolean;
   onProgress?: (p: number) => void;
   /** Receives the live {@link Exporter} so the caller can `cancel()` it. */
   onExporter?: (exporter: Exporter) => void;
@@ -161,7 +165,8 @@ export async function exportTimeline(
         fps: opts.fps,
         container: opts.container,
         videoCodec: opts.videoCodec,
-        audio: false,
+        audioCodec: opts.audioCodec,
+        audio: opts.audio ?? false,
         bitrate: opts.bitrate,
         range: opts.range,
       },

@@ -34,6 +34,7 @@
     "verify:export": "node scripts/verify-page.cjs example/export-test.html __EXPORT_TEST__ \"exporter\"",
     "verify:editor-export": "node scripts/verify-page.cjs example/editor-export-test.html __EDITOR_EXPORT_TEST__ \"editor forked export\"",
     "verify:video-import": "node scripts/verify-page.cjs example/video-import-test.html __VIDEO_IMPORT_TEST__ \"video import (bounded fps scan)\"",
+    "verify:editor-audio": "node scripts/verify-page.cjs example/editor-audio-test.html __EDITOR_AUDIO_TEST__ \"editor audio (import + export mux)\"",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\""
   },

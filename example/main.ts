@@ -4,7 +4,8 @@
  * A small consumer app built on the SDK's public surface that demonstrates the
  * pieces an editor needs:
  *   - add Text / Shape (rect, ellipse) clips
- *   - upload local files as Image / Video sources and add them as clips
+ *   - upload local files as Image / Video sources and add them as clips; a
+ *     video's audio track is decoded and played with it (AudioEngine)
  *   - add tracks (stacked, later track renders on top via zIndex)
  *   - move / trim a clip on the timeline (edit its start / end)
  *   - move & resize a clip directly on the canvas (drag body, drag corner
@@ -19,7 +20,9 @@
  * never repaints on its own (contract #5).
  */
 import {
+  AudioClip,
   AudioEngine,
+  AudioSource,
   Compositor,
   Exporter,
   ImageClip,
@@ -59,6 +62,10 @@ interface ClipModel {
   /** Intrinsic (unscaled) size in canvas px, for the on-canvas selection box. */
   iw: number;
   ih: number;
+  /** Audio for video clips: a decoded source + a timeline clip mirroring the
+   *  video clip's start/end, scheduled in the shared AudioEngine. */
+  audioSource?: AudioSource;
+  audioClip?: AudioClip;
 }
 
 /** A track plus its clip models. */
@@ -85,6 +92,8 @@ async function main(): Promise<void> {
   document.getElementById('stage')!.append(compositor.view);
 
   const clock = new RealtimeClock();
+  // One AudioEngine drives preview playback AND the export offline mix.
+  const audioEngine = new AudioEngine(timebase);
 
   // ── App state ──────────────────────────────────────────────────────────
   const tracks: TrackModel[] = [];
@@ -123,6 +132,37 @@ async function main(): Promise<void> {
   function render(): void {
     compositor.renderPreview(clock.currentTime);
     updateOverlay();
+  }
+
+  /** Whether any clip contributes audio. */
+  function hasAnyAudio(): boolean {
+    return tracks.some((tm) => tm.clips.some((c) => c.audioClip && c.audioSource));
+  }
+
+  /**
+   * Re-register every audio clip with the engine (it has no per-entry remove, so
+   * clear + re-schedule). The engine reads clip start/end fresh on each play, so
+   * timing edits don't need a reschedule — but add/delete do. Resumes playback
+   * from the current playhead if we were playing.
+   */
+  function syncAudioSchedule(): void {
+    audioEngine.clear();
+    for (const tm of tracks) {
+      for (const c of tm.clips) {
+        if (c.audioClip && c.audioSource) audioEngine.schedule(c.audioClip, c.audioSource);
+      }
+    }
+    if (!clock.paused) audioEngine.play(clock.currentTime);
+  }
+
+  /** Mirror a video clip's timeline window onto its audio clip. */
+  function mirrorAudio(m: ClipModel): void {
+    if (!m.audioClip) return;
+    m.audioClip.start = m.clip.start;
+    m.audioClip.end = m.clip.end;
+    m.audioClip.sourceIn = m.clip.sourceIn;
+    m.audioClip.speed = m.clip.speed;
+    if (!clock.paused) audioEngine.seek(clock.currentTime); // re-cue live playback
   }
 
   /** Recompute the clock duration + scrub range from the current graph. */
@@ -194,6 +234,8 @@ async function main(): Promise<void> {
     };
     tm.clips.push(model);
     tm.track.add(clip);
+    mirrorAudio(model); // align the audio clip (if any) to the placed video clip
+    if (model.audioClip) syncAudioSchedule();
     selectClip(model);
     refreshDuration();
     rebuildTimeline();
@@ -249,7 +291,21 @@ async function main(): Promise<void> {
     // Default the clip to the video's own length (capped so a long file doesn't
     // dominate the timeline; the user can trim it on the timeline anyway).
     const dur = Number.isFinite(meta.duration) ? Math.min(meta.duration, 10) : DEFAULT_CLIP_DURATION;
-    addClip('video', clip, source, file.name, dur, meta.width, meta.height);
+
+    // Decode the audio track (if any) into a clip so the video plays with sound.
+    let extra: Partial<ClipModel> | undefined;
+    if (meta.hasAudio) {
+      try {
+        setStatus(`Decoding audio for ${file.name}…`);
+        const audioSource = new AudioSource({ src: file });
+        await audioSource.load();
+        extra = { audioSource, audioClip: new AudioClip() };
+      } catch (err) {
+        console.warn('audio decode failed; adding video without sound', err);
+      }
+    }
+
+    addClip('video', clip, source, file.name, dur, meta.width, meta.height, extra);
     setStatus(
       cacheFrames < 60 ? `${meta.width}×${meta.height} · decode cache ${cacheFrames} frames` : '',
     );
@@ -268,6 +324,10 @@ async function main(): Promise<void> {
     tm.track.remove(model.clip);
     tm.clips.splice(tm.clips.indexOf(model), 1);
     model.source?.dispose();
+    if (model.audioSource) {
+      model.audioSource.dispose();
+      syncAudioSchedule(); // drop its entry (engine has no per-clip remove)
+    }
     if (selected === model) selected = null;
     refreshDuration();
     rebuildTimeline();
@@ -364,6 +424,7 @@ async function main(): Promise<void> {
         const ns = Math.max(0, quantize(origStart + ds));
         model.clip.start = ns;
         model.clip.end = ns + dur;
+        mirrorAudio(model);
         refreshDuration();
         rebuildTimeline();
         render();
@@ -382,6 +443,7 @@ async function main(): Promise<void> {
         const ds = (ev.clientX - startX) / PX_PER_SEC;
         const ne = Math.max(model.clip.start + 1 / FPS, quantize(origEnd + ds));
         model.clip.end = ne;
+        mirrorAudio(model);
         refreshDuration();
         rebuildTimeline();
         render();
@@ -617,6 +679,7 @@ async function main(): Promise<void> {
     inspectorEl.append(del);
 
     function commitAndRefresh(): void {
+      mirrorAudio(m);
       refreshDuration();
       rebuildTimeline();
       rebuildInspector();
@@ -700,6 +763,7 @@ async function main(): Promise<void> {
     updatePlayhead();
   });
   clock.onEnded(() => {
+    audioEngine.pause();
     playBtn.textContent = '▶ Play';
   });
 
@@ -707,15 +771,18 @@ async function main(): Promise<void> {
     if (timelineEnd() <= 0) return;
     if (clock.paused) {
       clock.play();
+      audioEngine.play(clock.currentTime); // start audio from the same playhead
       playBtn.textContent = '⏸ Pause';
     } else {
       clock.pause();
+      audioEngine.pause();
       playBtn.textContent = '▶ Play';
     }
   });
 
   scrub.addEventListener('input', () => {
     clock.pause();
+    audioEngine.pause();
     playBtn.textContent = '▶ Play';
     clock.seek(Number(scrub.value));
     updateTimeLabel();
@@ -752,9 +819,6 @@ async function main(): Promise<void> {
 
   // ── Export ─────────────────────────────────────────────────────────────
 
-  // No audio in this demo, but the Exporter needs an engine to construct; we
-  // pass `audio: false` so its offline mix is never invoked.
-  const audioEngine = new AudioEngine(timebase);
   let activeExporter: Exporter | null = null;
 
   async function doExport(): Promise<void> {
@@ -773,6 +837,7 @@ async function main(): Promise<void> {
       return;
     }
     clock.pause();
+    audioEngine.pause(); // don't leave preview audio running during export
     playBtn.textContent = '▶ Play';
     exportBtn.textContent = '⏹ Cancel';
     const container = exportFormat.value as 'mp4' | 'webm';
@@ -780,7 +845,8 @@ async function main(): Promise<void> {
     try {
       setStatus('Preparing export…');
       // Map the editor's tracks onto the exporter's minimal view and run the
-      // forked offscreen export (see editor-export.ts).
+      // forked offscreen export (see editor-export.ts). Audio is muxed from the
+      // shared AudioEngine's offline mix when any clip contributes sound.
       const blob = await exportTimeline(tracks.map((tm) => ({ zIndex: tm.track.zIndex, clips: tm.clips })), audioEngine, {
         width: W,
         height: H,
@@ -788,6 +854,7 @@ async function main(): Promise<void> {
         fps: FPS,
         container,
         range: [0, timelineEnd()],
+        audio: hasAnyAudio(),
         onProgress: (p) => setStatus(`Exporting… ${Math.round(p * 100)}%`),
         onExporter: (e) => (activeExporter = e),
       });
