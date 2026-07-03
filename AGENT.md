@@ -97,7 +97,7 @@ pnpm verify:ssr-node      # Pure-Node SSR (Route B): PixiJS WebGPU (Dawn) render
 pnpm verify:ssr-node-audio# Route B audio: synth tone + shape → MP4, decoded back asserts video+audio tracks
 pnpm verify:ssr-node-font # Route B fonts: load a Google font (Roboto) in Node and assert glyphs rendered
 pnpm verify:ssr-node-media# Route B media: decode a video + a data-URL image in pure Node and composite them
-pnpm ssr:render-node -- --timeline <spec.json> --out out.mp4  # SSR worker B (Node WebGPU): needs a GPU or Mesa lavapipe
+pnpm ssr:render-node -- --timeline <spec.json> [--scale 2] --out out.mp4  # SSR worker B (Node WebGPU): --scale N = N× resolution; needs a GPU or Mesa lavapipe
 ```
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's

@@ -300,6 +300,13 @@ export interface BuildOverrides {
   createRenderer?: (options: Partial<AutoDetectOptions>) => Promise<Renderer>;
   /** Custom font loader (e.g. Node `GlobalFonts.register`) replacing `document.fonts`. */
   loadFonts?: (specs: FontSpec[] | undefined) => Promise<void>;
+  /**
+   * Backing-store scale for the output. `2` renders/exports at 2× the timeline's
+   * `width`×`height` (crisper text/vectors, larger file). In a browser this
+   * defaults to `devicePixelRatio`; in Node there's none, so the default is `1`
+   * and a caller (e.g. the SSR worker's `--scale`) can bump it here.
+   */
+  resolution?: number;
 }
 
 /**
@@ -317,6 +324,7 @@ export async function buildTimeline(spec: TimelineSpec, overrides: BuildOverride
     background: spec.background ?? 0x000000,
     origin: spec.origin,
     createRenderer: overrides.createRenderer,
+    resolution: overrides.resolution,
   });
   await compositor.init();
 

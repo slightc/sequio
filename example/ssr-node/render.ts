@@ -18,18 +18,19 @@ import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';
 import { loadFontsNode } from './fonts-node';
 
-function parseArgs(argv: string[]): { timeline: string | null; out: string; verify: boolean } {
-  const args = { timeline: null as string | null, out: 'out.mp4', verify: false };
+function parseArgs(argv: string[]): { timeline: string | null; out: string; verify: boolean; scale: number } {
+  const args = { timeline: null as string | null, out: 'out.mp4', verify: false, scale: 1 };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--timeline') args.timeline = argv[++i] ?? null;
     else if (argv[i] === '--out') args.out = argv[++i] ?? args.out;
     else if (argv[i] === '--verify') args.verify = true;
+    else if (argv[i] === '--scale') args.scale = Math.max(1, Number(argv[++i]) || 1);
   }
   return args;
 }
 
 async function main(): Promise<void> {
-  const { timeline, out, verify } = parseArgs(process.argv.slice(2));
+  const { timeline, out, verify, scale } = parseArgs(process.argv.slice(2));
   const fs = await import('node:fs');
   const path = await import('node:path');
 
@@ -48,12 +49,14 @@ async function main(): Promise<void> {
       return renderer;
     },
     loadFonts: loadFontsNode,
+    resolution: scale,
   });
 
   try {
     const outPath = path.resolve(out);
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    console.log(`Rendering ${timeline ? path.resolve(timeline) : 'built-in demo'} → ${outPath} (pure Node, WebGPU) …`);
+    const dims = scale !== 1 ? ` @ ${scale}× (${spec.width * scale}×${spec.height * scale})` : '';
+    console.log(`Rendering ${timeline ? path.resolve(timeline) : 'built-in demo'} → ${outPath} (pure Node, WebGPU${dims}) …`);
 
     const result = await renderTimelineToFile(built.compositor, renderer!, {
       fps: spec.fps,
