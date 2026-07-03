@@ -264,6 +264,14 @@ describe('VideoSource', () => {
     expect(textures.count).toBe(0);
   });
 
+  it('getMediabunnyDemux is null for a custom (non-mediabunny) backend', async () => {
+    // Sharing a demux with an AudioSource is a mediabunny-only capability; an
+    // injected backend has no Input to share, so callers fall back to opening src.
+    const { source } = make();
+    await source.load();
+    expect(source.getMediabunnyDemux()).toBeNull();
+  });
+
   it('configureCache resizes the ring in place: shrinking evicts to the new budget', async () => {
     // Load once, then size the cache down WITHOUT a re-load (the demo does this
     // to bound decode memory to the source resolution). Older frames evict.

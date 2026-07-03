@@ -341,7 +341,11 @@ async function main(): Promise<void> {
     if (meta.hasAudio) {
       void (async () => {
         try {
-          const audioSource = new AudioSource({ src });
+          // Decode the audio from the video's ALREADY-OPENED demux so the file
+          // isn't fetched a second time; fall back to opening `src` directly if
+          // the (default) mediabunny demux isn't available.
+          const demux = source.getMediabunnyDemux();
+          const audioSource = demux?.audioTrack ? new AudioSource({ demux }) : new AudioSource({ src });
           await audioSource.load();
           // The clip may have been deleted while the audio decoded — skip if so.
           if (!isClipLive(model)) {

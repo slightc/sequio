@@ -90,10 +90,12 @@ async function run(): Promise<void> {
 
   const file = await makeAVFile(av);
 
-  // Import the way the editor does: a VideoSource + a decoded AudioSource.
+  // Import the way the editor does: a VideoSource, then decode the audio from its
+  // ALREADY-OPENED demux (getMediabunnyDemux) — the file isn't fetched twice.
   const video = new VideoSource({ src: file });
   const vmeta = await video.load();
-  const audioSource = new AudioSource({ src: file });
+  const demux = video.getMediabunnyDemux();
+  const audioSource = demux?.audioTrack ? new AudioSource({ demux }) : new AudioSource({ src: file });
   const ameta = await audioSource.load();
   const pcm = audioSource.getBuffer();
 

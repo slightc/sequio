@@ -1,6 +1,6 @@
 import type { Texture } from 'pixi.js';
 import { FrameCache } from './frame-cache';
-import { MediabunnyVideoDecoder, type VideoInput } from './mediabunny-decoder';
+import { type MediabunnyDemux, MediabunnyVideoDecoder, type VideoInput } from './mediabunny-decoder';
 import { type SourceMetadata, VisualSource } from './media-source';
 import type { DecodedFrame, VideoDecoderBackend } from './video-decoder';
 import { TextureManager } from '../texture/texture-manager';
@@ -117,6 +117,16 @@ export class VideoSource extends VisualSource {
   fork(): VideoSource {
     if (!this.backend.fork) throw new Error('this VideoSource cannot be forked (backend has no fork())');
     return new VideoSource({ ...this.options, backend: this.backend.fork(), textureManager: undefined });
+  }
+
+  /**
+   * The opened mediabunny demux (Input + audio track), if the default backend is
+   * in use — so an {@link AudioSource} can decode this source's audio from the
+   * SAME Input rather than re-opening (and re-fetching) the file. Returns `null`
+   * for a custom backend or before {@link load}.
+   */
+  getMediabunnyDemux(): MediabunnyDemux | null {
+    return this.backend instanceof MediabunnyVideoDecoder ? this.backend.getDemux() : null;
   }
 
   /** Adopt a shared texture pool (unless one was explicitly injected). */

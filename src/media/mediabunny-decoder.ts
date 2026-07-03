@@ -1,4 +1,4 @@
-import type { Input, InputVideoTrack, VideoSample, VideoSampleSink } from 'mediabunny';
+import type { Input, InputAudioTrack, InputVideoTrack, VideoSample, VideoSampleSink } from 'mediabunny';
 import { ForwardDecodeCursor } from './forward-decode-cursor';
 import { loadMediabunny } from './mediabunny-loader';
 import type { SourceMetadata } from './media-source';
@@ -6,6 +6,16 @@ import type { DecodedFrame, VideoDecoderBackend } from './video-decoder';
 
 /** Where the bytes come from: a URL, an in-memory buffer, or a Blob/File. */
 export type VideoInput = string | ArrayBuffer | Blob;
+
+/**
+ * The opened demux of a source: the mediabunny `Input` plus its primary audio
+ * track (if any). An {@link AudioSource} can reuse this instead of re-opening the
+ * same URL/blob — so a video-with-sound is fetched + parsed once, not twice.
+ */
+export interface MediabunnyDemux {
+  input: Input;
+  audioTrack: InputAudioTrack | null;
+}
 
 /**
  * How many leading packets to sample when estimating the frame rate in
@@ -47,6 +57,9 @@ export function setFrameImageExtractor(fn: FrameImageExtractor | null): void {
 export class MediabunnyVideoDecoder implements VideoDecoderBackend {
   private input: Input | null = null;
   private track: InputVideoTrack | null = null;
+  /** Primary audio track of the demux (if any), kept so an AudioSource can share
+   *  this already-opened Input instead of re-fetching the file. */
+  private audioTrack: InputAudioTrack | null = null;
   private sink: VideoSampleSink | null = null;
   /** Serializes `decode` — the cursor is mutable state and is not safe to
    *  advance concurrently (prewarm lookahead, or a shared source driven by both a
@@ -106,6 +119,7 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
       this.input.getPrimaryAudioTrack(),
     ]);
 
+    this.audioTrack = audioTrack;
     this.meta = {
       width: track.displayWidth,
       height: track.displayHeight,
@@ -117,6 +131,16 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
   }
 
   private meta: SourceMetadata | null = null;
+
+  /**
+   * The opened demux (Input + primary audio track), or `null` before {@link load}.
+   * Lets an {@link AudioSource} decode the audio from the SAME Input the video was
+   * opened with — so a video-with-sound is fetched + parsed once, not twice. The
+   * returned Input stays owned by this decoder; the consumer must not dispose it.
+   */
+  getDemux(): MediabunnyDemux | null {
+    return this.input ? { input: this.input, audioTrack: this.audioTrack } : null;
+  }
 
   /**
    * Create an independent decoder over the SAME demux: shares the `Input` +
