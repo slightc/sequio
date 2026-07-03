@@ -226,8 +226,9 @@ worker 的 `loadFontsNode` 就是 `fetch` 字体字节 → `GlobalFonts.register
 ### 已知取舍 / 后续
 
 - **颜色/透明度**：GPU 读回是 **BGRA、预乘 alpha**。导出帧背景不透明（alpha=255）时预乘是恒等，
-  读帧时做 BGRA→RGBA 通道交换即可（已处理）。纹理上传的 `writeTexture` 走 RGBA，若目标纹理是 BGRA，
-  **彩色文字**的 R/B 会交换（白/灰字无影响）——彩色字形要精确需按目标格式做 swizzle，属后续细化。
+  读帧时做 BGRA→RGBA 通道交换即可（已处理）。纹理上传（文字/图片）的 `writeTexture` shim 也已**按目标
+  纹理格式做 BGRA/RGBA swizzle 并按 `premultipliedAlpha` 预乘**，彩色文字/图片颜色正确（实测红字读回
+  `(255,0,0)`）。
 - **性能**：lavapipe 是软件光栅化，慢；有真 GPU 时快很多。软件 Vulkan 更适合 CI/无卡服务器兜底。
 - **Google 字体**：`loadFontsNode` 只处理自托管 `src`；css2 → 字体文件的解析未做（后续）。
 - **音频**：`export-node.ts` 目前只导视频轨；音频混音（`AudioEngine.renderOffline` 在 Node 下走

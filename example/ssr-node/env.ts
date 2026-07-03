@@ -103,10 +103,34 @@ export async function setupNodeEnvironment(): Promise<void> {
         const w = img.width as number;
         const h = img.height as number;
         const ctx = (img.getContext as (t: string) => { getImageData(x: number, y: number, w: number, h: number): { data: Uint8ClampedArray } })('2d');
-        const data = ctx.getImageData(0, 0, w, h).data;
+        const src = ctx.getImageData(0, 0, w, h).data; // straight-alpha RGBA
+        // Match what `copyExternalImageToTexture` would do: honour the destination
+        // texture's channel order (BGRA vs RGBA) and premultiply if requested —
+        // otherwise coloured glyphs/images come out with R/B swapped or wrong edges.
+        const format = String((dest.texture as { format?: string })?.format ?? '');
+        const bgra = format.startsWith('bgra');
+        const premultiply = dest.premultipliedAlpha === true;
+        const out = new Uint8Array(w * h * 4);
+        for (let i = 0; i < w * h; i++) {
+          const j = i * 4;
+          let r = src[j]!;
+          let g = src[j + 1]!;
+          let b = src[j + 2]!;
+          const a = src[j + 3]!;
+          if (premultiply) {
+            r = (r * a + 127) / 255 | 0;
+            g = (g * a + 127) / 255 | 0;
+            b = (b * a + 127) / 255 | 0;
+          }
+          if (bgra) {
+            out[j] = b; out[j + 1] = g; out[j + 2] = r; out[j + 3] = a;
+          } else {
+            out[j] = r; out[j + 1] = g; out[j + 2] = b; out[j + 3] = a;
+          }
+        }
         return this.writeTexture(
           { texture: dest.texture, mipLevel: dest.mipLevel ?? 0, origin: dest.origin ?? {}, aspect: dest.aspect ?? 'all' },
-          data,
+          out,
           { offset: 0, bytesPerRow: w * 4, rowsPerImage: h },
           { width: w, height: h, depthOrArrayLayers: 1 },
         );

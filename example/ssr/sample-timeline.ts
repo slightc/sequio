@@ -53,7 +53,7 @@ export function sampleTimeline(): TimelineSpec {
             type: 'text',
             text: 'Server-Side Render',
             fontSize: 26,
-            fill: 0xffffff,
+            fill: 0xffd60a, // coloured text — exercises the BGRA swizzle on the Node path
             start: 0,
             end: 2,
             transform: { anchor: [0.5, 0.5], position: [W / 2, 40] },

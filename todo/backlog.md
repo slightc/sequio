@@ -12,8 +12,10 @@
       渲染器（Dawn 的 `webgpu` 绑定 + Mesa lavapipe 软件 Vulkan 兜底）出像素，滤镜/warp/转场全支持；
       `@mediabunny/server`（node-av/FFmpeg）编码、`@napi-rs/canvas` 供文字度量/字体、jsdom 补 DOM。SDK 仅
       加 `CompositorOptions.createRenderer` 注入 seam。`pnpm verify:ssr-node` / `pnpm ssr:render-node`。
-- [ ] 路线 B 精修：彩色文字纹理上传按目标格式做 RGBA/BGRA swizzle；Google 字体 css2→文件解析；
-      音频轨导出（Node `OfflineAudioContext` polyfill）；`writeTexture` 上传的预乘/色彩空间校正。
+- [x] 路线 B 精修：文字/图片纹理上传按目标纹理格式做 BGRA/RGBA swizzle + `premultipliedAlpha` 预乘
+      （彩色文字颜色正确，实测红字读回 `(255,0,0)`）。
+- [ ] 路线 B 精修（续）：Google 字体 css2→文件解析；音频轨导出（Node `OfflineAudioContext` polyfill）；
+      `writeTexture` 上传的色彩空间（sRGB）校正细化。
 - [ ] SSR 大文件回传：base64 换成页面 `fetch` POST 流式回传 / CDP `ArrayBuffer`（当前 demo 走 base64）。
 - [ ] golden-frame 测试基建：固定对象图 + FixedStepClock → 像素哈希比对。
 - [ ] `colorSpace: 'display-p3'` 色彩管线对齐（sRGB↔linear、预乘 alpha）。
