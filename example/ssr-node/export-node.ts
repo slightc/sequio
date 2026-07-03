@@ -26,18 +26,72 @@ export interface NodeExportOptions {
   onProgress?: (p: number) => void;
 }
 
+const isWebmCodec = (c?: string) => c === 'vp8' || c === 'vp9' || c === 'av1';
+
+/**
+ * Actually encode one frame with a codec to see if node-av can — the reliable
+ * test. `canEncodeVideo` is NOT reliable here: `@mediabunny/server`'s
+ * `supports()` returns `true` for avc/hevc/… unconditionally, without checking
+ * that the FFmpeg build has that encoder. So on a host whose node-av lacks
+ * H.264 (GPL x264 is often omitted), `canEncodeVideo('avc')` says yes but the
+ * real encode falls back to the browser WebCodecs path and throws
+ * `VideoFrame is not defined`. A throwaway one-frame encode catches that.
+ */
+async function canReallyEncode(codec: string, width: number, height: number): Promise<boolean> {
+  const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, VideoSampleSource, VideoSample } = await import('mediabunny');
+  let output: InstanceType<typeof Output> | null = null;
+  try {
+    const format = isWebmCodec(codec) ? new WebMOutputFormat() : new Mp4OutputFormat();
+    output = new Output({ format, target: new BufferTarget() });
+    const src = new VideoSampleSource({ codec: codec as 'avc', bitrate: 1_000_000 });
+    output.addVideoTrack(src);
+    await output.start();
+    const sample = new VideoSample(new Uint8Array(width * height * 4), { format: 'RGBA', codedWidth: width, codedHeight: height, timestamp: 0, duration: 1 / 30 });
+    await src.add(sample);
+    sample.close();
+    await output.finalize();
+    return true;
+  } catch {
+    await output?.cancel().catch(() => {});
+    return false;
+  }
+}
+
+/** Actually encode one silent audio buffer to see if node-av can — same
+ *  reliability caveat as {@link canReallyEncode}. Needs the Web Audio globals
+ *  (see env.ts). */
+async function canReallyEncodeAudio(codec: string, container: 'mp4' | 'webm'): Promise<boolean> {
+  const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, AudioBufferSource } = await import('mediabunny');
+  const AudioBufferCtor = (globalThis as unknown as { AudioBuffer?: new (o: { length: number; numberOfChannels: number; sampleRate: number }) => AudioBuffer }).AudioBuffer;
+  if (!AudioBufferCtor) return false;
+  let output: InstanceType<typeof Output> | null = null;
+  try {
+    const format = container === 'webm' ? new WebMOutputFormat() : new Mp4OutputFormat();
+    output = new Output({ format, target: new BufferTarget() });
+    const src = new AudioBufferSource({ codec: codec as 'aac', bitrate: 128_000 });
+    output.addAudioTrack(src);
+    await output.start();
+    await src.add(new AudioBufferCtor({ length: 2048, numberOfChannels: 2, sampleRate: 48000 }));
+    await output.finalize();
+    return true;
+  } catch {
+    await output?.cancel().catch(() => {});
+    return false;
+  }
+}
+
 /** Pick a container + video codec node-av can actually encode, preferring the
- *  request. Route B encodes through @mediabunny/server (node-av / FFmpeg); if the
- *  requested codec isn't in that build (e.g. H.264/avc is often absent), Mediabunny
- *  would silently fall back to the browser WebCodecs path and throw
- *  `VideoFrame is not defined`. Negotiating up front avoids that and fails clearly. */
+ *  request, by probe-encoding a frame at the real dimensions (even-aligned, as
+ *  H.264/VP9 require). Returns null if none work. */
 async function negotiateVideoCodec(
   want: { container?: 'mp4' | 'webm'; codec?: string },
+  width: number,
+  height: number,
 ): Promise<{ container: 'mp4' | 'webm'; codec: string } | null> {
-  const { canEncodeVideo } = await import('mediabunny');
-  const webmCodec = (c?: string) => c === 'vp8' || c === 'vp9' || c === 'av1';
+  const w = width + (width % 2);
+  const h = height + (height % 2);
   const candidates: Array<{ container: 'mp4' | 'webm'; codec: string }> = [];
-  if (want.codec) candidates.push({ container: want.container ?? (webmCodec(want.codec) ? 'webm' : 'mp4'), codec: want.codec });
+  if (want.codec) candidates.push({ container: want.container ?? (isWebmCodec(want.codec) ? 'webm' : 'mp4'), codec: want.codec });
   else if (want.container === 'webm') candidates.push({ container: 'webm', codec: 'vp9' });
   candidates.push(
     { container: 'mp4', codec: 'avc' },
@@ -45,8 +99,11 @@ async function negotiateVideoCodec(
     { container: 'webm', codec: 'vp8' },
     { container: 'mp4', codec: 'av1' },
   );
+  const tried = new Set<string>();
   for (const c of candidates) {
-    if (await canEncodeVideo(c.codec as 'avc')) return c;
+    if (tried.has(c.codec)) continue;
+    tried.add(c.codec);
+    if (await canReallyEncode(c.codec, w, h)) return c;
   }
   return null;
 }
@@ -103,11 +160,13 @@ export async function renderTimelineToFile(
   opts: NodeExportOptions,
 ): Promise<{ frames: number; bytes: number; out: string; container: string; videoCodec: string; audio: boolean }> {
   const mb = await import('mediabunny');
-  const { Output, Mp4OutputFormat, WebMOutputFormat, FilePathTarget, VideoSampleSource, VideoSample, AudioBufferSource, canEncodeAudio } = mb;
+  const { Output, Mp4OutputFormat, WebMOutputFormat, FilePathTarget, VideoSampleSource, VideoSample, AudioBufferSource } = mb;
   const fs = await import('node:fs');
   const path = await import('node:path');
 
-  const codec = await negotiateVideoCodec({ container: opts.container, codec: opts.videoCodec });
+  const width = compositor.options.width;
+  const height = compositor.options.height;
+  const codec = await negotiateVideoCodec({ container: opts.container, codec: opts.videoCodec }, width, height);
   if (!codec) {
     throw new Error(
       'No server-side video encoder available. Route B encodes through @mediabunny/server (node-av / FFmpeg). ' +
@@ -128,7 +187,7 @@ export async function renderTimelineToFile(
   let audioSource: InstanceType<typeof AudioBufferSource> | null = null;
   if (opts.audio) {
     const aCodec = codec.container === 'webm' ? 'opus' : (opts.audio.codec ?? 'aac');
-    if (await canEncodeAudio(aCodec as 'aac')) {
+    if (await canReallyEncodeAudio(aCodec, codec.container)) {
       audioSource = new AudioBufferSource({ codec: aCodec as 'aac', bitrate: opts.audio.bitrate ?? 128_000 });
       output.addAudioTrack(audioSource);
     } else {
