@@ -59,19 +59,22 @@ async function main(): Promise<void> {
       fps: spec.fps,
       range: built.range,
       out: outPath,
+      container: built.exportOptions.container,
       videoCodec: built.exportOptions.videoCodec,
       bitrate: built.exportOptions.bitrate,
       audio: built.hasAudio
         ? { engine: built.audioEngine, codec: built.exportOptions.audioCodec, bitrate: built.exportOptions.audioBitrate }
         : undefined,
     });
-    console.log(`✅ wrote ${outPath} (${result.frames} frames, ${result.bytes} bytes${built.hasAudio ? ', +audio' : ''})`);
+    console.log(
+      `✅ wrote ${result.out} (${result.frames} frames, ${result.container}/${result.videoCodec}, ${result.bytes} bytes${result.audio ? ', +audio' : ''})`,
+    );
 
     if (verify) {
-      const buf = fs.readFileSync(outPath);
-      const ok = buf.length > 500 && buf.toString('latin1', 4, 8) === 'ftyp';
-      if (!ok) throw new Error(`--verify failed: not a valid MP4 (size=${buf.length})`);
-      console.log('✅ verified: valid mp4 container.');
+      const buf = fs.readFileSync(result.out);
+      const magic = result.container === 'webm' ? buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3 : buf.toString('latin1', 4, 8) === 'ftyp';
+      if (!(buf.length > 500 && magic)) throw new Error(`--verify failed: not a valid ${result.container} (size=${buf.length})`);
+      console.log(`✅ verified: valid ${result.container} container.`);
     }
   } finally {
     built.dispose();

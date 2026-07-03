@@ -63,11 +63,12 @@ async function main(): Promise<void> {
     audio: { engine: audioEngine, codec: 'aac' },
   });
   built.dispose();
-  console.log(`rendered ${out} (${result.frames} frames, ${result.bytes} bytes, +audio)`);
+  console.log(`rendered ${result.out} (${result.frames} frames, ${result.container}/${result.videoCodec}, ${result.bytes} bytes${result.audio ? ', +audio' : ''})`);
+  if (!result.audio) throw new Error('audio verify FAILED — audio track was skipped (node-av can\'t encode aac/opus?)');
 
   // Decode back and assert both tracks are present.
   const { Input, ALL_FORMATS, FilePathSource } = await import('mediabunny');
-  const input = new Input({ source: new FilePathSource(out), formats: ALL_FORMATS });
+  const input = new Input({ source: new FilePathSource(result.out), formats: ALL_FORMATS });
   const vtrack = await input.getPrimaryVideoTrack();
   const atrack = await input.getPrimaryAudioTrack();
   const ok = !!vtrack && !!atrack && result.bytes > 500;
