@@ -344,7 +344,19 @@ export class Compositor implements Disposable {
       height: this.options.height,
       resolution: this.resolution,
     });
-    this.renderer.render({ container: this.stage, target });
+    // Clear to the compositor's background (opaque), matching what `renderSync`
+    // draws to the on-screen canvas — otherwise the offscreen frame keeps the
+    // RenderTexture's transparent default, and an alpha-unaware encoder (e.g. the
+    // Node export's H.264/VP9) turns transparency into a white matte / fringe
+    // around opaque content. Preview and export must share the background (#3).
+    const bg = this.options.background ?? 0x000000;
+    const clearColor: [number, number, number, number] = [
+      ((bg >> 16) & 0xff) / 255,
+      ((bg >> 8) & 0xff) / 255,
+      (bg & 0xff) / 255,
+      1,
+    ];
+    this.renderer.render({ container: this.stage, target, clear: true, clearColor });
     return target;
   }
 
