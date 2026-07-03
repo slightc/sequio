@@ -14,6 +14,9 @@
  *   - export the timeline to MP4 / WebM via the SDK's Exporter, on a forked
  *     offscreen graph (video sources are `fork()`ed) so export never contends
  *     with the live preview's decoder; cancelable, with progress
+ *   - "Server Render": serialize the timeline to a `TimelineSpec` JSON (the
+ *     protocol both SSR routes consume) and download it, to render on a server
+ *     via `pnpm ssr:render` / `ssr:render-node` (see docs/server-side-rendering.md)
  *
  * Persistence, undo and schema are intentionally NOT here — that's the
  * consumer's job (see AGENT.md). This file only drives the SDK: every mutation
@@ -40,6 +43,7 @@ import {
   VisualTrack,
 } from '../src/index';
 import { exportTimeline, videoCacheSettings } from './editor-export';
+import type { ClipSpec, TimelineSpec, TrackSpec } from './ssr/timeline';
 
 const W = 640;
 const H = 360;
@@ -920,6 +924,80 @@ async function main(): Promise<void> {
   }
 
   exportBtn.addEventListener('click', () => void doExport());
+
+  // ── Server render (serialize the timeline for headless / Node SSR) ────────
+  //
+  // The SDK deliberately leaves persistence/schema to the consumer, so the
+  // editor's live object graph (which references decoded sources) is converted
+  // here into the plain `TimelineSpec` JSON that both SSR routes consume. Download
+  // it, then render it on a server with either:
+  //   pnpm ssr:render      -- --timeline timeline.json --out out.mp4  (headless Chrome)
+  //   pnpm ssr:render-node -- --timeline timeline.json --out out.mp4  (pure Node WebGPU)
+  // See docs/server-side-rendering.md.
+
+  /** Serialize one editor clip into a `TimelineSpec` clip. */
+  function clipToSpec(m: ClipModel): ClipSpec {
+    const c = m.clip;
+    const pos = c.transform.position.valueAt(0);
+    const scale = c.transform.scale.valueAt(0);
+    const rotation = c.transform.rotation.valueAt(0);
+    const opacity = c.opacity.valueAt(0);
+    const base = {
+      start: round2(c.start),
+      end: round2(c.end),
+      ...(c.sourceIn ? { sourceIn: round2(c.sourceIn) } : {}),
+      ...(opacity !== 1 ? { opacity } : {}),
+      transform: {
+        anchor: c.transform.anchor.valueAt(0),
+        position: [Math.round(pos[0]), Math.round(pos[1])] as [number, number],
+        scale: [scale[0], scale[1]] as [number, number],
+        ...(rotation ? { rotation } : {}),
+      },
+    };
+    if (m.kind === 'text') {
+      const t = c as TextClip;
+      return { type: 'text', text: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize.valueAt(0), fill: t.fill, ...base };
+    }
+    if (m.kind === 'shape') {
+      return { type: 'shape', shape: (c as ShapeClip).spec, ...base };
+    }
+    // Image/Video reference a locally-uploaded File — the server can't fetch that.
+    // Emit a placeholder src the user replaces with a hosted URL.
+    return { type: m.kind, src: `REPLACE_WITH_URL/${m.label}`, ...base } as ClipSpec;
+  }
+
+  /** Build the full `TimelineSpec` for the current editor state. */
+  function buildTimelineSpec(): TimelineSpec {
+    const specTracks: TrackSpec[] = tracks
+      .filter((tm) => tm.clips.length > 0)
+      .map((tm) => ({ zIndex: tm.track.zIndex, clips: tm.clips.map(clipToSpec) }));
+    return {
+      width: W,
+      height: H,
+      fps: FPS,
+      background: 0x101014,
+      origin: ORIGIN,
+      range: [0, round2(timelineEnd())],
+      tracks: specTracks,
+      export: { container: exportFormat.value as 'mp4' | 'webm' },
+    };
+  }
+
+  function serverRender(): void {
+    if (timelineEnd() <= 0) {
+      setStatus('Nothing to serialize');
+      return;
+    }
+    const spec = buildTimelineSpec();
+    const json = JSON.stringify(spec, null, 2);
+    downloadBlob(new Blob([json], { type: 'application/json' }), 'timeline.json');
+    // Local sources can't be fetched by the server — warn if any are present.
+    const external = tracks.flatMap((tm) => tm.clips).filter((c) => c.kind === 'image' || c.kind === 'video').length;
+    const note = external ? ` (replace ${external} REPLACE_WITH_URL src${external > 1 ? 's' : ''} with hosted URLs)` : '';
+    setStatus(`Saved timeline.json — run: pnpm ssr:render-node -- --timeline timeline.json${note}`);
+  }
+
+  $('server-render').addEventListener('click', serverRender);
 
   // ── Boot ───────────────────────────────────────────────────────────────
   wireCanvasManipulation();
