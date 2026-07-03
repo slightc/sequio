@@ -10,7 +10,7 @@
  * no presentable canvas. Requires a WebGPU renderer (see `env.ts`).
  */
 import type { Renderer } from 'pixi.js';
-import { Compositor, exportFrameTimes } from '../../src/index';
+import { type AudioEngine, Compositor, exportFrameTimes } from '../../src/index';
 
 export interface NodeExportOptions {
   fps: number;
@@ -19,6 +19,8 @@ export interface NodeExportOptions {
   out: string;
   videoCodec?: string;
   bitrate?: number;
+  /** Mux the {@link AudioEngine}'s offline mix as an audio track. */
+  audio?: { engine: AudioEngine; codec?: string; bitrate?: number };
   onProgress?: (p: number) => void;
 }
 
@@ -73,13 +75,17 @@ export async function renderTimelineToFile(
   renderer: Renderer,
   opts: NodeExportOptions,
 ): Promise<{ frames: number; bytes: number }> {
-  const { Output, Mp4OutputFormat, FilePathTarget, VideoSampleSource, VideoSample } = await import('mediabunny');
+  const { Output, Mp4OutputFormat, FilePathTarget, VideoSampleSource, VideoSample, AudioBufferSource } = await import('mediabunny');
   const fs = await import('node:fs');
 
   const times = exportFrameTimes(opts.range, opts.fps);
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target: new FilePathTarget(opts.out) });
   const video = new VideoSampleSource({ codec: (opts.videoCodec ?? 'avc') as 'avc', bitrate: opts.bitrate ?? 5_000_000 });
   output.addVideoTrack(video);
+  const audioSource = opts.audio
+    ? new AudioBufferSource({ codec: (opts.audio.codec ?? 'aac') as 'aac', bitrate: opts.audio.bitrate ?? 128_000 })
+    : null;
+  if (audioSource) output.addAudioTrack(audioSource);
   await output.start();
 
   const gpu = renderer as unknown as GpuRendererLike;
@@ -102,6 +108,12 @@ export async function renderTimelineToFile(
       rt.destroy(true);
     }
     opts.onProgress?.((i + 1) / times.length);
+  }
+
+  // Audio: one offline mix over the export range (contract #3 — same graph as preview).
+  if (audioSource && opts.audio) {
+    const buffer = await opts.audio.engine.renderOffline(Math.max(0, opts.range[1] - opts.range[0]));
+    await audioSource.add(buffer);
   }
 
   await output.finalize();

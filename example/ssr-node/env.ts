@@ -181,6 +181,14 @@ export async function setupNodeEnvironment(): Promise<void> {
   const { registerMediabunnyServer } = await import('@mediabunny/server');
   registerMediabunnyServer();
 
+  // Web Audio for the offline mix (AudioEngine.renderOffline) + AudioSource decode.
+  const wa = (await import('node-web-audio-api')) as unknown as Record<string, unknown>;
+  for (const k of ['OfflineAudioContext', 'AudioContext', 'AudioBuffer'] as const) {
+    if ((globalThis as Record<string, unknown>)[k] === undefined && wa[k]) {
+      (globalThis as Record<string, unknown>)[k] = wa[k];
+    }
+  }
+
   ready = true;
 }
 

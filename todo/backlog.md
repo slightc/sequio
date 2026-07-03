@@ -14,8 +14,11 @@
       加 `CompositorOptions.createRenderer` 注入 seam。`pnpm verify:ssr-node` / `pnpm ssr:render-node`。
 - [x] 路线 B 精修：文字/图片纹理上传按目标纹理格式做 BGRA/RGBA swizzle + `premultipliedAlpha` 预乘
       （彩色文字颜色正确，实测红字读回 `(255,0,0)`）。
-- [ ] 路线 B 精修（续）：Google 字体 css2→文件解析；音频轨导出（Node `OfflineAudioContext` polyfill）；
-      `writeTexture` 上传的色彩空间（sRGB）校正细化。
+- [x] 路线 B 音频轨导出：`node-web-audio-api` 提供 `OfflineAudioContext`，`AudioEngine.renderOffline`
+      离线混音经 mediabunny `AudioBufferSource` 混轨（`pnpm verify:ssr-node-audio` 断言视频+音频轨都在）。
+- [x] 路线 B Google 字体：`fonts-node.ts` 拉 css2 → `parseGoogleFontUrls` 抽字体文件 URL →
+      `GlobalFonts.register`（`pnpm verify:ssr-node-font` 实测 Roboto 加载并渲染）。
+- [ ] 路线 B 精修（续）：`writeTexture` 上传的色彩空间（sRGB）校正细化；软件光栅化性能基线。
 - [ ] SSR 大文件回传：base64 换成页面 `fetch` POST 流式回传 / CDP `ArrayBuffer`（当前 demo 走 base64）。
 - [ ] golden-frame 测试基建：固定对象图 + FixedStepClock → 像素哈希比对。
 - [ ] `colorSpace: 'display-p3'` 色彩管线对齐（sRGB↔linear、预乘 alpha）。

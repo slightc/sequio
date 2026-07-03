@@ -157,7 +157,7 @@ export interface FontSpec {
   /** Self-hosted URL. Mutually exclusive with {@link google}. */
   src?: string;
   /** Load from Google Fonts instead of a self-hosted URL. */
-  google?: { weights?: number[]; italic?: boolean };
+  google?: { weights?: number[]; italic?: boolean; cssBase?: string };
 }
 
 export interface ExportSpec {

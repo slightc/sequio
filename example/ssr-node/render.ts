@@ -13,9 +13,10 @@
  */
 import type { Renderer } from 'pixi.js';
 import { sampleTimeline } from '../ssr/sample-timeline';
-import { buildTimeline, type FontSpec, type TimelineSpec } from '../ssr/timeline';
+import { buildTimeline, type TimelineSpec } from '../ssr/timeline';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';
+import { loadFontsNode } from './fonts-node';
 
 function parseArgs(argv: string[]): { timeline: string | null; out: string; verify: boolean } {
   const args = { timeline: null as string | null, out: 'out.mp4', verify: false };
@@ -25,18 +26,6 @@ function parseArgs(argv: string[]): { timeline: string | null; out: string; veri
     else if (argv[i] === '--verify') args.verify = true;
   }
   return args;
-}
-
-/** Node font loader: fetch each self-hosted font and register it with the canvas. */
-async function loadFontsNode(specs: FontSpec[] | undefined): Promise<void> {
-  if (!specs?.length) return;
-  const { GlobalFonts } = await import('@napi-rs/canvas');
-  const { Buffer } = await import('node:buffer');
-  for (const f of specs) {
-    if (!f.src) continue; // Google-font resolution (css2 → file) omitted in this PoC
-    const bytes = Buffer.from(await (await fetch(f.src)).arrayBuffer());
-    GlobalFonts.register(bytes, f.family);
-  }
 }
 
 async function main(): Promise<void> {
@@ -72,8 +61,11 @@ async function main(): Promise<void> {
       out: outPath,
       videoCodec: built.exportOptions.videoCodec,
       bitrate: built.exportOptions.bitrate,
+      audio: built.hasAudio
+        ? { engine: built.audioEngine, codec: built.exportOptions.audioCodec, bitrate: built.exportOptions.audioBitrate }
+        : undefined,
     });
-    console.log(`✅ wrote ${outPath} (${result.frames} frames, ${result.bytes} bytes)`);
+    console.log(`✅ wrote ${outPath} (${result.frames} frames, ${result.bytes} bytes${built.hasAudio ? ', +audio' : ''})`);
 
     if (verify) {
       const buf = fs.readFileSync(outPath);

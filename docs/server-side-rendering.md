@@ -169,7 +169,11 @@ example/ssr-node/env.ts          Node 环境引导：jsdom + rAF/addEventListene
                                  + createNodeWebGPURenderer 工厂
 example/ssr-node/export-node.ts  GPU 读帧导出：renderToTexture → copyTextureToBuffer → BGRA→RGBA
                                  → VideoSample → VideoSampleSource → Output + FilePathTarget（写盘）
+                                 + 音频轨（AudioEngine.renderOffline → AudioBufferSource）
+example/ssr-node/fonts-node.ts   Node 字体加载：自托管 URL + Google 字体（css2→文件→GlobalFonts.register）
 example/ssr-node/render.ts       worker 主程序：读 TimelineSpec，建图（复用 buildTimeline），渲成文件
+example/ssr-node/verify-audio.ts 自包含校验：合成正弦 → 视频+音频 MP4，解回断言两轨都在
+example/ssr-node/verify-font.ts  自包含校验：从 Google 加载 Roboto 渲染文字，断言字形像素渲出
 ```
 
 时间线协议、`buildTimeline`、`buildEffect` 与路线 A 复用同一份 `example/ssr/`（`TimelineSpec` 现支持
@@ -178,7 +182,8 @@ clip 级与全局 `effects`）。
 ### 依赖与前置
 
 devDependencies（只有 Node SSR 用，像 puppeteer 一样不进发布包）：`tsx`、`jsdom`、
-`@napi-rs/canvas`、`webgpu`（Dawn）、`@mediabunny/server`（内含 `node-av` = FFmpeg N-API）。
+`@napi-rs/canvas`、`webgpu`（Dawn）、`@mediabunny/server`（内含 `node-av` = FFmpeg N-API）、
+`node-web-audio-api`（`OfflineAudioContext` 音频混音）。
 
 **必须有 WebGPU 可用的宿主**：一块真 GPU，或一个**软件 Vulkan 驱动**。无 GPU 的服务器/CI 装
 Mesa **lavapipe** 即可：
@@ -220,8 +225,13 @@ pnpm verify:ssr-node                                        # 纯 Node 渲 demo 
 
 Node 里 `FontManager` 的 `FontFace`/`document.fonts` 是 no-op；Pixi 文字用**渲染 canvas 的
 `measureText`** 量字形，字体要经 `@napi-rs/canvas` 的 `GlobalFonts.register(bytes, family)` 注册。
-worker 的 `loadFontsNode` 就是 `fetch` 字体字节 → `GlobalFonts.register`，并作为 `buildTimeline` 的
-`loadFonts` override 传入。napi 自带若干 family（含 sans-serif），demo 不需外部字体。
+`fonts-node.ts` 的 `loadFontsNode`（作为 `buildTimeline` 的 `loadFonts` override 传入）支持两种来源：
+- **自托管**：`fetch(src)` → `GlobalFonts.register`。
+- **Google 字体**：用 SDK 的 `buildGoogleCss2Url` 建 css2 URL → `fetch`（用普通 UA 让 Google 回
+  TrueType）→ `parseGoogleFontUrls` 抽出字体文件 URL → 逐个 `fetch` 并 `register`。
+
+实测 `pnpm verify:ssr-node-font`：纯 Node 从 Google 加载 Roboto 700 并渲染文字（读回 2521 个字形像素）。
+napi 自带若干 family（含 sans-serif），demo 不需外部字体。`parseGoogleFontUrls` 是纯函数、有单测。
 
 ### 已知取舍 / 后续
 
@@ -231,8 +241,10 @@ worker 的 `loadFontsNode` 就是 `fetch` 字体字节 → `GlobalFonts.register
   `(255,0,0)`）。
 - **性能**：lavapipe 是软件光栅化，慢；有真 GPU 时快很多。软件 Vulkan 更适合 CI/无卡服务器兜底。
 - **Google 字体**：`loadFontsNode` 只处理自托管 `src`；css2 → 字体文件的解析未做（后续）。
-- **音频**：`export-node.ts` 目前只导视频轨；音频混音（`AudioEngine.renderOffline` 在 Node 下走
-  `OfflineAudioContext`，需另配 polyfill）留作后续。
+- **音频**：已支持。`node-web-audio-api` 提供 `OfflineAudioContext`/`AudioBuffer` 全局，
+  `AudioEngine.renderOffline` 出离线混音，`export-node.ts` 经 mediabunny `AudioBufferSource` 混成音频轨
+  （`pnpm verify:ssr-node-audio`：合成 440Hz 正弦 + 图形 → MP4，解回断言视频+音频轨都在）。JSON `audio`
+  轨的 `AudioSource({src})` 走 mediabunny 解码，src 需 Node 可 `fetch` 到（同素材要求）。
 - **脆性**：这套依赖 Pixi 内部行为 + Dawn 绑定的若干 shim，Pixi/Dawn 升级可能需要跟着调。
 
 ### 两条路线怎么选

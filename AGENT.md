@@ -94,6 +94,8 @@ pnpm verify:origin        # Puppeteer e2e: origin=[0.5,0.5] renders position [0,
 pnpm verify:ssr           # Puppeteer e2e: server-side render (Route A) — headless Chrome renders a timeline to video
 pnpm ssr:render -- --timeline <spec.json> --out out.mp4       # SSR worker A (headless Chrome): timeline JSON → video file
 pnpm verify:ssr-node      # Pure-Node SSR (Route B): PixiJS WebGPU (Dawn) renders a filtered timeline to MP4, no browser
+pnpm verify:ssr-node-audio# Route B audio: synth tone + shape → MP4, decoded back asserts video+audio tracks
+pnpm verify:ssr-node-font # Route B fonts: load a Google font (Roboto) in Node and assert glyphs rendered
 pnpm ssr:render-node -- --timeline <spec.json> --out out.mp4  # SSR worker B (Node WebGPU): needs a GPU or Mesa lavapipe
 ```
 
