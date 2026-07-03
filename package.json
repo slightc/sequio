@@ -36,6 +36,8 @@
     "verify:video-import": "node scripts/verify-page.cjs example/video-import-test.html __VIDEO_IMPORT_TEST__ \"video import (bounded fps scan)\"",
     "verify:editor-audio": "node scripts/verify-page.cjs example/editor-audio-test.html __EDITOR_AUDIO_TEST__ \"editor audio (import + export mux)\"",
     "verify:origin": "node scripts/verify-page.cjs example/origin-test.html __ORIGIN_TEST__ \"compositor origin\"",
+    "verify:ssr": "node scripts/verify-page.cjs example/ssr-render.html __SSR_TEST__ \"server-side render\"",
+    "ssr:render": "node scripts/ssr-render.cjs",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\""
   },

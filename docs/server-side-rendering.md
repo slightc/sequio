@@ -1,0 +1,156 @@
+# 服务端渲染（Server-Side Rendering）
+
+> 在没有屏幕的服务器上，把一条时间线渲染成视频文件。
+
+## 为什么需要一套方案
+
+这套 SDK 的渲染核心是**浏览器技术栈**：PixiJS 的 WebGL/WebGPU 合成、经 Mediabunny 封装的
+WebCodecs 解/编码、`OfflineAudioContext` 混音、`document.fonts` 字体度量。Node 里没有这些
+原生 API，所以"服务端渲染"本质上是**在服务器环境里跑完整条 decode→composite→encode 管线**。
+
+导出主循环（`src/export/exporter.ts`）每帧的依赖：
+
+| 环节 | 依赖的浏览器 API |
+|---|---|
+| 合成/绘制（`Compositor.renderSync`） | WebGL2 / WebGPU、`HTMLCanvasElement` |
+| 解码（`VideoSource.prepare`） | WebCodecs (`VideoDecoder`)、`VideoFrame` |
+| 音频离线混音（`AudioEngine.renderOffline`） | `OfflineAudioContext` |
+| 编码/封装（`MediabunnyExportSink`） | WebCodecs (`VideoEncoder`)、`CanvasSource` |
+| 字体（`FontManager`） | `document.fonts` / `FontFace` |
+
+## 路线 A：Headless Chrome（本仓库实现的方案）
+
+无头 Chrome 天生带 WebGL、WebCodecs、Web Audio 和字体，所以 **SDK 一行不用改**就能在服务器
+上跑。项目的 `verify:*` 脚本（`scripts/verify-page.cjs`）本来就用 Puppeteer + Chrome-for-Testing
+（Playwright 精简版 Chromium 不带 WebCodecs，故必须用带 WebCodecs 的 Chrome）在无头环境里跑真实
+导出——本方案就是把它产品化成一个"输入时间线 JSON → 输出视频文件"的渲染 worker。
+
+契约 #3（预览与导出共用渲染核心）因此天然满足：服务端产出与用户浏览器里所见逐像素一致。
+
+### 组成
+
+```
+example/ssr/timeline.ts        时间线 JSON 协议（TimelineSpec）+ buildTimeline() 重建对象图
+example/ssr/sample-timeline.ts 自包含 demo spec（纯文字 + 图形，无需外部素材）
+example/ssr-render.{html,ts}   浏览器入口：暴露 window.__SSR__.render(spec) → base64 视频
+scripts/ssr-render.cjs         Node worker：起 Vite + 无头 Chrome，喂 spec，取回字节写盘
+tests/ssr-timeline.test.ts     builder 的 headless 单测（spec→对象图映射）
+```
+
+**为什么时间线协议放在 `example/` 而不是 `src/`**：SDK 刻意把持久化 / schema 交给上层
+（见 `AGENT.md`）。`TimelineSpec` 是一种消费者层的序列化格式，因此它属于示例/消费者代码，
+`src/` 的公开面保持不变。
+
+### 数据流
+
+```
+ 时间线 JSON（服务器/DB）
+      │  JSON.parse
+      ▼
+ scripts/ssr-render.cjs ──启动──► Vite dev server
+      │                              │ 提供 example/ssr-render.html
+      │  puppeteer.launch(headless)  ▼
+      └──────────────────────► 无头 Chrome
+                                     │ window.__SSR__.render(spec)
+                                     │   buildTimeline(spec) → Compositor/Track/Clip
+                                     │   Exporter.export() → Blob → base64
+      ◄──────────────────────────────┘ page.evaluate 返回 base64
+      │  Buffer.from(base64, 'base64')
+      ▼
+ out.mp4（写盘）
+```
+
+### 用法
+
+一次性安装无头 Chrome（Chrome-for-Testing，带 WebCodecs）：
+
+```bash
+pnpm exec puppeteer browsers install chrome
+```
+
+渲染一条时间线：
+
+```bash
+# 内置 demo（无需素材，可离线跑通全链路）
+pnpm ssr:render -- --out out.mp4
+
+# 渲染自己的时间线 JSON
+pnpm ssr:render -- --timeline my-timeline.json --out out.mp4
+
+# 自校验：断言产出是合法容器（CI 用）
+pnpm ssr:render -- --verify --out out.mp4
+```
+
+浏览器半侧的 e2e 校验（断言无头 Chrome 里 render 成功产出视频）：
+
+```bash
+pnpm verify:ssr
+```
+
+### 时间线 JSON 协议（`TimelineSpec`）
+
+```jsonc
+{
+  "width": 320,
+  "height": 180,
+  "fps": 30,
+  "background": 1052692,          // 0x101014
+  "origin": [0, 0],               // 归一化坐标原点，默认左上
+  "range": [0, 2],                // 可选，默认 [0, 最大 clip end]
+  "fonts": [                      // 渲染前一次性加载（TextClip 需要）
+    { "family": "Inter", "src": "https://…/Inter.woff2" },
+    { "family": "Roboto", "google": { "weights": [400, 700] } }
+  ],
+  "tracks": [
+    {
+      "zIndex": 0,
+      "clips": [
+        { "type": "shape", "shape": { "kind": "rect", "width": 320, "height": 180, "fill": 1013358 },
+          "start": 0, "end": 2, "transform": { "anchor": [0, 0], "position": [0, 0] } },
+        { "type": "text", "text": "Hello", "fontSize": 26, "fill": 16777215,
+          "start": 0, "end": 2, "transform": { "anchor": [0.5, 0.5], "position": [160, 40] },
+          "opacity": { "keyframes": [ { "time": 0, "value": 0 },
+                                      { "time": 0.6, "value": 1, "easing": "easeOutQuad" } ] } },
+        { "type": "image", "src": "https://…/logo.png", "start": 0, "end": 2, "transform": { "position": [160, 90] } },
+        { "type": "video", "src": "https://…/clip.mp4", "start": 0, "end": 2, "cacheFrames": 30 }
+      ]
+    }
+  ],
+  "audio": [
+    { "src": "https://…/music.mp3", "start": 0, "end": 2, "gain": 0.8, "fadeIn": 0.2, "fadeOut": 0.3 }
+  ],
+  "export": { "container": "mp4", "videoCodec": "avc", "bitrate": 2000000 }
+}
+```
+
+- **可动画属性**（`position` / `scale` / `rotation` / `opacity` / `fontSize`）取
+  `T`（静态）或 `{ keyframes: [{ time, value, easing? }] }`。`easing` 是命名曲线
+  （`linear` / `easeInQuad` / `easeInOutCubic` …，见 `EasingName`）。
+- **素材**（image/video/audio/自托管字体）必须是无头浏览器能 `fetch` 到的 URL 或 data-URI——
+  在服务器上用本地静态服务喂给页面。demo 只用文字 + 图形，故完全自包含。
+- **编解码协商**：`export.videoCodec` 是首选；若该无头 Chrome 编不了（SwiftShader 软件光栅化下
+  常只有 VP8/VP9），`negotiateCodec` 会退到 `avc`→`vp9`→`vp8`，并在结果里报告实际用了哪个。
+
+### 把字节取回 Node
+
+`page.evaluate` 不能直接返回 `Blob`，所以 render 返回 **base64**，Node 侧 `Buffer.from(…, 'base64')`
+落盘。base64 有 ~33% 膨胀且要在内存里过一遍字符串——**大文件**（几百 MB 起）建议改成让页面
+`fetch` POST 到一个本地端点流式回传，或用 CDP 传 `ArrayBuffer`。demo/短片走 base64 足够。
+
+### 生产化要点
+
+- **并发/隔离**：一个 page 一个导出任务，做成任务队列；导出内存大，控制并发数。可复用一个常驻
+  Chrome 多开 page，避免每次冷启动。
+- **无 GPU 的服务器**：worker 用 `--use-angle=swiftshader`（软件光栅化）——无显卡也能跑，代价是
+  慢；有 GPU 就换真实驱动。
+- **无头新模式**：必须是 `headless: true`（new headless）才有完整 WebCodecs/WebGL。
+- **字体确定性**：`buildTimeline` 在建 clip 前 `await` 所有字体就绪（契约 #2：`render(t)` 不能
+  中途把 fallback 换成真字体）。
+
+## 路线 B：Node 原生 + polyfill（未实现，备选）
+
+不想拉起 Chrome 的话，可给 Node 补齐各 Web API：WebGL 用 `headless-gl`、Canvas 用
+`@napi-rs/canvas`、WebCodecs/编码几乎必然要桥接 `ffmpeg`。SDK 已把解码抽象成
+`VideoDecoderBackend`、把编码/封装抽象成 `ExportSink`（`Exporter.createSink` 可覆盖），所以
+可以只替换这两处（ffmpeg 编码 + ffmpeg 解码 backend）而保留 PixiJS 出像素。工作量大、生态更脆，
+仅当"每任务一个 Chrome"的资源开销成为瓶颈时再考虑。详见 `todo/backlog.md`。
