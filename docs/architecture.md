@@ -371,6 +371,12 @@ resolution 1)。
   重传）；帧被 `FrameCache` 淘汰时经 `onEvict` 钩子 `release` 掉它的纹理。`Compositor`
   持一个共享 `TextureManager`（`textureBudgetBytes` 可配），`prepare` 时把各 `VideoSource`
   收编到这个共享池，多轨共用一份 VRAM 预算。
+- **缓存尺寸按分辨率原地调整（`configureCache`）**：`FrameCache` 容量与 `lookahead` 只有在
+  `load()` 拿到分辨率后才好定（4K 大源若按默认 60 帧缓存会吃掉数 GB 显存）。以前示例编辑器要
+  「先 `load()` 探分辨率 → `dispose()` → 用 `cacheFrames` 重建 → 再 `load()`」，等于**重解一遍
+  demux**（URL 源还要再拉一次容器头 + packet 统计），导入明显变慢。`VideoSource.configureCache(
+  cacheFrames, lookahead?)` 直接 `cache.setBudget()` + 重设 `lookahead`/`dropHorizon` 并同步进
+  `options`，**不再二次 `load()`**；`fork()` 因读 `options` 仍继承新值，导出照样有界。
 - 把后端做成接口的副作用：编解码编排逻辑（keying / 预读方向 / 缓存命中 / dispose）可在
   headless 下用 fake backend 单测；真实 WebCodecs 解码由 `pnpm verify:decode` 自动验证
   （Puppeteer + Chrome-for-Testing：浏览器内录一段真 WebM → 经 `VideoSource` 解回、渲染并

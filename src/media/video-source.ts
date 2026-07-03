@@ -45,7 +45,7 @@ export class VideoSource extends VisualSource {
   private readonly cache: FrameCache<DecodedFrame>;
   /** In-flight decodes by frame index → their promise, so callers can await them. */
   private readonly inFlight = new Map<number, Promise<void>>();
-  private readonly lookahead: number;
+  private lookahead: number;
   private textures: TextureManager;
   private ownsTextures: boolean;
   private fps = 30;
@@ -63,7 +63,7 @@ export class VideoSource extends VisualSource {
   /** Frame index of the most recent {@link prepare} target (the live playhead). */
   private currentIdx = 0;
   /** How far a queued decode may fall behind the playhead before it's dropped. */
-  private readonly dropHorizon: number;
+  private dropHorizon: number;
 
   constructor(private readonly options: VideoSourceOptions) {
     super();
@@ -86,6 +86,24 @@ export class VideoSource extends VisualSource {
     this.metadata = meta;
     if (meta.fps && meta.fps > 0) this.fps = meta.fps;
     return meta;
+  }
+
+  /**
+   * Resize the decode cache (and directional look-ahead) in place. Cache sizing
+   * depends on the source resolution, which is only known after {@link load};
+   * this lets a caller size the ring to the resolution WITHOUT disposing and
+   * re-`load()`ing the source (which would re-demux and, for a URL, re-fetch the
+   * container header + packet stats). {@link fork} inherits the new values so an
+   * export stays bounded too. No-op below 1 frame.
+   */
+  configureCache(cacheFrames: number, lookahead?: number): void {
+    this.cache.setBudget(cacheFrames);
+    this.options.cacheFrames = Math.max(1, cacheFrames);
+    if (lookahead !== undefined) {
+      this.lookahead = Math.max(1, lookahead);
+      this.options.lookahead = this.lookahead;
+      this.dropHorizon = this.lookahead + 8;
+    }
   }
 
   /**

@@ -264,6 +264,33 @@ describe('VideoSource', () => {
     expect(textures.count).toBe(0);
   });
 
+  it('configureCache resizes the ring in place: shrinking evicts to the new budget', async () => {
+    // Load once, then size the cache down WITHOUT a re-load (the demo does this
+    // to bound decode memory to the source resolution). Older frames evict.
+    const { backend, source } = make({ lookahead: 0 });
+    await source.load();
+    await source.prepare(0); // idx 0
+    await source.prepare(1 / 30); // idx 1
+    await source.prepare(2 / 30); // idx 2 — 3 frames resident under the default budget
+    expect(source.cachedFrameCount).toBe(3);
+    expect(backend.decodeCalls.filter((s) => s === 0)).toHaveLength(1); // demux not re-run
+
+    source.configureCache(2); // shrink → evict the LRU frame immediately
+    expect(source.cachedFrameCount).toBe(2);
+    expect(backend.frames[0]!.close).toHaveBeenCalled(); // idx 0 (LRU) closed
+  });
+
+  it('configureCache updates the directional lookahead used by prepare', async () => {
+    const { backend, source } = make({ lookahead: 0 });
+    await source.load();
+
+    source.configureCache(10, 2); // now read 2 frames ahead
+    await source.prepare(0.5); // idx 15, forward
+    await tick();
+    expect(has(backend.decodeCalls, 16 / 30)).toBe(true); // idx 16 prewarmed
+    expect(has(backend.decodeCalls, 17 / 30)).toBe(true); // idx 17 prewarmed
+  });
+
   it('dispose closes frames, releases textures and tears down the backend', async () => {
     const { backend, textures, source } = make({ lookahead: 0 });
     await source.load();
