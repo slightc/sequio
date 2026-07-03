@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ShapeClip, TextClip } from '../src/index';
-import { buildClip, timelineEnd, type TimelineSpec } from '../example/ssr/timeline';
+import { BlurEffect, ColorEffect, ShapeClip, TextClip } from '../src/index';
+import { buildClip, buildEffect, timelineEnd, type TimelineSpec } from '../example/ssr/timeline';
 import { sampleTimeline } from '../example/ssr/sample-timeline';
 
 /**
@@ -116,5 +116,24 @@ describe('buildTimeline mapping', () => {
     expect(s.fps).toBeGreaterThan(0);
     expect(s.tracks?.length).toBeGreaterThan(0);
     expect(timelineEnd(s)).toBe(2);
+  });
+
+  it('builds blur/color effects with their params (filters)', () => {
+    const blur = buildEffect({ type: 'blur', strength: 5 });
+    expect(blur).toBeInstanceOf(BlurEffect);
+    expect((blur as BlurEffect).valuesAt(0).strength).toBe(5);
+
+    const color = buildEffect({ type: 'color', brightness: 1.2, contrast: 0.8, saturation: 1.5 });
+    expect(color).toBeInstanceOf(ColorEffect);
+    expect((color as ColorEffect).valuesAt(0)).toEqual({ brightness: 1.2, contrast: 0.8, saturation: 1.5 });
+  });
+
+  it('attaches clip-level effects from the spec', async () => {
+    const clip = await buildClip(
+      { type: 'shape', shape: { kind: 'rect', width: 4, height: 4 }, start: 0, end: 1, effects: [{ type: 'blur', strength: 3 }] },
+      [],
+    );
+    expect(clip.effects).toHaveLength(1);
+    expect(clip.effects[0]).toBeInstanceOf(BlurEffect);
   });
 });

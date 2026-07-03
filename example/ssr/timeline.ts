@@ -15,13 +15,16 @@
  * `await`ing sources (`init()`, font loading, `source.load()`) is the only part
  * that needs a browser.
  */
-import type { BLEND_MODES } from 'pixi.js';
+import type { AutoDetectOptions, BLEND_MODES, Renderer } from 'pixi.js';
 import {
   AudioClip,
   AudioEngine,
   AudioSource,
+  BlurEffect,
+  ColorEffect,
   Compositor,
   type Easing,
+  type Effect,
   easeInCubic,
   easeInOutCubic,
   easeInOutQuad,
@@ -67,6 +70,15 @@ const EASINGS: Record<EasingName, Easing> = {
   easeInOutCubic,
 };
 
+/**
+ * A filter/effect on a clip or the whole frame. Effects are shaders — they need
+ * a GPU renderer (so on the server they require Route B's WebGPU backend, not the
+ * Canvas fallback). Params are static here for brevity.
+ */
+export type EffectSpec =
+  | { type: 'blur'; strength?: number }
+  | { type: 'color'; brightness?: number; contrast?: number; saturation?: number };
+
 /** A property that is either a constant value or a keyframed animation. */
 export type PropSpec<T> =
   | T
@@ -90,6 +102,8 @@ interface BaseClipSpec {
   opacity?: PropSpec<number>;
   blendMode?: BLEND_MODES;
   transform?: TransformSpec;
+  /** Filters applied to this clip (needs Route B's GPU backend on the server). */
+  effects?: EffectSpec[];
 }
 
 export interface TextClipSpec extends BaseClipSpec {
@@ -172,6 +186,8 @@ export interface TimelineSpec {
   fonts?: FontSpec[];
   tracks?: TrackSpec[];
   audio?: AudioClipSpec[];
+  /** Global filters over the whole composite (a master grade / blur). */
+  effects?: EffectSpec[];
   export?: ExportSpec;
 }
 
@@ -198,6 +214,20 @@ function applyProp<T>(prop: { setStatic(v: T): void; setKeyframes(kfs: { time: n
   }
 }
 
+/** Construct a built-in effect (filter) from its spec. */
+export function buildEffect(spec: EffectSpec): Effect {
+  if (spec.type === 'blur') {
+    const e = new BlurEffect();
+    if (spec.strength !== undefined) e.strength.setStatic(spec.strength);
+    return e;
+  }
+  const e = new ColorEffect();
+  if (spec.brightness !== undefined) e.brightness.setStatic(spec.brightness);
+  if (spec.contrast !== undefined) e.contrast.setStatic(spec.contrast);
+  if (spec.saturation !== undefined) e.saturation.setStatic(spec.saturation);
+  return e;
+}
+
 /** Apply the shared timing / transform / opacity fields onto a visual clip. */
 function applyBase(clip: VisualClip, spec: BaseClipSpec): void {
   clip.start = spec.start;
@@ -214,6 +244,7 @@ function applyBase(clip: VisualClip, spec: BaseClipSpec): void {
     applyProp(clip.transform.scale, tr.scale);
     applyProp(clip.transform.rotation, tr.rotation);
   }
+  for (const fx of spec.effects ?? []) clip.effects.push(buildEffect(fx));
 }
 
 /**
@@ -252,7 +283,7 @@ export function timelineEnd(spec: TimelineSpec): number {
 }
 
 /** Load every font the timeline references (self-hosted or Google), deduped. */
-async function loadFonts(specs: FontSpec[] | undefined): Promise<void> {
+async function loadFontsDom(specs: FontSpec[] | undefined): Promise<void> {
   for (const f of specs ?? []) {
     if (f.google) await fonts.loadGoogleFont({ family: f.family, weights: f.google.weights, italic: f.google.italic });
     else if (f.src) await fonts.load({ family: f.family, src: f.src });
@@ -261,12 +292,23 @@ async function loadFonts(specs: FontSpec[] | undefined): Promise<void> {
 }
 
 /**
+ * Overrides that let {@link buildTimeline} run outside a browser (server-side
+ * rendering). Both default to the browser behaviour.
+ */
+export interface BuildOverrides {
+  /** Custom GPU renderer factory (e.g. Node WebGPU via Dawn). */
+  createRenderer?: (options: Partial<AutoDetectOptions>) => Promise<Renderer>;
+  /** Custom font loader (e.g. Node `GlobalFonts.register`) replacing `document.fonts`. */
+  loadFonts?: (specs: FontSpec[] | undefined) => Promise<void>;
+}
+
+/**
  * Rebuild the SDK object graph from a {@link TimelineSpec} and initialize the
  * GPU renderer, ready for {@link Exporter.export}. Loads fonts and every
  * image/video source up front. The caller must {@link BuiltTimeline.dispose}
  * when done (frees the compositor and every source/decoder).
  */
-export async function buildTimeline(spec: TimelineSpec): Promise<BuiltTimeline> {
+export async function buildTimeline(spec: TimelineSpec, overrides: BuildOverrides = {}): Promise<BuiltTimeline> {
   const timebase = new Timebase(spec.fps);
   const compositor = new Compositor({
     width: spec.width,
@@ -274,10 +316,11 @@ export async function buildTimeline(spec: TimelineSpec): Promise<BuiltTimeline> 
     timebase,
     background: spec.background ?? 0x000000,
     origin: spec.origin,
+    createRenderer: overrides.createRenderer,
   });
   await compositor.init();
 
-  await loadFonts(spec.fonts);
+  await (overrides.loadFonts ?? loadFontsDom)(spec.fonts);
 
   const sources: { dispose(): void }[] = [];
   for (const trackSpec of spec.tracks ?? []) {
@@ -287,6 +330,9 @@ export async function buildTimeline(spec: TimelineSpec): Promise<BuiltTimeline> 
     for (const clipSpec of trackSpec.clips) track.add(await buildClip(clipSpec, sources));
     compositor.addTrack(track);
   }
+
+  // Global filters over the whole composite (master grade / blur).
+  for (const fx of spec.effects ?? []) compositor.effects.push(buildEffect(fx));
 
   const audioEngine = new AudioEngine(timebase);
   const hasAudio = (spec.audio?.length ?? 0) > 0;

@@ -37,7 +37,9 @@
     "verify:editor-audio": "node scripts/verify-page.cjs example/editor-audio-test.html __EDITOR_AUDIO_TEST__ \"editor audio (import + export mux)\"",
     "verify:origin": "node scripts/verify-page.cjs example/origin-test.html __ORIGIN_TEST__ \"compositor origin\"",
     "verify:ssr": "node scripts/verify-page.cjs example/ssr-render.html __SSR_TEST__ \"server-side render\"",
+    "verify:ssr-node": "tsx example/ssr-node/render.ts --verify --out .ssr-out/node-demo.mp4",
     "ssr:render": "node scripts/ssr-render.cjs",
+    "ssr:render-node": "tsx example/ssr-node/render.ts",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\""
   },
@@ -53,12 +55,19 @@
     "pixi.js": "^8.0.0"
   },
   "devDependencies": {
+    "@mediabunny/server": "^1.50.4",
+    "@napi-rs/canvas": "^1.0.2",
+    "@types/jsdom": "^28.0.3",
+    "@types/node": "^26.1.0",
+    "jsdom": "^29.1.1",
     "pixi.js": "^8.6.0",
     "puppeteer": "^25.2.1",
+    "tsx": "^4.22.5",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
     "vite-plugin-dts": "^4.4.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "webgpu": "^0.4.0"
   },
   "dependencies": {
     "@evomap/evolver": "^1.89.20",

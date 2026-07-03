@@ -1,4 +1,4 @@
-import { autoDetectRenderer, Container, type Renderer, RenderTexture } from 'pixi.js';
+import { autoDetectRenderer, type AutoDetectOptions, Container, type Renderer, RenderTexture } from 'pixi.js';
 import type { Disposable } from '../core/disposable';
 import type { Effect } from '../effects/effect';
 import type { Timebase } from '../time/timebase';
@@ -70,6 +70,19 @@ export interface CompositorOptions {
    * preview, `renderToTexture`/export and transitions all share it (contract #3).
    */
   origin?: [number, number];
+  /**
+   * Override how the GPU renderer is created in {@link Compositor.init}. By
+   * default {@link init} calls PixiJS `autoDetectRenderer` (WebGPU preferred,
+   * WebGL fallback) bound to {@link Compositor.view}. A custom factory lets the
+   * SDK run outside a browser — e.g. server-side rendering in Node with a
+   * WebGPU binding (Dawn) or a Canvas renderer — by returning any initialized
+   * PixiJS `Renderer`. It receives the same options `autoDetectRenderer` would
+   * get (including the compositor's `canvas`, `width`, `height`, `resolution`
+   * and `background`); the returned renderer must already be `init`ed. The rest
+   * of the engine (reconcile, `renderSync`, `renderToTexture`, transitions) is
+   * renderer-agnostic, so nothing else changes.
+   */
+  createRenderer?: (options: Partial<AutoDetectOptions>) => Promise<Renderer>;
 }
 
 /**
@@ -152,7 +165,7 @@ export class Compositor implements Disposable {
    */
   init(): Promise<void> {
     if (this.initPromise) return this.initPromise;
-    this.initPromise = autoDetectRenderer({
+    const options: Partial<AutoDetectOptions> = {
       preference: this.options.preferWebGPU === false ? 'webgl' : 'webgpu',
       canvas: this.view,
       width: this.options.width,
@@ -160,7 +173,10 @@ export class Compositor implements Disposable {
       background: this.options.background ?? 0x000000,
       resolution: this.resolution,
       autoDensity: true,
-    }).then((renderer) => {
+    };
+    // A custom factory (e.g. server-side WebGPU in Node) can replace autoDetect.
+    const create = this.options.createRenderer ?? autoDetectRenderer;
+    this.initPromise = create(options).then((renderer) => {
       this.renderer = renderer;
     });
     return this.initPromise;

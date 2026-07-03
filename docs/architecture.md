@@ -216,8 +216,13 @@ clock.play();
 - 校验:`tests/ssr-timeline.test.ts`(headless 单测 spec→对象图映射:clip 时序、变换/透明度取值、
   命名 easing、时间线时长)+ e2e `pnpm verify:ssr`(浏览器半侧:无头 Chrome 里 render 内置 demo 产出
   合法 MP4)+ `pnpm ssr:render -- --verify`(Node worker 全链路:Node→无头 Chrome→写盘,魔数断言合法容器)。
-- **路线 B(Node 原生 + polyfill)** 备选未实现:只需替换 `ExportSink`(ffmpeg 编码)与
-  `VideoDecoderBackend`(ffmpeg 解码)两处 seam 即可保留 PixiJS 出像素,见 `todo/backlog.md`。
+- **路线 B(Node 原生,免浏览器,含滤镜)已实现**:用 Pixi **WebGPU** 渲染器(Dawn 的 `webgpu` 绑定 +
+  Mesa lavapipe 软件 Vulkan 兜底)在 Node 出像素——滤镜/warp/转场全支持;`@mediabunny/server`
+  (node-av/FFmpeg)编码、`@napi-rs/canvas` 供文字度量/字体、jsdom 补 DOM。帧渲到 `RenderTexture` 后经
+  `copyTextureToBuffer` 从 GPU 读回(BGRA→RGBA)再编码。SDK 侧仅新增 **`CompositorOptions.createRenderer`
+  注入 seam**(`Compositor.init` 默认仍 `autoDetectRenderer`,Node 传入 WebGPU 工厂),其余引擎
+  (reconcile/renderSync/renderToTexture/转场)renderer 无关、零改动。代码在 `example/ssr-node/`,校验
+  `pnpm verify:ssr-node`;完整踩坑与 shim 见 `docs/server-side-rendering.md`。
 
 ### 文字与字体加载（TextClip / FontManager）
 

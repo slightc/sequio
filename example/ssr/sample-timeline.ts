@@ -46,6 +46,8 @@ export function sampleTimeline(): TimelineSpec {
                 ],
               },
             },
+            // A filter (shader) — renders on the server only via Route B's WebGPU backend.
+            effects: [{ type: 'blur', strength: 4 }],
           },
           {
             type: 'text',

@@ -91,8 +91,10 @@ pnpm verify:editor-export # Puppeteer e2e: editor's forked export (video+text+sh
 pnpm verify:video-import  # Puppeteer e2e: import estimates fps from a packet prefix (no full-file scan)
 pnpm verify:editor-audio  # Puppeteer e2e: video imports with sound; export muxes the audio track
 pnpm verify:origin        # Puppeteer e2e: origin=[0.5,0.5] renders position [0,0] at the canvas centre
-pnpm verify:ssr           # Puppeteer e2e: server-side render — headless Chrome renders a timeline to video
-pnpm ssr:render -- --timeline <spec.json> --out out.mp4  # SSR worker: timeline JSON → video file on disk
+pnpm verify:ssr           # Puppeteer e2e: server-side render (Route A) — headless Chrome renders a timeline to video
+pnpm ssr:render -- --timeline <spec.json> --out out.mp4       # SSR worker A (headless Chrome): timeline JSON → video file
+pnpm verify:ssr-node      # Pure-Node SSR (Route B): PixiJS WebGPU (Dawn) renders a filtered timeline to MP4, no browser
+pnpm ssr:render-node -- --timeline <spec.json> --out out.mp4  # SSR worker B (Node WebGPU): needs a GPU or Mesa lavapipe
 ```
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's
@@ -100,9 +102,13 @@ bundled Chromium lacks WebCodecs, so we use Puppeteer's Chrome-for-Testing —
 fetch it once with `pnpm exec puppeteer browsers install chrome`. Both scripts
 share `scripts/verify-page.cjs` (spawns Vite, asserts a page's `window.*` result).
 
-**Server-side rendering** (render a timeline to a video file on a server) reuses
-that same headless-Chrome path — `scripts/ssr-render.cjs` drives
-`example/ssr-render.html`. Design, the timeline JSON protocol and usage are in
+**Server-side rendering** (render a timeline to a video file on a server) has two
+routes: **A) headless Chrome** — `scripts/ssr-render.cjs` drives
+`example/ssr-render.html` (full fidelity, reuses the verify path); and **B) pure
+Node** — `example/ssr-node/` renders via PixiJS WebGPU (Dawn) with **filters**,
+no browser (needs a GPU or Mesa lavapipe). Both share the `example/ssr/` timeline
+protocol. The one SDK hook is `CompositorOptions.createRenderer` (renderer
+injection seam). Design, protocol, the Route B shims and usage are in
 [`docs/server-side-rendering.md`](docs/server-side-rendering.md).
 
 ## Working agreement

@@ -147,96 +147,101 @@ pnpm verify:ssr
 - **字体确定性**：`buildTimeline` 在建 clip 前 `await` 所有字体就绪（契约 #2：`render(t)` 不能
   中途把 fallback 换成真字体）。
 
-## 路线 B：Node 原生 + polyfill（探索，未落地）
 
-不想每个任务拉起一个 Chrome，就在 **Node 进程内**跑管线。下面的结论都在本仓库沙盒里
-（Node 22）**实测过**——哪些直接能用、哪些是真正的坑，都有证据。
+## 路线 B：Node 原生（已实现，**含滤镜**）
 
-### 结论速览
+不想每个任务拉起一个 Chrome，就在 **Node 进程内**跑整条管线。**关键点：滤镜必须能用**——
+`Effect` / warp / `Transition` 都是 shader，所以 Node 侧渲染后端**必须是 GPU 管线**（不能是
+Canvas 2D，它没有 filter）。方案是 **PixiJS 的 WebGPU 渲染器 + Dawn 的 Node WebGPU 绑定**，帧渲到
+`RenderTexture` 后从 GPU 读回，再交给 Mediabunny 编码。与浏览器预览**共用同一渲染核心**（契约 #3），
+只是换了 renderer 和一个 GPU 读帧步骤。
 
-| 环节 | 方案 | 沙盒实测 |
-|---|---|---|
-| 解码 / 编码 / 封装 | `@mediabunny/server`（`node-av` = FFmpeg N-API 绑定） | ✅ 装得上、能跑 |
-| Canvas 2D + 字体度量 + 字体注册 | `@napi-rs/canvas` | ✅ 装得上、能跑（**无 WebGL**） |
-| 合成/出像素 | PixiJS v8.16+ 的 `CanvasRenderer`（2D） | ⚠️ 能 init/render，但**没真正画出像素**、且**无 filter** |
-| 编码喂帧 | mediabunny `CanvasSource(canvas)` | ❌ 只认真正的 `HTMLCanvasElement`/`OffscreenCanvas` |
-| 字体 | SDK 的 `FontManager`（`FontFace`+`document.fonts`） | ❌ 服务端是 no-op，需换 `GlobalFonts.register` |
+> 下面所有结论均在本仓库沙盒（Node 22 + Mesa lavapipe 软件 Vulkan）**实测跑通**：内置 demo
+> （青底 + 移动的**带模糊滤镜**的圆 + 文字）渲成 60 帧 MP4，解码回来断言尺寸/颜色正确
+> （青底 `[14,117,110]`、橙圆 `[245,157,11]`、模糊生效）。
 
-### 已经解决的一半：编解码（`@mediabunny/server`）
+### 组成
 
-[`@mediabunny/server`](https://github.com/Vanilagy/mediabunny/tree/main/packages/server) 用
-`node-av`（对 FFmpeg C API 的 N-API 绑定）在 Node/Bun/Deno 里补齐 WebCodecs 能力：
-
-```js
-import { registerMediabunnyServer } from '@mediabunny/server';
-registerMediabunnyServer();          // 把 AVC/HEVC/VP8/VP9/AV1 + AAC/MP3/Opus/… 注册进
-                                     // Mediabunny 的 Codec Registry
+```
+src/compositor/compositor.ts     新增 CompositorOptions.createRenderer 注入 seam（唯一的 SDK 改动）
+example/ssr-node/env.ts          Node 环境引导：jsdom + rAF/addEventListener shim + DOMAdapter(napi-canvas)
+                                 + navigator.gpu(Dawn) + GPU* globals + Dawn 兼容 shim + registerMediabunnyServer
+                                 + createNodeWebGPURenderer 工厂
+example/ssr-node/export-node.ts  GPU 读帧导出：renderToTexture → copyTextureToBuffer → BGRA→RGBA
+                                 → VideoSample → VideoSampleSource → Output + FilePathTarget（写盘）
+example/ssr-node/render.ts       worker 主程序：读 TimelineSpec，建图（复用 buildTimeline），渲成文件
 ```
 
-实测：注册后 `await canEncodeVideo('avc')` / `canEncodeVideo('vp9')` 在 Node 里都返回 `true`。
-**注意**：它**不设** `globalThis.VideoEncoder/VideoDecoder/VideoFrame` 这些 WebCodecs 全局，而是
-在 **Mediabunny 层**接管编解码。因此 SDK 里凡是走 mediabunny 的部分——`MediabunnyVideoDecoder`
-（`Input`+`VideoSampleSink`）、`AudioSource`（`AudioBufferSink`）、导出的 `Output`/mux——
-**在 Node 里能直接工作，一行不用改**。这把 Route B 最硬的骨头（Node 没有 WebCodecs）解决了。
+时间线协议、`buildTimeline`、`buildEffect` 与路线 A 复用同一份 `example/ssr/`（`TimelineSpec` 现支持
+clip 级与全局 `effects`）。
 
-### 剩下的一半：出像素 + 喂帧 + 字体（真正的坑）
+### 依赖与前置
 
-**1. 渲染后端只能用 Canvas 2D，且要补 DOM。** `@napi-rs/canvas` 没有 WebGL（实测
-`getContext('webgl')` 抛 `webgl is not supported`），`headless-gl` 只有 WebGL1 而 Pixi v8 要
-WebGL2，node 的 WebGPU 绑定未验证。所以 Node 里现实的后端是 **Pixi v8.16+ 的 `CanvasRenderer`
-（2D）**。实测它能 `init()`/`render()`，但要喂一堆 DOM 垫片——Pixi 完整 barrel 会自动注册
-`EventSystem`/`DOMPipe`/`Ticker`，分别要 `document`、`window`、`requestAnimationFrame`、
-`globalThis.addEventListener`（用 jsdom + 少量 shim 可满足，或改用精简入口只注册 Canvas 系统）。
+devDependencies（只有 Node SSR 用，像 puppeteer 一样不进发布包）：`tsx`、`jsdom`、
+`@napi-rs/canvas`、`webgpu`（Dawn）、`@mediabunny/server`（内含 `node-av` = FFmpeg N-API）。
 
-**2. Canvas 渲染器没有 filter 管线。** `CanvasRenderer` 的 pipe 里没有 filter——所以
-`Effect` / warp / `Transition`（全是 filter 实现）**在 Node 里不会渲染**，只剩
-sprite/graphics/text/基础合成。这是能力上的硬损失。
+**必须有 WebGPU 可用的宿主**：一块真 GPU，或一个**软件 Vulkan 驱动**。无 GPU 的服务器/CI 装
+Mesa **lavapipe** 即可：
 
-**3. Canvas 渲染器"能跑但没画出来"。** 实测里 `init`/`render` 都成功、canvas 尺寸对，但读回像素
-是 `(0,0,0,0)` 透明——即 Pixi 的 Canvas 后端没真正把内容合成进 `@napi-rs/canvas` 的表面
-（可能要 `OffscreenCanvas` 语义或另配 render-target）。这块要额外调通，不是开箱即用。
+```bash
+apt install mesa-vulkan-drivers      # 提供 lavapipe(llvmpipe) 软件 Vulkan
+pnpm rebuild webgpu node-av          # pnpm 默认屏蔽原生 build script，需手动触发
+```
 
-**4. `MediabunnyExportSink` 不能直接复用。** mediabunny 的 `CanvasSource` 构造时
-`instanceof HTMLCanvasElement` 校验，`@napi-rs/canvas` 的 `CanvasElement` 过不了（实测抛
-`canvas must be an HTMLCanvasElement or OffscreenCanvas`）。所以服务端要**另写一个 `ExportSink`**：
-从渲染 canvas 读原始像素 → 包成 `VideoSample`/`VideoFrame` → 走 `VideoSampleSource`（或直接
-node-av），并可用 `FilePathTarget` 直接写盘。
+没有任何 Vulkan 驱动时，worker 会以清晰的 “No WebGPU adapter — Route B needs a GPU or lavapipe” 退出。
 
-**5. 字体要换注册路径（本条你特别关照）。** SDK 的 `FontManager.loadFace` 走
-`new FontFace(...)` + `document.fonts.add`——在 Node 里 `document.fonts` 是"not implemented"，
-**等于什么都没做**。而 Pixi 的 `CanvasTextSystem` 是用**渲染 canvas 的 `measureText`** 量字形的
-（实测：字形度量来自 node canvas，不是 `document.fonts`）。`@napi-rs/canvas` 有
-`GlobalFonts.register(buffer, family)` / `registerFromPath(path, family)`（自带 22 个 family）。
-所以 Route B 需要一个 **Node 版 `FontManager`**：`fetch` 到字体字节 → `GlobalFonts.register` →
-再建 `TextClip`。SDK 的 `loadFace`/`loadGoogle` 是 `protected`、本就"Overridable"，子类覆盖即可。
+### 用法
 
-### 需要动 SDK 的地方：一个 renderer seam
+```bash
+pnpm ssr:render-node -- --out out.mp4                       # 渲染内置 demo（含滤镜）
+pnpm ssr:render-node -- --timeline my-timeline.json --out out.mp4
+pnpm verify:ssr-node                                        # 纯 Node 渲 demo → 断言合法 MP4
+```
 
-除了上面几个消费者层适配器（Node `ExportSink`、Node `FontManager`、DOM 垫片），SDK 本身只差**一个
-口子**：`Compositor.init()` 目前**硬编码** `autoDetectRenderer({ preference: 'webgpu'|'webgl' })`，
-没法注入 `CanvasRenderer` 或自定义 renderer。Route B 要落地就得给 `Compositor` 加一个
-**renderer 注入 seam**（如 `CompositorOptions.createRenderer?` 工厂，或允许直接传入已 init 的
-renderer）——这与已有的 `VideoDecoderBackend` / `ExportSink` 两个 seam 是一致的设计。
+### 让它在 Node 里跑起来踩过的坑（都已在 `env.ts` 里 shim）
 
-### 落地清单（如果要做）
+1. **DOM 垫片**：Pixi 完整 barrel 自动注册 `EventSystem`/`DOMPipe`/`Ticker`，需 `document`/`window`
+   （jsdom）+ `requestAnimationFrame`/`addEventListener` shim。
+2. **GPU 全局**：Dawn 的 `webgpu` 模块经 `wg.globals` 暴露 `GPU*` 类/常量，要挂到 `globalThis`，并把
+   `navigator.gpu` 指向 `wg.create([])`。
+3. **Dawn 比浏览器严格**：Pixi 用 `for..in` 传给 `setBindGroup` 的 index 是**字符串**，浏览器会隐式
+   转数字，Dawn 不会 → 报 “value is not a number”。shim 把 index `Number()` 化。
+4. **napi canvas 不是 HTMLCanvasElement**：Pixi 的 `CanvasSource.test` 用 `instanceof HTMLCanvasElement`
+   判定，napi canvas 过不了 → 屏幕 render target 会另建一张 canvas，**画到别处、view 全透明**。给 napi
+   canvas 打 tag 并 patch `CanvasSource.test` 接受它，Pixi 才画进我们控制的 view。
+5. **文字/图片纹理上传**：Pixi WebGPU 用 `queue.copyExternalImageToTexture({source: canvas})` 上传
+   canvas 纹理，Dawn 读不了 napi canvas → 报 “no possible types matched … member 'source'”。shim 把这类调用
+   改走 `writeTexture`（读 canvas 原始像素）。
+6. **`getBoundingClientRect`**：ticker 里的 `CanvasObserver` 会调它，给 canvas stub 补上。
+7. **读帧**：Pixi 的 `extract.pixels`(WebGPU) 走 canvas 的 `GPUCanvasContext`（我们没有），改为手动
+   `copyTextureToBuffer` + `mapAsync` 直接读 GPU 纹理（256 字节行对齐要去 padding）。
 
-1. SDK：给 `Compositor.init` 加 renderer 注入 seam（唯一的核心改动，可单测）。
-2. 消费者层（`example/ssr-node/`）：
-   - DOM 垫片（jsdom + `requestAnimationFrame`/`addEventListener` shim + `DOMAdapter` → `@napi-rs/canvas`）。
-   - 注入 `CanvasRenderer`，并**调通"真正画出像素"**（当前 PoC 的空白问题）。
-   - Node `ExportSink`：读像素 → `VideoSample` → `VideoSampleSource` → `Output`+`FilePathTarget`。
-   - Node `FontManager`：`GlobalFonts.register`。
-   - `registerMediabunnyServer()` 开机注册。
-3. 验证：`verify:ssr-node`——纯 Node（无浏览器）把 sample 时间线渲成 MP4 并解回。
+### 字体（本条你特别关照）
 
-### 取舍与建议
+Node 里 `FontManager` 的 `FontFace`/`document.fonts` 是 no-op；Pixi 文字用**渲染 canvas 的
+`measureText`** 量字形，字体要经 `@napi-rs/canvas` 的 `GlobalFonts.register(bytes, family)` 注册。
+worker 的 `loadFontsNode` 就是 `fetch` 字体字节 → `GlobalFonts.register`，并作为 `buildTimeline` 的
+`loadFonts` override 传入。napi 自带若干 family（含 sans-serif），demo 不需外部字体。
 
-- **能力上限**：Canvas 2D 后端没有 filter，`Effect`/warp/`Transition` 全丢。这些是 SDK 的核心特性，
-  所以 Route B 只适合**无滤镜的时间线**（文字/图形/图片/视频的基础合成）。要全保真仍得走 Route A
-  （真 GPU）或 node 的 WebGPU 绑定（未验证）。
-- **成熟度**：编解码半侧（`@mediabunny/server`）已经很实；渲染半侧要自己趟 DOM 垫片 + 空白画布 +
-  自写 ExportSink，工程量和脆性都不低。
-- **建议**：把 Route B 定位成"**无滤镜时间线的高吞吐快路径**"，Route A 仍是**全特性**的默认路径；
-  仅当"每任务一个 Chrome"的资源/成本成为瓶颈、且目标时间线不用滤镜时，再投入把 Route B 调通。
+### 已知取舍 / 后续
 
-> 沙盒实测脚本见提交记录讨论；本节所有 ✅/❌/⚠️ 均为 Node 22 下的实际运行结果，非推测。
+- **颜色/透明度**：GPU 读回是 **BGRA、预乘 alpha**。导出帧背景不透明（alpha=255）时预乘是恒等，
+  读帧时做 BGRA→RGBA 通道交换即可（已处理）。纹理上传的 `writeTexture` 走 RGBA，若目标纹理是 BGRA，
+  **彩色文字**的 R/B 会交换（白/灰字无影响）——彩色字形要精确需按目标格式做 swizzle，属后续细化。
+- **性能**：lavapipe 是软件光栅化，慢；有真 GPU 时快很多。软件 Vulkan 更适合 CI/无卡服务器兜底。
+- **Google 字体**：`loadFontsNode` 只处理自托管 `src`；css2 → 字体文件的解析未做（后续）。
+- **音频**：`export-node.ts` 目前只导视频轨；音频混音（`AudioEngine.renderOffline` 在 Node 下走
+  `OfflineAudioContext`，需另配 polyfill）留作后续。
+- **脆性**：这套依赖 Pixi 内部行为 + Dawn 绑定的若干 shim，Pixi/Dawn 升级可能需要跟着调。
+
+### 两条路线怎么选
+
+| | 路线 A（Headless Chrome） | 路线 B（Node 原生 WebGPU） |
+|---|---|---|
+| 滤镜/转场 | ✅ 全支持 | ✅ 全支持（本次打通） |
+| 依赖 | 一个 Chrome | Dawn + Vulkan 驱动 + 若干 shim |
+| 每任务开销 | 一个浏览器进程 | 进程内，无浏览器 |
+| 成熟度 | 高（复用 verify 路径） | 中（依赖内部行为 + shim） |
+| 适合 | 默认、全保真、最省心 | 高吞吐/无浏览器环境，愿意维护 shim |
+
+两条都能出带滤镜的视频。默认用 A；对吞吐/隔离敏感、且能接受维护 Dawn shim 时上 B。
