@@ -22,11 +22,31 @@
  * All deps are dev/optional — importing this file only makes sense on a server
  * set up for Route B. See `docs/server-side-rendering.md`.
  */
+import { createRequire } from 'node:module';
 import type { AutoDetectOptions, Renderer } from 'pixi.js';
 
 let ready = false;
 /** Tag identifying our `@napi-rs/canvas` instances to Pixi's canvas checks. */
 const NAPI = Symbol('napi-canvas');
+
+/**
+ * The exact `mediabunny` module instance that `@mediabunny/server` registered its
+ * node-av encoders/decoders on. Mediabunny ships both an ESM and a CJS build,
+ * which are **separate module instances with separate codec registries** (the
+ * dual-package hazard). `@mediabunny/server` registers on whichever instance its
+ * own `require('mediabunny')` resolves to; if the rest of the code `import()`s
+ * mediabunny and gets the *other* instance, the registry looks empty and every
+ * encode silently falls back to the browser WebCodecs path → `VideoFrame is not
+ * defined`. To avoid that, we load the server AND mediabunny through the same CJS
+ * `require` (one cached instance) and hand that exact instance to all Route B code.
+ */
+let registeredMediabunny: typeof import('mediabunny') | null = null;
+
+/** The mediabunny instance carrying the node-av encoders. Call after {@link setupNodeEnvironment}. */
+export function getMediabunny(): typeof import('mediabunny') {
+  if (!registeredMediabunny) throw new Error('getMediabunny() before setupNodeEnvironment()');
+  return registeredMediabunny;
+}
 
 /**
  * Install the browser-global shims and return the GPU handle. Idempotent.
@@ -177,9 +197,13 @@ export async function setupNodeEnvironment(): Promise<void> {
   pixi.CanvasSource.test = ((res: unknown) =>
     !!(res && (res as Record<symbol, unknown>)[NAPI]) || origTest(res as never)) as typeof pixi.CanvasSource.test;
 
-  // WebCodecs polyfill (decode/encode/mux via node-av / FFmpeg).
-  const { registerMediabunnyServer } = await import('@mediabunny/server');
+  // WebCodecs polyfill (decode/encode/mux via node-av / FFmpeg). Load the server
+  // and mediabunny through the SAME CJS require so the encoders register on the
+  // exact instance getMediabunny() hands out (see registeredMediabunny above).
+  const require = createRequire(import.meta.url);
+  const { registerMediabunnyServer } = require('@mediabunny/server') as typeof import('@mediabunny/server');
   registerMediabunnyServer();
+  registeredMediabunny = require('mediabunny') as typeof import('mediabunny');
 
   // Web Audio for the offline mix (AudioEngine.renderOffline) + AudioSource decode.
   const wa = (await import('node-web-audio-api')) as unknown as Record<string, unknown>;

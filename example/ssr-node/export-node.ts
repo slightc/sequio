@@ -21,6 +21,7 @@
  */
 import type { Renderer } from 'pixi.js';
 import { type AudioEngine, Compositor, exportFrameTimes } from '../../src/index';
+import { getMediabunny } from './env';
 
 export interface NodeExportOptions {
   fps: number;
@@ -113,7 +114,7 @@ export async function renderTimelineToFile(
   renderer: Renderer,
   opts: NodeExportOptions,
 ): Promise<{ frames: number; bytes: number; out: string; container: string; videoCodec: string; audio: boolean }> {
-  const { Output, Mp4OutputFormat, WebMOutputFormat, FilePathTarget, VideoSampleSource, VideoSample, AudioBufferSource } = await import('mediabunny');
+  const { Output, Mp4OutputFormat, WebMOutputFormat, FilePathTarget, VideoSampleSource, VideoSample, AudioBufferSource } = getMediabunny();
   const fs = await import('node:fs');
   const path = await import('node:path');
 

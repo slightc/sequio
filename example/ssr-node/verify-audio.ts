@@ -8,7 +8,7 @@
 import type { Renderer } from 'pixi.js';
 import { AudioClip, AudioEngine, type AudioSource, Timebase } from '../../src/index';
 import { buildTimeline, type TimelineSpec } from '../ssr/timeline';
-import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
+import { createNodeWebGPURenderer, getMediabunny, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';
 
 const W = 160;
@@ -66,8 +66,8 @@ async function main(): Promise<void> {
   console.log(`rendered ${result.out} (${result.frames} frames, ${result.container}/${result.videoCodec}, ${result.bytes} bytes${result.audio ? ', +audio' : ''})`);
   if (!result.audio) throw new Error('audio verify FAILED — audio track was skipped (node-av can\'t encode aac/opus?)');
 
-  // Decode back and assert both tracks are present.
-  const { Input, ALL_FORMATS, FilePathSource } = await import('mediabunny');
+  // Decode back and assert both tracks are present (same registered instance).
+  const { Input, ALL_FORMATS, FilePathSource } = getMediabunny();
   const input = new Input({ source: new FilePathSource(result.out), formats: ALL_FORMATS });
   const vtrack = await input.getPrimaryVideoTrack();
   const atrack = await input.getPrimaryAudioTrack();
