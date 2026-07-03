@@ -35,10 +35,16 @@ export { Transform2D } from './animation/transform2d';
 export { MediaSource, VisualSource, type SourceMetadata } from './media/media-source';
 export { VideoSource, type VideoSourceOptions } from './media/video-source';
 export { type DecodedFrame, type VideoDecoderBackend } from './media/video-decoder';
-export { MediabunnyVideoDecoder, type VideoInput } from './media/mediabunny-decoder';
+export {
+  MediabunnyVideoDecoder,
+  setFrameImageExtractor,
+  type FrameImageExtractor,
+  type VideoInput,
+} from './media/mediabunny-decoder';
 export { ImageSource, type ImageSourceOptions } from './media/image-source';
 export { AudioSource, type AudioSourceOptions } from './media/audio-source';
 export { FrameCache, type Closable } from './media/frame-cache';
+export { loadMediabunny, setMediabunnyModule, type MediabunnyModule } from './media/mediabunny-loader';
 
 // ── Texture ─────────────────────────────────────────────────────────────────
 export { TextureManager } from './texture/texture-manager';

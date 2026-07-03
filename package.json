@@ -40,6 +40,7 @@
     "verify:ssr-node": "tsx example/ssr-node/render.ts --verify --out .ssr-out/node-demo.mp4",
     "verify:ssr-node-audio": "tsx example/ssr-node/verify-audio.ts",
     "verify:ssr-node-font": "tsx example/ssr-node/verify-font.ts",
+    "verify:ssr-node-media": "tsx example/ssr-node/verify-media.ts",
     "ssr:render": "node scripts/ssr-render.cjs",
     "ssr:render-node": "tsx example/ssr-node/render.ts",
     "lint": "eslint . --ext .ts",

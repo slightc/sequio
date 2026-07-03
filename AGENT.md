@@ -96,6 +96,7 @@ pnpm ssr:render -- --timeline <spec.json> --out out.mp4       # SSR worker A (he
 pnpm verify:ssr-node      # Pure-Node SSR (Route B): PixiJS WebGPU (Dawn) renders a filtered timeline to MP4, no browser
 pnpm verify:ssr-node-audio# Route B audio: synth tone + shape → MP4, decoded back asserts video+audio tracks
 pnpm verify:ssr-node-font # Route B fonts: load a Google font (Roboto) in Node and assert glyphs rendered
+pnpm verify:ssr-node-media# Route B media: decode a video + a data-URL image in pure Node and composite them
 pnpm ssr:render-node -- --timeline <spec.json> --out out.mp4  # SSR worker B (Node WebGPU): needs a GPU or Mesa lavapipe
 ```
 
@@ -107,10 +108,13 @@ share `scripts/verify-page.cjs` (spawns Vite, asserts a page's `window.*` result
 **Server-side rendering** (render a timeline to a video file on a server) has two
 routes: **A) headless Chrome** — `scripts/ssr-render.cjs` drives
 `example/ssr-render.html` (full fidelity, reuses the verify path); and **B) pure
-Node** — `example/ssr-node/` renders via PixiJS WebGPU (Dawn) with **filters**,
-no browser (needs a GPU or Mesa lavapipe). Both share the `example/ssr/` timeline
-protocol. The one SDK hook is `CompositorOptions.createRenderer` (renderer
-injection seam). Design, protocol, the Route B shims and usage are in
+Node** — `example/ssr-node/` renders via PixiJS WebGPU (Dawn) with **filters** and
+**media sources** (video/image decode), no browser (needs a GPU or Mesa lavapipe).
+Both share the `example/ssr/` timeline protocol. The SDK hooks that enable Route B
+(all no-ops in the browser): `CompositorOptions.createRenderer` (inject a renderer),
+`loadMediabunny()`/`setMediabunnyModule()` (pin one mediabunny instance — dual-package
+hazard), `setFrameImageExtractor()` (how a decoded frame becomes a texture). Design,
+protocol, the Route B shims and usage are in
 [`docs/server-side-rendering.md`](docs/server-side-rendering.md).
 
 ## Working agreement

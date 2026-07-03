@@ -161,7 +161,7 @@ export async function setupNodeEnvironment(): Promise<void> {
 
   // Route Pixi's canvas creation through @napi-rs/canvas, and teach Pixi to
   // accept those canvases (they aren't jsdom HTMLCanvasElements).
-  const { createCanvas } = await import('@napi-rs/canvas');
+  const { createCanvas, loadImage } = await import('@napi-rs/canvas');
   const makeCanvas = (w?: number, h?: number) => {
     const c = createCanvas(w || 1, h || 1) as unknown as Record<string | symbol, unknown>;
     c[NAPI] = true;
@@ -176,6 +176,22 @@ export async function setupNodeEnvironment(): Promise<void> {
     });
     return c;
   };
+
+  // `ImageSource` decodes via `createImageBitmap` (browser-only). Polyfill it:
+  // decode the bytes with @napi-rs/canvas and draw onto a tagged napi canvas that
+  // Pixi accepts as a texture source (via the CanvasSource.test patch below).
+  const g2 = globalThis as Record<string, unknown>;
+  if (g2.createImageBitmap === undefined) {
+    g2.createImageBitmap = async (src: unknown): Promise<unknown> => {
+      const blobLike = src as { arrayBuffer?: () => Promise<ArrayBuffer>; width?: number };
+      if (!blobLike?.arrayBuffer) return src; // already an image-like source
+      const { Buffer } = await import('node:buffer');
+      const img = await loadImage(Buffer.from(await blobLike.arrayBuffer()));
+      const canvas = makeCanvas(img.width, img.height);
+      (canvas.getContext as (t: string) => { drawImage(i: unknown, x: number, y: number): void })('2d').drawImage(img, 0, 0);
+      return canvas;
+    };
+  }
 
   const pixi = await import('pixi.js');
   // Runtime glue against Pixi's Adapter/canvas contracts — cast the interop.
@@ -204,6 +220,28 @@ export async function setupNodeEnvironment(): Promise<void> {
   const { registerMediabunnyServer } = require('@mediabunny/server') as typeof import('@mediabunny/server');
   registerMediabunnyServer();
   registeredMediabunny = require('mediabunny') as typeof import('mediabunny');
+  // Make the SDK's own decode/encode (VideoSource/AudioSource/export sink) use
+  // this exact instance too — otherwise its `import('mediabunny')` gets the other
+  // (ESM) instance without the node-av codecs (dual-package hazard).
+  const { setMediabunnyModule, setFrameImageExtractor } = await import('../../src/index');
+  setMediabunnyModule(registeredMediabunny);
+
+  // Decoded video frames become textures via `sample.toCanvasImageSource()` in the
+  // browser (a VideoFrame) — undefined in Node. Read the pixels into a napi canvas
+  // (which Pixi accepts as a texture source) instead.
+  setFrameImageExtractor(async (sample) => {
+    const s = sample as unknown as { codedWidth: number; codedHeight: number; allocationSize(o: { format: string }): number; copyTo(b: Uint8Array, o: { format: string }): Promise<unknown> };
+    const w = s.codedWidth;
+    const h = s.codedHeight;
+    const bytes = new Uint8Array(s.allocationSize({ format: 'RGBA' }));
+    await s.copyTo(bytes, { format: 'RGBA' });
+    const canvas = makeCanvas(w, h);
+    const ctx = (canvas.getContext as (t: string) => { createImageData(w: number, h: number): { data: Uint8ClampedArray }; putImageData(d: unknown, x: number, y: number): void })('2d');
+    const imageData = ctx.createImageData(w, h);
+    imageData.data.set(bytes);
+    ctx.putImageData(imageData, 0, 0);
+    return canvas as unknown as CanvasImageSource;
+  });
 
   // Web Audio for the offline mix (AudioEngine.renderOffline) + AudioSource decode.
   const wa = (await import('node-web-audio-api')) as unknown as Record<string, unknown>;

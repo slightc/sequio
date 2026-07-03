@@ -18,7 +18,12 @@
       离线混音经 mediabunny `AudioBufferSource` 混轨（`pnpm verify:ssr-node-audio` 断言视频+音频轨都在）。
 - [x] 路线 B Google 字体：`fonts-node.ts` 拉 css2 → `parseGoogleFontUrls` 抽字体文件 URL →
       `GlobalFonts.register`（`pnpm verify:ssr-node-font` 实测 Roboto 加载并渲染）。
-- [ ] 路线 B 精修（续）：`writeTexture` 上传的色彩空间（sRGB）校正细化；软件光栅化性能基线。
+- [x] 路线 B 媒体源解码（视频/图片/音频文件）：`loadMediabunny()` SDK seam + `setMediabunnyModule()`
+      让 SDK 与 `@mediabunny/server` 用同一 mediabunny 实例（破 dual-package hazard）；`setFrameImageExtractor()`
+      让 Node 用 `sample.copyTo` 取视频帧像素；`createImageBitmap` polyfill 走 `@napi-rs/canvas`。
+      `pnpm verify:ssr-node-media` 实测视频+图片纯 Node 解码合成。
+- [ ] 路线 B 精修（续）：`writeTexture` 上传的色彩空间（sRGB）校正细化；软件光栅化性能基线；
+      带音频的视频源在 Route B 的音轨解码（AudioSource 走同一实例，理论已通，待补 e2e）。
 - [ ] SSR 大文件回传：base64 换成页面 `fetch` POST 流式回传 / CDP `ArrayBuffer`（当前 demo 走 base64）。
 - [ ] golden-frame 测试基建：固定对象图 + FixedStepClock → 像素哈希比对。
 - [ ] `colorSpace: 'display-p3'` 色彩管线对齐（sRGB↔linear、预乘 alpha）。
