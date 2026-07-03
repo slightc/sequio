@@ -39,6 +39,7 @@ export {
   MediabunnyVideoDecoder,
   setFrameImageExtractor,
   type FrameImageExtractor,
+  type MediabunnyDemux,
   type VideoInput,
 } from './media/mediabunny-decoder';
 export { ImageSource, type ImageSourceOptions } from './media/image-source';

@@ -227,7 +227,7 @@ async function main(): Promise<void> {
     iw: number,
     ih: number,
     extra?: Partial<ClipModel>,
-  ): void {
+  ): ClipModel {
     const tm = targetTrack();
     // Append after the last clip on this track so it doesn't overlap by default.
     let start = 0;
@@ -254,6 +254,12 @@ async function main(): Promise<void> {
     refreshDuration();
     rebuildTimeline();
     render();
+    return model;
+  }
+
+  /** Whether a clip is still present on some track (not deleted). */
+  function isClipLive(model: ClipModel): boolean {
+    return tracks.some((t) => t.clips.includes(model));
   }
 
   function addText(): void {
@@ -305,15 +311,14 @@ async function main(): Promise<void> {
     // Probe metadata first (cheap — reads the container header, not the whole
     // file), then size the decode cache to the resolution so a 4K/large source
     // can't accumulate gigabytes of decoded frames and freeze the tab.
-    let source = new VideoSource({ src });
-    let meta = await source.load();
+    const source = new VideoSource({ src });
+    const meta = await source.load();
     const { cacheFrames, lookahead } = videoCacheSettings(meta.width, meta.height);
     if (cacheFrames < 60) {
-      // Cache size is a constructor-only knob → rebuild with a bounded ring.
-      // The export fork() inherits these options, so export stays bounded too.
-      source.dispose();
-      source = new VideoSource({ src, cacheFrames, lookahead });
-      meta = await source.load();
+      // Size the decode cache to the resolution IN PLACE — no dispose + re-load
+      // (a second demux + container-header/packet-stats fetch for a URL). The
+      // export fork() inherits these values, so export stays bounded too.
+      source.configureCache(cacheFrames, lookahead);
     }
     const clip = new VideoClip(source);
     const scale = Math.min(W / meta.width, H / meta.height) * 0.8;
@@ -322,24 +327,40 @@ async function main(): Promise<void> {
     // dominate the timeline; the user can trim it on the timeline anyway).
     const dur = Number.isFinite(meta.duration) ? Math.min(meta.duration, 10) : DEFAULT_CLIP_DURATION;
 
-    // Decode the audio track (if any) into a clip so the video plays with sound.
+    // Add the clip to the timeline NOW — it's ready to preview. Audio decode
+    // (a full download + PCM decode of the whole track) is slow for a URL, so
+    // don't block clip creation on it: decode in the background and attach the
+    // sound once it's ready.
     const extra: Partial<ClipModel> = typeof src === 'string' ? { src } : {};
-    if (meta.hasAudio) {
-      try {
-        setStatus(`Decoding audio for ${label}…`);
-        const audioSource = new AudioSource({ src });
-        await audioSource.load();
-        extra.audioSource = audioSource;
-        extra.audioClip = new AudioClip();
-      } catch (err) {
-        console.warn('audio decode failed; adding video without sound', err);
-      }
-    }
-
-    addClip('video', clip, source, label, dur, meta.width, meta.height, extra);
+    const model = addClip('video', clip, source, label, dur, meta.width, meta.height, extra);
     setStatus(
       cacheFrames < 60 ? `${meta.width}×${meta.height} · decode cache ${cacheFrames} frames` : '',
     );
+
+    // Decode the audio track (if any) into a clip so the video plays with sound.
+    if (meta.hasAudio) {
+      void (async () => {
+        try {
+          // Decode the audio from the video's ALREADY-OPENED demux so the file
+          // isn't fetched a second time; fall back to opening `src` directly if
+          // the (default) mediabunny demux isn't available.
+          const demux = source.getMediabunnyDemux();
+          const audioSource = demux?.audioTrack ? new AudioSource({ demux }) : new AudioSource({ src });
+          await audioSource.load();
+          // The clip may have been deleted while the audio decoded — skip if so.
+          if (!isClipLive(model)) {
+            audioSource.dispose();
+            return;
+          }
+          model.audioSource = audioSource;
+          model.audioClip = new AudioClip();
+          mirrorAudio(model); // align the audio to the clip's current placement/trim
+          syncAudioSchedule();
+        } catch (err) {
+          console.warn('audio decode failed; video plays without sound', err);
+        }
+      })();
+    }
   }
 
   /** Approximate a text clip's unscaled pixel size (for the selection box). */

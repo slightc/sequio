@@ -1,6 +1,6 @@
 import type { Texture } from 'pixi.js';
 import { FrameCache } from './frame-cache';
-import { MediabunnyVideoDecoder, type VideoInput } from './mediabunny-decoder';
+import { type MediabunnyDemux, MediabunnyVideoDecoder, type VideoInput } from './mediabunny-decoder';
 import { type SourceMetadata, VisualSource } from './media-source';
 import type { DecodedFrame, VideoDecoderBackend } from './video-decoder';
 import { TextureManager } from '../texture/texture-manager';
@@ -45,7 +45,7 @@ export class VideoSource extends VisualSource {
   private readonly cache: FrameCache<DecodedFrame>;
   /** In-flight decodes by frame index → their promise, so callers can await them. */
   private readonly inFlight = new Map<number, Promise<void>>();
-  private readonly lookahead: number;
+  private lookahead: number;
   private textures: TextureManager;
   private ownsTextures: boolean;
   private fps = 30;
@@ -63,7 +63,7 @@ export class VideoSource extends VisualSource {
   /** Frame index of the most recent {@link prepare} target (the live playhead). */
   private currentIdx = 0;
   /** How far a queued decode may fall behind the playhead before it's dropped. */
-  private readonly dropHorizon: number;
+  private dropHorizon: number;
 
   constructor(private readonly options: VideoSourceOptions) {
     super();
@@ -89,6 +89,24 @@ export class VideoSource extends VisualSource {
   }
 
   /**
+   * Resize the decode cache (and directional look-ahead) in place. Cache sizing
+   * depends on the source resolution, which is only known after {@link load};
+   * this lets a caller size the ring to the resolution WITHOUT disposing and
+   * re-`load()`ing the source (which would re-demux and, for a URL, re-fetch the
+   * container header + packet stats). {@link fork} inherits the new values so an
+   * export stays bounded too. No-op below 1 frame.
+   */
+  configureCache(cacheFrames: number, lookahead?: number): void {
+    this.cache.setBudget(cacheFrames);
+    this.options.cacheFrames = Math.max(1, cacheFrames);
+    if (lookahead !== undefined) {
+      this.lookahead = Math.max(1, lookahead);
+      this.options.lookahead = this.lookahead;
+      this.dropHorizon = this.lookahead + 8;
+    }
+  }
+
+  /**
    * A second `VideoSource` over the SAME demuxed input (no re-parse) but with its
    * own decoder + frame cache, so a preview and an export can decode the source
    * in parallel without contending on one decoder. The fork starts with a private
@@ -99,6 +117,16 @@ export class VideoSource extends VisualSource {
   fork(): VideoSource {
     if (!this.backend.fork) throw new Error('this VideoSource cannot be forked (backend has no fork())');
     return new VideoSource({ ...this.options, backend: this.backend.fork(), textureManager: undefined });
+  }
+
+  /**
+   * The opened mediabunny demux (Input + audio track), if the default backend is
+   * in use — so an {@link AudioSource} can decode this source's audio from the
+   * SAME Input rather than re-opening (and re-fetching) the file. Returns `null`
+   * for a custom backend or before {@link load}.
+   */
+  getMediabunnyDemux(): MediabunnyDemux | null {
+    return this.backend instanceof MediabunnyVideoDecoder ? this.backend.getDemux() : null;
   }
 
   /** Adopt a shared texture pool (unless one was explicitly injected). */

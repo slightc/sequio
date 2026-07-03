@@ -1,9 +1,17 @@
 import { MediaSource, type SourceMetadata } from './media-source';
-import type { VideoInput } from './mediabunny-decoder';
+import type { MediabunnyDemux, VideoInput } from './mediabunny-decoder';
 import { loadMediabunny } from './mediabunny-loader';
 
 export interface AudioSourceOptions {
-  src: VideoInput;
+  /** Open + demux the source directly (a URL, buffer, or Blob/File). */
+  src?: VideoInput;
+  /**
+   * Reuse an already-opened demux instead of {@link src}. When a video-with-sound
+   * is added, the {@link VideoSource} has already fetched + parsed the file; pass
+   * its {@link VideoSource.getMediabunnyDemux} result here so the audio track is
+   * decoded from the SAME Input — the file isn't fetched a second time.
+   */
+  demux?: MediabunnyDemux;
 }
 
 /**
@@ -23,15 +31,21 @@ export class AudioSource extends MediaSource {
     const { Input, AudioBufferSink, ALL_FORMATS, UrlSource, BufferSource, BlobSource } =
       await loadMediabunny();
 
-    const source =
-      typeof this.options.src === 'string'
-        ? new UrlSource(this.options.src)
-        : this.options.src instanceof ArrayBuffer
-          ? new BufferSource(this.options.src)
-          : new BlobSource(this.options.src);
-
-    const input = new Input({ formats: ALL_FORMATS, source });
-    const track = await input.getPrimaryAudioTrack();
+    // Reuse a video source's already-opened demux when given — avoids fetching +
+    // parsing the same file a second time just to pull its audio track.
+    const track = this.options.demux
+      ? this.options.demux.audioTrack
+      : await (() => {
+          const { src } = this.options;
+          if (src === undefined) throw new Error('AudioSource: needs `src` or `demux`');
+          const source =
+            typeof src === 'string'
+              ? new UrlSource(src)
+              : src instanceof ArrayBuffer
+                ? new BufferSource(src)
+                : new BlobSource(src);
+          return new Input({ formats: ALL_FORMATS, source }).getPrimaryAudioTrack();
+        })();
     if (!track) throw new Error('AudioSource: no audio track in source');
 
     const sink = new AudioBufferSink(track);
