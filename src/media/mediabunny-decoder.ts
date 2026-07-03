@@ -172,11 +172,29 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
     ); // keep the chain alive past rejections
     const sample = await run;
     if (!sample) return null;
-    const image = frameImageExtractor ? await frameImageExtractor(sample) : sample.toCanvasImageSource();
+    const timestamp = sample.timestamp;
+
+    // Node (SSR): the injected extractor copies pixels into a stable canvas, so
+    // the image outlives the sample — close the sample once extracted.
+    if (frameImageExtractor) {
+      const image = await frameImageExtractor(sample);
+      sample.close();
+      return { timestamp, image, close: () => {} };
+    }
+
+    // Browser: we CACHE the frame and upload it to a GPU texture LATER (PixiJS
+    // defers the upload to render time and re-uploads across frames). So we must
+    // NOT use `toCanvasImageSource()` — mediabunny may auto-close that VideoFrame
+    // "in the next microtask", after which the deferred WebGPU
+    // `copyExternalImageToTexture` fails ("video frame that doesn't have back
+    // resource"). Take an OWNED VideoFrame (`toVideoFrame()`) whose lifetime we
+    // control, and close it (not the sample) on cache eviction.
+    const frame = sample.toVideoFrame();
+    sample.close();
     return {
-      timestamp: sample.timestamp,
-      image,
-      close: () => sample.close(),
+      timestamp,
+      image: frame,
+      close: () => frame.close(),
     };
   }
 
