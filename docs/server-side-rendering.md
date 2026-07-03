@@ -147,10 +147,96 @@ pnpm verify:ssr
 - **字体确定性**：`buildTimeline` 在建 clip 前 `await` 所有字体就绪（契约 #2：`render(t)` 不能
   中途把 fallback 换成真字体）。
 
-## 路线 B：Node 原生 + polyfill（未实现，备选）
+## 路线 B：Node 原生 + polyfill（探索，未落地）
 
-不想拉起 Chrome 的话，可给 Node 补齐各 Web API：WebGL 用 `headless-gl`、Canvas 用
-`@napi-rs/canvas`、WebCodecs/编码几乎必然要桥接 `ffmpeg`。SDK 已把解码抽象成
-`VideoDecoderBackend`、把编码/封装抽象成 `ExportSink`（`Exporter.createSink` 可覆盖），所以
-可以只替换这两处（ffmpeg 编码 + ffmpeg 解码 backend）而保留 PixiJS 出像素。工作量大、生态更脆，
-仅当"每任务一个 Chrome"的资源开销成为瓶颈时再考虑。详见 `todo/backlog.md`。
+不想每个任务拉起一个 Chrome，就在 **Node 进程内**跑管线。下面的结论都在本仓库沙盒里
+（Node 22）**实测过**——哪些直接能用、哪些是真正的坑，都有证据。
+
+### 结论速览
+
+| 环节 | 方案 | 沙盒实测 |
+|---|---|---|
+| 解码 / 编码 / 封装 | `@mediabunny/server`（`node-av` = FFmpeg N-API 绑定） | ✅ 装得上、能跑 |
+| Canvas 2D + 字体度量 + 字体注册 | `@napi-rs/canvas` | ✅ 装得上、能跑（**无 WebGL**） |
+| 合成/出像素 | PixiJS v8.16+ 的 `CanvasRenderer`（2D） | ⚠️ 能 init/render，但**没真正画出像素**、且**无 filter** |
+| 编码喂帧 | mediabunny `CanvasSource(canvas)` | ❌ 只认真正的 `HTMLCanvasElement`/`OffscreenCanvas` |
+| 字体 | SDK 的 `FontManager`（`FontFace`+`document.fonts`） | ❌ 服务端是 no-op，需换 `GlobalFonts.register` |
+
+### 已经解决的一半：编解码（`@mediabunny/server`）
+
+[`@mediabunny/server`](https://github.com/Vanilagy/mediabunny/tree/main/packages/server) 用
+`node-av`（对 FFmpeg C API 的 N-API 绑定）在 Node/Bun/Deno 里补齐 WebCodecs 能力：
+
+```js
+import { registerMediabunnyServer } from '@mediabunny/server';
+registerMediabunnyServer();          // 把 AVC/HEVC/VP8/VP9/AV1 + AAC/MP3/Opus/… 注册进
+                                     // Mediabunny 的 Codec Registry
+```
+
+实测：注册后 `await canEncodeVideo('avc')` / `canEncodeVideo('vp9')` 在 Node 里都返回 `true`。
+**注意**：它**不设** `globalThis.VideoEncoder/VideoDecoder/VideoFrame` 这些 WebCodecs 全局，而是
+在 **Mediabunny 层**接管编解码。因此 SDK 里凡是走 mediabunny 的部分——`MediabunnyVideoDecoder`
+（`Input`+`VideoSampleSink`）、`AudioSource`（`AudioBufferSink`）、导出的 `Output`/mux——
+**在 Node 里能直接工作，一行不用改**。这把 Route B 最硬的骨头（Node 没有 WebCodecs）解决了。
+
+### 剩下的一半：出像素 + 喂帧 + 字体（真正的坑）
+
+**1. 渲染后端只能用 Canvas 2D，且要补 DOM。** `@napi-rs/canvas` 没有 WebGL（实测
+`getContext('webgl')` 抛 `webgl is not supported`），`headless-gl` 只有 WebGL1 而 Pixi v8 要
+WebGL2，node 的 WebGPU 绑定未验证。所以 Node 里现实的后端是 **Pixi v8.16+ 的 `CanvasRenderer`
+（2D）**。实测它能 `init()`/`render()`，但要喂一堆 DOM 垫片——Pixi 完整 barrel 会自动注册
+`EventSystem`/`DOMPipe`/`Ticker`，分别要 `document`、`window`、`requestAnimationFrame`、
+`globalThis.addEventListener`（用 jsdom + 少量 shim 可满足，或改用精简入口只注册 Canvas 系统）。
+
+**2. Canvas 渲染器没有 filter 管线。** `CanvasRenderer` 的 pipe 里没有 filter——所以
+`Effect` / warp / `Transition`（全是 filter 实现）**在 Node 里不会渲染**，只剩
+sprite/graphics/text/基础合成。这是能力上的硬损失。
+
+**3. Canvas 渲染器"能跑但没画出来"。** 实测里 `init`/`render` 都成功、canvas 尺寸对，但读回像素
+是 `(0,0,0,0)` 透明——即 Pixi 的 Canvas 后端没真正把内容合成进 `@napi-rs/canvas` 的表面
+（可能要 `OffscreenCanvas` 语义或另配 render-target）。这块要额外调通，不是开箱即用。
+
+**4. `MediabunnyExportSink` 不能直接复用。** mediabunny 的 `CanvasSource` 构造时
+`instanceof HTMLCanvasElement` 校验，`@napi-rs/canvas` 的 `CanvasElement` 过不了（实测抛
+`canvas must be an HTMLCanvasElement or OffscreenCanvas`）。所以服务端要**另写一个 `ExportSink`**：
+从渲染 canvas 读原始像素 → 包成 `VideoSample`/`VideoFrame` → 走 `VideoSampleSource`（或直接
+node-av），并可用 `FilePathTarget` 直接写盘。
+
+**5. 字体要换注册路径（本条你特别关照）。** SDK 的 `FontManager.loadFace` 走
+`new FontFace(...)` + `document.fonts.add`——在 Node 里 `document.fonts` 是"not implemented"，
+**等于什么都没做**。而 Pixi 的 `CanvasTextSystem` 是用**渲染 canvas 的 `measureText`** 量字形的
+（实测：字形度量来自 node canvas，不是 `document.fonts`）。`@napi-rs/canvas` 有
+`GlobalFonts.register(buffer, family)` / `registerFromPath(path, family)`（自带 22 个 family）。
+所以 Route B 需要一个 **Node 版 `FontManager`**：`fetch` 到字体字节 → `GlobalFonts.register` →
+再建 `TextClip`。SDK 的 `loadFace`/`loadGoogle` 是 `protected`、本就"Overridable"，子类覆盖即可。
+
+### 需要动 SDK 的地方：一个 renderer seam
+
+除了上面几个消费者层适配器（Node `ExportSink`、Node `FontManager`、DOM 垫片），SDK 本身只差**一个
+口子**：`Compositor.init()` 目前**硬编码** `autoDetectRenderer({ preference: 'webgpu'|'webgl' })`，
+没法注入 `CanvasRenderer` 或自定义 renderer。Route B 要落地就得给 `Compositor` 加一个
+**renderer 注入 seam**（如 `CompositorOptions.createRenderer?` 工厂，或允许直接传入已 init 的
+renderer）——这与已有的 `VideoDecoderBackend` / `ExportSink` 两个 seam 是一致的设计。
+
+### 落地清单（如果要做）
+
+1. SDK：给 `Compositor.init` 加 renderer 注入 seam（唯一的核心改动，可单测）。
+2. 消费者层（`example/ssr-node/`）：
+   - DOM 垫片（jsdom + `requestAnimationFrame`/`addEventListener` shim + `DOMAdapter` → `@napi-rs/canvas`）。
+   - 注入 `CanvasRenderer`，并**调通"真正画出像素"**（当前 PoC 的空白问题）。
+   - Node `ExportSink`：读像素 → `VideoSample` → `VideoSampleSource` → `Output`+`FilePathTarget`。
+   - Node `FontManager`：`GlobalFonts.register`。
+   - `registerMediabunnyServer()` 开机注册。
+3. 验证：`verify:ssr-node`——纯 Node（无浏览器）把 sample 时间线渲成 MP4 并解回。
+
+### 取舍与建议
+
+- **能力上限**：Canvas 2D 后端没有 filter，`Effect`/warp/`Transition` 全丢。这些是 SDK 的核心特性，
+  所以 Route B 只适合**无滤镜的时间线**（文字/图形/图片/视频的基础合成）。要全保真仍得走 Route A
+  （真 GPU）或 node 的 WebGPU 绑定（未验证）。
+- **成熟度**：编解码半侧（`@mediabunny/server`）已经很实；渲染半侧要自己趟 DOM 垫片 + 空白画布 +
+  自写 ExportSink，工程量和脆性都不低。
+- **建议**：把 Route B 定位成"**无滤镜时间线的高吞吐快路径**"，Route A 仍是**全特性**的默认路径；
+  仅当"每任务一个 Chrome"的资源/成本成为瓶颈、且目标时间线不用滤镜时，再投入把 Route B 调通。
+
+> 沙盒实测脚本见提交记录讨论；本节所有 ✅/❌/⚠️ 均为 Node 22 下的实际运行结果，非推测。
