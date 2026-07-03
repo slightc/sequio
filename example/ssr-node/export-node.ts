@@ -3,11 +3,21 @@
  * Node and encode to a file — **no browser, no canvas readback trick**. Each
  * frame is rendered to a PixiJS `RenderTexture`, its GPU texture is copied into a
  * mappable buffer (`copyTextureToBuffer`), de-padded and BGRA→RGBA swapped, then
- * fed to a Mediabunny `VideoSampleSource` writing an MP4 via `FilePathTarget`.
+ * fed to a Mediabunny `VideoSampleSource`.
  *
  * This mirrors {@link Exporter} (await prepare → render → add frame, contract #1)
  * but reads pixels off the GPU instead of a `<canvas>`, because in Node there is
  * no presentable canvas. Requires a WebGPU renderer (see `env.ts`).
+ *
+ * **Codec fallback.** Route B encodes through `@mediabunny/server` (node-av /
+ * FFmpeg). If the requested codec isn't in that build (H.264/avc is often absent
+ * — GPL x264), Mediabunny silently falls back to the browser WebCodecs encoder,
+ * which needs a `VideoFrame` that doesn't exist in Node → `VideoFrame is not
+ * defined`. `canEncodeVideo` can't be trusted (the server's `supports()`
+ * over-reports), so we can't reliably pre-check. Instead we **try the real
+ * encode and fall back to the next codec on failure** — the failure surfaces on
+ * the very first frame, so a rejected codec costs one wasted frame, then we retry
+ * with VP9/WebM (which node-av reliably has).
  */
 import type { Renderer } from 'pixi.js';
 import { type AudioEngine, Compositor, exportFrameTimes } from '../../src/index';
@@ -17,7 +27,7 @@ export interface NodeExportOptions {
   range: [number, number];
   /** Output file path. The extension is corrected to match the encoded container. */
   out: string;
-  /** Preferred container; negotiation may switch it to what node-av can encode. */
+  /** Preferred container; falls back to what node-av can encode. */
   container?: 'mp4' | 'webm';
   videoCodec?: string;
   bitrate?: number;
@@ -28,84 +38,20 @@ export interface NodeExportOptions {
 
 const isWebmCodec = (c?: string) => c === 'vp8' || c === 'vp9' || c === 'av1';
 
-/**
- * Actually encode one frame with a codec to see if node-av can — the reliable
- * test. `canEncodeVideo` is NOT reliable here: `@mediabunny/server`'s
- * `supports()` returns `true` for avc/hevc/… unconditionally, without checking
- * that the FFmpeg build has that encoder. So on a host whose node-av lacks
- * H.264 (GPL x264 is often omitted), `canEncodeVideo('avc')` says yes but the
- * real encode falls back to the browser WebCodecs path and throws
- * `VideoFrame is not defined`. A throwaway one-frame encode catches that.
- */
-async function canReallyEncode(codec: string, width: number, height: number): Promise<boolean> {
-  const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, VideoSampleSource, VideoSample } = await import('mediabunny');
-  let output: InstanceType<typeof Output> | null = null;
-  try {
-    const format = isWebmCodec(codec) ? new WebMOutputFormat() : new Mp4OutputFormat();
-    output = new Output({ format, target: new BufferTarget() });
-    const src = new VideoSampleSource({ codec: codec as 'avc', bitrate: 1_000_000 });
-    output.addVideoTrack(src);
-    await output.start();
-    const sample = new VideoSample(new Uint8Array(width * height * 4), { format: 'RGBA', codedWidth: width, codedHeight: height, timestamp: 0, duration: 1 / 30 });
-    await src.add(sample);
-    sample.close();
-    await output.finalize();
-    return true;
-  } catch {
-    await output?.cancel().catch(() => {});
-    return false;
-  }
-}
-
-/** Actually encode one silent audio buffer to see if node-av can — same
- *  reliability caveat as {@link canReallyEncode}. Needs the Web Audio globals
- *  (see env.ts). */
-async function canReallyEncodeAudio(codec: string, container: 'mp4' | 'webm'): Promise<boolean> {
-  const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, AudioBufferSource } = await import('mediabunny');
-  const AudioBufferCtor = (globalThis as unknown as { AudioBuffer?: new (o: { length: number; numberOfChannels: number; sampleRate: number }) => AudioBuffer }).AudioBuffer;
-  if (!AudioBufferCtor) return false;
-  let output: InstanceType<typeof Output> | null = null;
-  try {
-    const format = container === 'webm' ? new WebMOutputFormat() : new Mp4OutputFormat();
-    output = new Output({ format, target: new BufferTarget() });
-    const src = new AudioBufferSource({ codec: codec as 'aac', bitrate: 128_000 });
-    output.addAudioTrack(src);
-    await output.start();
-    await src.add(new AudioBufferCtor({ length: 2048, numberOfChannels: 2, sampleRate: 48000 }));
-    await output.finalize();
-    return true;
-  } catch {
-    await output?.cancel().catch(() => {});
-    return false;
-  }
-}
-
-/** Pick a container + video codec node-av can actually encode, preferring the
- *  request, by probe-encoding a frame at the real dimensions (even-aligned, as
- *  H.264/VP9 require). Returns null if none work. */
-async function negotiateVideoCodec(
-  want: { container?: 'mp4' | 'webm'; codec?: string },
-  width: number,
-  height: number,
-): Promise<{ container: 'mp4' | 'webm'; codec: string } | null> {
-  const w = width + (width % 2);
-  const h = height + (height % 2);
-  const candidates: Array<{ container: 'mp4' | 'webm'; codec: string }> = [];
-  if (want.codec) candidates.push({ container: want.container ?? (isWebmCodec(want.codec) ? 'webm' : 'mp4'), codec: want.codec });
-  else if (want.container === 'webm') candidates.push({ container: 'webm', codec: 'vp9' });
-  candidates.push(
+/** Ordered, de-duplicated container+codec candidates to try, preferring the request. */
+function videoCandidates(want: { container?: 'mp4' | 'webm'; codec?: string }): Array<{ container: 'mp4' | 'webm'; codec: string }> {
+  const list: Array<{ container: 'mp4' | 'webm'; codec: string }> = [];
+  if (want.codec) list.push({ container: want.container ?? (isWebmCodec(want.codec) ? 'webm' : 'mp4'), codec: want.codec });
+  else if (want.container === 'webm') list.push({ container: 'webm', codec: 'vp9' });
+  // node-av reliably has libvpx (vp8/vp9, BSD); avc/av1 depend on the build.
+  list.push(
     { container: 'mp4', codec: 'avc' },
     { container: 'webm', codec: 'vp9' },
     { container: 'webm', codec: 'vp8' },
     { container: 'mp4', codec: 'av1' },
   );
-  const tried = new Set<string>();
-  for (const c of candidates) {
-    if (tried.has(c.codec)) continue;
-    tried.add(c.codec);
-    if (await canReallyEncode(c.codec, w, h)) return c;
-  }
-  return null;
+  const seen = new Set<string>();
+  return list.filter((c) => (seen.has(c.codec) ? false : (seen.add(c.codec), true)));
 }
 
 /** Minimal shape of the PixiJS WebGPU renderer internals we read frames from. */
@@ -149,95 +95,90 @@ async function readFrameRGBA(renderer: GpuRendererLike, rtSource: { pixelWidth: 
   return rgba;
 }
 
+/** True for errors we recover from by trying another codec: a missing server
+ *  encoder (WebCodecs fallback in Node) or an unknown/unsupported codec name. */
+function isEncoderUnavailable(err: unknown): boolean {
+  return /VideoFrame is not defined|not supported by this browser|VideoEncoder is not|Invalid (video|audio) codec|Unknown codec/.test(String(err));
+}
+
 /**
- * Render `compositor`'s timeline over `range` at `fps` and write an MP4 to
- * `out`. The `renderer` must be the WebGPU renderer backing the compositor (the
- * one your `createRenderer` factory returned), since we read frames off its GPU.
+ * Render `compositor`'s timeline over `range` at `fps` and write a video file to
+ * `out` (extension corrected to the container actually encoded). The `renderer`
+ * must be the WebGPU renderer backing the compositor, since we read frames off
+ * its GPU. Tries the preferred codec first, falling back through VP9/VP8/WebM if
+ * node-av can't encode it.
  */
 export async function renderTimelineToFile(
   compositor: Compositor,
   renderer: Renderer,
   opts: NodeExportOptions,
 ): Promise<{ frames: number; bytes: number; out: string; container: string; videoCodec: string; audio: boolean }> {
-  const mb = await import('mediabunny');
-  const { Output, Mp4OutputFormat, WebMOutputFormat, FilePathTarget, VideoSampleSource, VideoSample, AudioBufferSource } = mb;
+  const { Output, Mp4OutputFormat, WebMOutputFormat, FilePathTarget, VideoSampleSource, VideoSample, AudioBufferSource } = await import('mediabunny');
   const fs = await import('node:fs');
   const path = await import('node:path');
 
-  const width = compositor.options.width;
-  const height = compositor.options.height;
-  const codec = await negotiateVideoCodec({ container: opts.container, codec: opts.videoCodec }, width, height);
-  if (!codec) {
-    throw new Error(
-      'No server-side video encoder available. Route B encodes through @mediabunny/server (node-av / FFmpeg). ' +
-        'Make sure its native binary is built: `pnpm rebuild node-av`. ' +
-        '(H.264/avc is often missing from node-av builds — VP9/WebM usually works.)',
-    );
-  }
-  // Correct the output extension to the container actually being written.
-  const out = path.format({ ...path.parse(opts.out), base: undefined, ext: `.${codec.container}` });
-
   const times = exportFrameTimes(opts.range, opts.fps);
-  const format = codec.container === 'webm' ? new WebMOutputFormat() : new Mp4OutputFormat({ fastStart: 'in-memory' });
-  const output = new Output({ format, target: new FilePathTarget(out) });
-  const video = new VideoSampleSource({ codec: codec.codec as 'avc', bitrate: opts.bitrate ?? 5_000_000 });
-  output.addVideoTrack(video);
+  const gpu = renderer as unknown as GpuRendererLike;
+  const candidates = videoCandidates({ container: opts.container, codec: opts.videoCodec });
+  let lastErr: unknown = null;
 
-  // Audio codec must fit the container (aac→mp4, opus→webm) and be encodable.
-  let audioSource: InstanceType<typeof AudioBufferSource> | null = null;
-  if (opts.audio) {
-    const aCodec = codec.container === 'webm' ? 'opus' : (opts.audio.codec ?? 'aac');
-    if (await canReallyEncodeAudio(aCodec, codec.container)) {
-      audioSource = new AudioBufferSource({ codec: aCodec as 'aac', bitrate: opts.audio.bitrate ?? 128_000 });
-      output.addAudioTrack(audioSource);
-    } else {
-      console.warn(`⚠ skipping audio: node-av can't encode ${aCodec} (run pnpm rebuild node-av).`);
-    }
-  }
-  try {
-    await output.start();
+  for (const cand of candidates) {
+    const out = path.format({ ...path.parse(opts.out), base: undefined, ext: `.${cand.container}` });
+    const format = cand.container === 'webm' ? new WebMOutputFormat() : new Mp4OutputFormat({ fastStart: 'in-memory' });
+    const output = new Output({ format, target: new FilePathTarget(out) });
+    let audioSource: InstanceType<typeof AudioBufferSource> | null = null;
 
-    const gpu = renderer as unknown as GpuRendererLike;
-    for (let i = 0; i < times.length; i++) {
-      const t = times[i]!;
-      await compositor.prepare(t); // await → never drop a frame (contract #1)
-      const rt = compositor.renderToTexture(t);
-      try {
-        const rgba = await readFrameRGBA(gpu, rt.source as unknown as { pixelWidth: number; pixelHeight: number });
-        const sample = new VideoSample(rgba, {
-          format: 'RGBA',
-          codedWidth: (rt.source as unknown as { pixelWidth: number }).pixelWidth,
-          codedHeight: (rt.source as unknown as { pixelHeight: number }).pixelHeight,
-          timestamp: t,
-          duration: 1 / opts.fps,
-        });
-        await video.add(sample);
-        sample.close();
-      } finally {
-        rt.destroy(true);
+    try {
+      // Construction can throw on an unknown codec — inside the try so it falls back.
+      const video = new VideoSampleSource({ codec: cand.codec as 'avc', bitrate: opts.bitrate ?? 5_000_000 });
+      output.addVideoTrack(video);
+      // Audio codec must fit the container (aac→mp4, opus→webm).
+      if (opts.audio) {
+        const aCodec = cand.container === 'webm' ? 'opus' : (opts.audio.codec ?? 'aac');
+        audioSource = new AudioBufferSource({ codec: aCodec as 'aac', bitrate: opts.audio.bitrate ?? 128_000 });
+        output.addAudioTrack(audioSource);
       }
-      opts.onProgress?.((i + 1) / times.length);
+      await output.start();
+      for (let i = 0; i < times.length; i++) {
+        const t = times[i]!;
+        await compositor.prepare(t); // await → never drop a frame (contract #1)
+        const rt = compositor.renderToTexture(t);
+        try {
+          const src = rt.source as unknown as { pixelWidth: number; pixelHeight: number };
+          const rgba = await readFrameRGBA(gpu, src);
+          const sample = new VideoSample(rgba, { format: 'RGBA', codedWidth: src.pixelWidth, codedHeight: src.pixelHeight, timestamp: t, duration: 1 / opts.fps });
+          await video.add(sample); // first frame here is where an unusable codec fails
+          sample.close();
+        } finally {
+          rt.destroy(true);
+        }
+        opts.onProgress?.((i + 1) / times.length);
+      }
+      if (audioSource && opts.audio) {
+        const buffer = await opts.audio.engine.renderOffline(Math.max(0, opts.range[1] - opts.range[0]));
+        await audioSource.add(buffer);
+      }
+      await output.finalize();
+      return { frames: times.length, bytes: fs.statSync(out).size, out, container: cand.container, videoCodec: cand.codec, audio: !!audioSource };
+    } catch (err) {
+      lastErr = err;
+      await output.cancel().catch(() => {});
+      try {
+        fs.unlinkSync(out);
+      } catch {
+        /* nothing written yet */
+      }
+      if (isEncoderUnavailable(err)) {
+        console.warn(`⚠ node-av can't encode ${cand.container}/${cand.codec} here — trying the next codec…`);
+        continue; // fall back to the next codec
+      }
+      throw err; // a real error (not a missing encoder) — don't mask it
     }
-
-    // Audio: one offline mix over the export range (contract #3 — same graph as preview).
-    if (audioSource && opts.audio) {
-      const buffer = await opts.audio.engine.renderOffline(Math.max(0, opts.range[1] - opts.range[0]));
-      await audioSource.add(buffer);
-    }
-
-    await output.finalize();
-  } catch (err) {
-    await output.cancel().catch(() => {});
-    // Mediabunny falls back to the browser WebCodecs encoder (which needs a
-    // `VideoFrame` that doesn't exist in Node) when no server encoder handled the
-    // codec. Turn that cryptic ReferenceError into an actionable message.
-    if (/VideoFrame is not defined/.test(String(err))) {
-      throw new Error(
-        `Encoding fell back to WebCodecs (${codec.container}/${codec.codec}) — node-av has no server encoder for it in this build. ` +
-          'Run `pnpm rebuild node-av`, or pick a codec it supports (VP9/WebM). Original: ' + String(err),
-      );
-    }
-    throw err;
   }
-  return { frames: times.length, bytes: fs.statSync(out).size, out, container: codec.container, videoCodec: codec.codec, audio: !!audioSource };
+
+  throw new Error(
+    'No server-side video encoder available (tried ' + candidates.map((c) => c.codec).join(', ') + '). ' +
+      'Route B encodes through @mediabunny/server (node-av / FFmpeg); ensure its native binary is built (`pnpm rebuild node-av`). ' +
+      'Last error: ' + String(lastErr),
+  );
 }
