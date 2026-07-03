@@ -1,5 +1,6 @@
 import type { Input, InputVideoTrack, VideoSample, VideoSampleSink } from 'mediabunny';
 import { ForwardDecodeCursor } from './forward-decode-cursor';
+import { loadMediabunny } from './mediabunny-loader';
 import type { SourceMetadata } from './media-source';
 import type { DecodedFrame, VideoDecoderBackend } from './video-decoder';
 
@@ -11,6 +12,22 @@ export type VideoInput = string | ArrayBuffer | Blob;
  * {@link MediabunnyVideoDecoder.load}. Enough for a stable average even at high
  * fps, but tiny to read — so `load()` never scans a whole large file. */
 const FPS_ESTIMATE_PACKETS = 120;
+
+/** Turns a decoded {@link VideoSample} into the image a texture is built from. */
+export type FrameImageExtractor = (sample: VideoSample) => CanvasImageSource | Promise<CanvasImageSource>;
+
+/**
+ * Optional override for how a decoded sample becomes a texture image. The default
+ * (`sample.toCanvasImageSource()`) returns a `VideoFrame` in the browser — but
+ * `VideoFrame` doesn't exist in Node, so server-side rendering sets this to read
+ * the sample's pixels (`sample.copyTo`) into a canvas instead. Unset → browser default.
+ */
+let frameImageExtractor: FrameImageExtractor | null = null;
+
+/** Set (or clear with `null`) how decoded samples become texture images. */
+export function setFrameImageExtractor(fn: FrameImageExtractor | null): void {
+  frameImageExtractor = fn;
+}
 
 /**
  * Default {@link VideoDecoderBackend}: demux + hardware decode via
@@ -41,6 +58,8 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
   private ownsInput = true;
   /** For a fork: the parent's already-demuxed track + metadata (no re-parse). */
   private forkedFrom: { track: InputVideoTrack; input: Input; meta: SourceMetadata } | null = null;
+  /** Set by {@link dispose}; a late fire-and-forget decode then resolves null, not throws. */
+  private disposed = false;
 
   constructor(private readonly src: VideoInput) {}
 
@@ -51,7 +70,7 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
 
   async load(): Promise<SourceMetadata> {
     const { Input, VideoSampleSink, ALL_FORMATS, UrlSource, BufferSource, BlobSource } =
-      await import('mediabunny');
+      await loadMediabunny();
 
     // Fork: reuse the parent's demux + track, just build our own decoder sink.
     if (this.forkedFrom) {
@@ -116,6 +135,10 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
   }
 
   async decode(sec: number): Promise<DecodedFrame | null> {
+    // A prepare()'s directional look-ahead fires decodes fire-and-forget; if the
+    // source is disposed (clip deleted, export finished) before one of them runs,
+    // resolve null rather than throwing an uncaught "before load()" rejection.
+    if (this.disposed) return null;
     if (!this.cursor) throw new Error('MediabunnyVideoDecoder.decode before load()');
     const cursor = this.cursor;
     const run = this.queue.then(() => cursor.at(sec));
@@ -125,14 +148,16 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
     ); // keep the chain alive past rejections
     const sample = await run;
     if (!sample) return null;
+    const image = frameImageExtractor ? await frameImageExtractor(sample) : sample.toCanvasImageSource();
     return {
       timestamp: sample.timestamp,
-      image: sample.toCanvasImageSource(),
+      image,
       close: () => sample.close(),
     };
   }
 
   dispose(): void {
+    this.disposed = true;
     this.cursor?.dispose(); // release the cursor's decoder + carried frame
     this.cursor = null;
     if (this.ownsInput) this.input?.dispose(); // a fork must not tear down the shared demux

@@ -1,5 +1,6 @@
 import { MediaSource, type SourceMetadata } from './media-source';
 import type { VideoInput } from './mediabunny-decoder';
+import { loadMediabunny } from './mediabunny-loader';
 
 export interface AudioSourceOptions {
   src: VideoInput;
@@ -20,7 +21,7 @@ export class AudioSource extends MediaSource {
 
   async load(): Promise<SourceMetadata> {
     const { Input, AudioBufferSink, ALL_FORMATS, UrlSource, BufferSource, BlobSource } =
-      await import('mediabunny');
+      await loadMediabunny();
 
     const source =
       typeof this.options.src === 'string'

@@ -4,8 +4,10 @@
  * A small consumer app built on the SDK's public surface that demonstrates the
  * pieces an editor needs:
  *   - add Text / Shape (rect, ellipse) clips
- *   - upload local files as Image / Video sources and add them as clips; a
- *     video's audio track is decoded and played with it (AudioEngine)
+ *   - add Image / Video sources from a local file OR a URL; a video's audio
+ *     track is decoded and played with it (AudioEngine). URL sources are
+ *     serializable, so they round-trip through Server Render
+ *     (local files can't — the server can't fetch them)
  *   - add tracks (stacked, later track renders on top via zIndex)
  *   - move / trim a clip on the timeline, including dragging it across tracks
  *   - move & resize a clip directly on the canvas (drag body, drag corner
@@ -14,6 +16,9 @@
  *   - export the timeline to MP4 / WebM via the SDK's Exporter, on a forked
  *     offscreen graph (video sources are `fork()`ed) so export never contends
  *     with the live preview's decoder; cancelable, with progress
+ *   - "Server Render": serialize the timeline to a `TimelineSpec` JSON (the
+ *     protocol both SSR routes consume) and download it, to render on a server
+ *     via `pnpm ssr:render` / `ssr:render-node` (see docs/server-side-rendering.md)
  *
  * Persistence, undo and schema are intentionally NOT here — that's the
  * consumer's job (see AGENT.md). This file only drives the SDK: every mutation
@@ -40,6 +45,7 @@ import {
   VisualTrack,
 } from '../src/index';
 import { exportTimeline, videoCacheSettings } from './editor-export';
+import type { ClipSpec, TimelineSpec, TrackSpec } from './ssr/timeline';
 
 const W = 640;
 const H = 360;
@@ -62,6 +68,8 @@ interface ClipModel {
   color: string;
   /** Editable text (text clips only). */
   text?: string;
+  /** Source URL (image/video added from a URL) — serialized for Server Render. */
+  src?: string;
   /** Intrinsic (unscaled) size in canvas px, for the on-canvas selection box. */
   iw: number;
   ih: number;
@@ -264,31 +272,47 @@ async function main(): Promise<void> {
     addClip('shape', clip, null, kind === 'rect' ? 'Rect' : 'Ellipse', DEFAULT_CLIP_DURATION, w, h);
   }
 
-  async function addImage(file: File): Promise<void> {
-    setStatus(`Loading ${file.name}…`);
-    const source = new ImageSource({ src: file });
+  /** A short display label for a File or URL source. */
+  function srcLabel(src: File | string): string {
+    if (typeof src !== 'string') return src.name;
+    try {
+      return new URL(src).pathname.split('/').pop() || src;
+    } catch {
+      return src;
+    }
+  }
+
+  /** Add an Image clip from a local File or a URL. URLs are serializable, so a
+   *  URL-backed clip round-trips through Server Render (File-backed doesn't). */
+  async function addImage(src: File | string): Promise<void> {
+    const label = srcLabel(src);
+    setStatus(`Loading ${label}…`);
+    const source = new ImageSource({ src });
     const meta = await source.load();
     const clip = new ImageClip(source);
     // Contain within the canvas at 80% so it's clearly movable/resizable.
     const scale = Math.min(W / meta.width, H / meta.height) * 0.8;
     placeCentered(clip, scale);
-    addClip('image', clip, source, file.name, DEFAULT_CLIP_DURATION, meta.width, meta.height);
+    const extra = typeof src === 'string' ? { src } : undefined;
+    addClip('image', clip, source, label, DEFAULT_CLIP_DURATION, meta.width, meta.height, extra);
     setStatus('');
   }
 
-  async function addVideo(file: File): Promise<void> {
-    setStatus(`Decoding ${file.name}…`);
+  /** Add a Video clip from a local File or a URL (needs CORS + range requests). */
+  async function addVideo(src: File | string): Promise<void> {
+    const label = srcLabel(src);
+    setStatus(`Decoding ${label}…`);
     // Probe metadata first (cheap — reads the container header, not the whole
     // file), then size the decode cache to the resolution so a 4K/large source
     // can't accumulate gigabytes of decoded frames and freeze the tab.
-    let source = new VideoSource({ src: file });
+    let source = new VideoSource({ src });
     let meta = await source.load();
     const { cacheFrames, lookahead } = videoCacheSettings(meta.width, meta.height);
     if (cacheFrames < 60) {
       // Cache size is a constructor-only knob → rebuild with a bounded ring.
       // The export fork() inherits these options, so export stays bounded too.
       source.dispose();
-      source = new VideoSource({ src: file, cacheFrames, lookahead });
+      source = new VideoSource({ src, cacheFrames, lookahead });
       meta = await source.load();
     }
     const clip = new VideoClip(source);
@@ -299,19 +323,20 @@ async function main(): Promise<void> {
     const dur = Number.isFinite(meta.duration) ? Math.min(meta.duration, 10) : DEFAULT_CLIP_DURATION;
 
     // Decode the audio track (if any) into a clip so the video plays with sound.
-    let extra: Partial<ClipModel> | undefined;
+    const extra: Partial<ClipModel> = typeof src === 'string' ? { src } : {};
     if (meta.hasAudio) {
       try {
-        setStatus(`Decoding audio for ${file.name}…`);
-        const audioSource = new AudioSource({ src: file });
+        setStatus(`Decoding audio for ${label}…`);
+        const audioSource = new AudioSource({ src });
         await audioSource.load();
-        extra = { audioSource, audioClip: new AudioClip() };
+        extra.audioSource = audioSource;
+        extra.audioClip = new AudioClip();
       } catch (err) {
         console.warn('audio decode failed; adding video without sound', err);
       }
     }
 
-    addClip('video', clip, source, file.name, dur, meta.width, meta.height, extra);
+    addClip('video', clip, source, label, dur, meta.width, meta.height, extra);
     setStatus(
       cacheFrames < 60 ? `${meta.width}×${meta.height} · decode cache ${cacheFrames} frames` : '',
     );
@@ -851,6 +876,17 @@ async function main(): Promise<void> {
     (e.target as HTMLInputElement).value = '';
   });
 
+  // Add from a URL — serializable, so these round-trip through Server Render.
+  // The URL must be CORS-enabled (video also needs HTTP range support).
+  $('add-image-url').addEventListener('click', () => {
+    const url = prompt('Image URL (must allow CORS):');
+    if (url?.trim()) addImage(url.trim()).catch(reportError);
+  });
+  $('add-video-url').addEventListener('click', () => {
+    const url = prompt('Video URL (must allow CORS + range requests):');
+    if (url?.trim()) addVideo(url.trim()).catch(reportError);
+  });
+
   function reportError(err: unknown): void {
     console.error(err);
     setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
@@ -920,6 +956,80 @@ async function main(): Promise<void> {
   }
 
   exportBtn.addEventListener('click', () => void doExport());
+
+  // ── Server render (serialize the timeline for headless / Node SSR) ────────
+  //
+  // The SDK deliberately leaves persistence/schema to the consumer, so the
+  // editor's live object graph (which references decoded sources) is converted
+  // here into the plain `TimelineSpec` JSON that both SSR routes consume. Download
+  // it, then render it on a server with either:
+  //   pnpm ssr:render      -- --timeline timeline.json --out out.mp4  (headless Chrome)
+  //   pnpm ssr:render-node -- --timeline timeline.json --out out.mp4  (pure Node WebGPU)
+  // See docs/server-side-rendering.md.
+
+  /** Serialize one editor clip into a `TimelineSpec` clip. */
+  function clipToSpec(m: ClipModel): ClipSpec {
+    const c = m.clip;
+    const pos = c.transform.position.valueAt(0);
+    const scale = c.transform.scale.valueAt(0);
+    const rotation = c.transform.rotation.valueAt(0);
+    const opacity = c.opacity.valueAt(0);
+    const base = {
+      start: round2(c.start),
+      end: round2(c.end),
+      ...(c.sourceIn ? { sourceIn: round2(c.sourceIn) } : {}),
+      ...(opacity !== 1 ? { opacity } : {}),
+      transform: {
+        anchor: c.transform.anchor.valueAt(0),
+        position: [Math.round(pos[0]), Math.round(pos[1])] as [number, number],
+        scale: [scale[0], scale[1]] as [number, number],
+        ...(rotation ? { rotation } : {}),
+      },
+    };
+    if (m.kind === 'text') {
+      const t = c as TextClip;
+      return { type: 'text', text: t.text, fontFamily: t.fontFamily, fontSize: t.fontSize.valueAt(0), fill: t.fill, ...base };
+    }
+    if (m.kind === 'shape') {
+      return { type: 'shape', shape: (c as ShapeClip).spec, ...base };
+    }
+    // Image/Video: emit the real URL if the clip was added from one; a locally
+    // uploaded File isn't server-fetchable, so emit a placeholder to replace.
+    return { type: m.kind, src: m.src ?? `REPLACE_WITH_URL/${m.label}`, ...base } as ClipSpec;
+  }
+
+  /** Build the full `TimelineSpec` for the current editor state. */
+  function buildTimelineSpec(): TimelineSpec {
+    const specTracks: TrackSpec[] = tracks
+      .filter((tm) => tm.clips.length > 0)
+      .map((tm) => ({ zIndex: tm.track.zIndex, clips: tm.clips.map(clipToSpec) }));
+    return {
+      width: W,
+      height: H,
+      fps: FPS,
+      background: 0x101014,
+      origin: ORIGIN,
+      range: [0, round2(timelineEnd())],
+      tracks: specTracks,
+      export: { container: exportFormat.value as 'mp4' | 'webm' },
+    };
+  }
+
+  function serverRender(): void {
+    if (timelineEnd() <= 0) {
+      setStatus('Nothing to serialize');
+      return;
+    }
+    const spec = buildTimelineSpec();
+    const json = JSON.stringify(spec, null, 2);
+    downloadBlob(new Blob([json], { type: 'application/json' }), 'timeline.json');
+    // Only File-backed image/video (no URL) need a hosted URL — URL-backed ones round-trip.
+    const external = tracks.flatMap((tm) => tm.clips).filter((c) => (c.kind === 'image' || c.kind === 'video') && !c.src).length;
+    const note = external ? ` (replace ${external} REPLACE_WITH_URL src${external > 1 ? 's' : ''} with hosted URLs)` : '';
+    setStatus(`Saved timeline.json — run: pnpm ssr:render-node -- --timeline timeline.json${note}`);
+  }
+
+  $('server-render').addEventListener('click', serverRender);
 
   // ── Boot ───────────────────────────────────────────────────────────────
   wireCanvasManipulation();

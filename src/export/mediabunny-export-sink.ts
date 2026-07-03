@@ -1,4 +1,5 @@
 import type { AudioBufferSource, AudioCodec, BufferTarget, CanvasSource, Output, VideoCodec } from 'mediabunny';
+import { loadMediabunny } from '../media/mediabunny-loader';
 import type { ExportSink, ResolvedExportOptions } from './export-sink';
 
 /**
@@ -24,7 +25,7 @@ export class MediabunnyExportSink implements ExportSink {
 
   async start(): Promise<void> {
     const { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, AudioBufferSource } =
-      await import('mediabunny');
+      await loadMediabunny();
 
     this.target = new BufferTarget();
     const format = this.opts.container === 'webm' ? new WebMOutputFormat() : new Mp4OutputFormat();

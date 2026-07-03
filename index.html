@@ -250,6 +250,8 @@
           <button id="add-ellipse" class="ghost">+ Ellipse</button>
           <label class="file">+ Image<input id="add-image" type="file" accept="image/*" /></label>
           <label class="file">+ Video<input id="add-video" type="file" accept="video/*" /></label>
+          <button id="add-image-url" class="ghost">+ Image URL</button>
+          <button id="add-video-url" class="ghost">+ Video URL</button>
         </div>
         <span class="sep"></span>
         <button id="add-track" class="ghost">+ Track</button>
@@ -260,6 +262,7 @@
             <option value="mp4">MP4</option>
             <option value="webm">WebM</option>
           </select>
+          <button id="server-render" class="ghost" title="Serialize this timeline to a TimelineSpec JSON for server-side rendering (pnpm ssr:render / ssr:render-node)">⇪ Server Render</button>
           <button id="export">⬇ Export</button>
         </div>
       </div>

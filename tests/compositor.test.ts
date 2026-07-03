@@ -1,4 +1,4 @@
-import { Container, type Texture } from 'pixi.js';
+import { Container, type Renderer, type Texture } from 'pixi.js';
 import { describe, expect, it, vi } from 'vitest';
 import { Compositor } from '../src/compositor/compositor';
 import { VisualClip } from '../src/compositor/clip';
@@ -125,6 +125,41 @@ describe('Compositor origin', () => {
     const c = new Compositor({ width: 200, height: 100, timebase: new Timebase(30), origin: [0.5, 0.5] });
     expect(c.origin).toEqual([0.5, 0.5]);
     expect(c.originPixels()).toEqual([100, 50]); // 0.5·200, 0.5·100
+    c.dispose();
+  });
+});
+
+describe('Compositor renderer seam', () => {
+  it('uses a custom createRenderer factory instead of autoDetectRenderer', async () => {
+    const calls: unknown[] = [];
+    // A fake renderer that records init + render calls (no GPU).
+    const fakeRenderer = {
+      render: (arg: unknown) => calls.push(arg),
+      destroy: () => {},
+    } as unknown as Renderer;
+    let receivedCanvas: unknown = null;
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      createRenderer: async (opts) => {
+        receivedCanvas = opts.canvas;
+        return fakeRenderer;
+      },
+    });
+
+    // Before init: renderSync reconciles but draws nothing (no renderer yet).
+    c.renderSync(0);
+    expect(calls.length).toBe(0);
+
+    await c.init();
+    expect(c.isInitialized).toBe(true);
+    // The factory got the compositor's own canvas (view) to bind to.
+    expect(receivedCanvas).toBe(c.view);
+
+    // After init: renderSync drives the injected renderer.
+    c.renderSync(0);
+    expect(calls.length).toBe(1);
     c.dispose();
   });
 });
