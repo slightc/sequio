@@ -53,6 +53,7 @@ function harness() {
     }),
   } as unknown as AudioEngine;
 
+  const encoded: Array<{ type?: string; quality?: number }> = [];
   class TestExporter extends Exporter {
     protected override createSink(): ExportSink {
       return sink;
@@ -60,8 +61,16 @@ function harness() {
     protected override waitForAssets(): Promise<void> {
       return Promise.resolve();
     }
+    protected override encodeFrame(
+      _canvas: HTMLCanvasElement,
+      options: { type?: string; quality?: number },
+    ): Promise<Blob> {
+      log.push(`encode:${options.type ?? 'image/png'}`);
+      encoded.push(options);
+      return Promise.resolve(new Blob(['img'], { type: options.type ?? 'image/png' }));
+    }
   }
-  return { log, sink, compositor, audio, exporter: new TestExporter(compositor, audio) };
+  return { log, sink, encoded, compositor, audio, exporter: new TestExporter(compositor, audio) };
 }
 
 describe('Exporter loop', () => {
@@ -116,5 +125,35 @@ describe('Exporter loop', () => {
     expect(sink.addFrame).toHaveBeenCalledTimes(1); // stopped at the next iteration
     expect(sink.cancel).toHaveBeenCalledTimes(1);
     expect(log).not.toContain('finalize');
+  });
+});
+
+describe('Exporter.exportFrame', () => {
+  it('awaits prepare → renders → encodes exactly one frame at the given time', async () => {
+    const { log, exporter } = harness();
+    const blob = await exporter.exportFrame(0.05);
+    expect(log).toEqual(['prepare@0.050', 'render@0.050', 'encode:image/png']);
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('image/png');
+  });
+
+  it('does not touch the movie sink or audio', async () => {
+    const { sink, audio, exporter } = harness();
+    await exporter.exportFrame(0);
+    expect(sink.start).not.toHaveBeenCalled();
+    expect(sink.addFrame).not.toHaveBeenCalled();
+    expect(audio.renderOffline).not.toHaveBeenCalled();
+  });
+
+  it('renders an arbitrary time that need not fall on an fps boundary', async () => {
+    const { log, exporter } = harness();
+    await exporter.exportFrame(0.017);
+    expect(log[0]).toBe('prepare@0.017');
+  });
+
+  it('passes the type and quality through to the encoder (png default, 0.92 quality)', async () => {
+    const { encoded, exporter } = harness();
+    await exporter.exportFrame(0, { type: 'image/jpeg', quality: 0.6 });
+    expect(encoded).toEqual([{ type: 'image/jpeg', quality: 0.6 }]);
   });
 });
