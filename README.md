@@ -1,10 +1,18 @@
 # video-editor-canvas
 
-A **command-style object-graph engine** for building video editors on top of
-[PixiJS v8](https://pixijs.com/). You build a tree of `Track / Clip / Effect`
-objects and drive a clock; the SDK owns the low-level runtime — **decode,
-composite, audio, export**. Persistence, schema, undo, collaboration and UI are
-left to the layer above.
+A **pnpm monorepo** for a PixiJS-based video editor, split into three packages:
+
+| Package | Name | What it is |
+|---|---|---|
+| [`packages/engine`](packages/engine) | `@video-editor-canvas/engine` | The SDK: a command-style object-graph runtime — **decode, composite, audio, export**. The published library. |
+| [`packages/server`](packages/server) | `@video-editor-canvas/server` | **Server-side rendering** — a serializable `TimelineSpec` protocol plus two render routes (headless Chrome / pure-Node WebGPU). Depends on engine. |
+| [`packages/studio`](packages/studio) | `@video-editor-canvas/studio` | A reference **multi-track editor** app (timeline, canvas manipulation, forked export, Server Render). Depends on engine + server. |
+
+The **engine** is a command-style object-graph engine on top of
+[PixiJS v8](https://pixijs.com/): you build a tree of `Track / Clip / Effect`
+objects and drive a clock; it owns the low-level runtime. Persistence, schema,
+undo, collaboration and UI are left to the layer above — the `studio` package is
+a reference consumer, not part of the SDK surface.
 
 > **Invariant**: `render(t)` is a pure function of the object graph + `t` — the
 > same tree and the same `t` always produce the same frame. That is what makes
@@ -28,15 +36,18 @@ Early scaffold. The architecture, public API surface and pure-logic modules
 
 ## Quick start
 
+Commands run from the workspace root and fan out to the packages:
+
 ```bash
-pnpm install
-pnpm test        # vitest
-pnpm typecheck   # tsc --noEmit
-pnpm build       # ESM + CJS + d.ts
+pnpm install     # install + link the workspace
+pnpm test        # vitest across every package (pnpm -r test)
+pnpm typecheck   # tsc --noEmit across every package
+pnpm build       # build the engine library (ESM + CJS + d.ts)
+pnpm dev         # run the studio editor (dev:engine / dev:server for the others)
 ```
 
 ```ts
-import { Timebase, RealtimeClock, Compositor, VisualTrack } from 'video-editor-canvas';
+import { Timebase, RealtimeClock, Compositor, VisualTrack } from '@video-editor-canvas/engine';
 
 const timebase = new Timebase(30);
 const compositor = new Compositor({ width: 1920, height: 1080, timebase });

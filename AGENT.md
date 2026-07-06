@@ -33,7 +33,27 @@ These are the invariants the whole design rests on. Any change must preserve the
 5. **Invalidate / dirty-flag.** The SDK never repaints on its own. Mutations
    mark dirty; the upper layer schedules `renderPreview` to repaint on demand.
 
-## Layout
+## Monorepo layout
+
+This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into three packages,
+in a clean dependency DAG — `engine ← server ← studio`, `engine ← studio`:
+
+```
+packages/
+  engine/   @video-editor-canvas/engine   the SDK runtime (the published library)
+  server/   @video-editor-canvas/server   server-side rendering (depends on engine)
+  studio/   @video-editor-canvas/studio   reference multi-track editor (depends on engine + server)
+docs/       architecture & design (workspace-level)
+todo/       milestone task tracking (start here for "what's next")
+```
+
+Tooling (TypeScript, Vite, Vitest, Puppeteer, tsx) lives in the **root**
+`devDependencies`; each package declares only its own runtime deps. Consumer
+packages import the engine as `@video-editor-canvas/engine` and resolve it
+**straight from source** (tsconfig `paths` + a Vite/Vitest alias), so
+`pnpm typecheck` / `pnpm test` never need a prior `pnpm build`.
+
+### `packages/engine` — the SDK
 
 ```
 src/
@@ -49,8 +69,25 @@ src/
   export/      Exporter (FixedStep loop + Mediabunny mux)     ✅ implemented (MP4/WebM, video + audio; golden-frame diff is a follow-up)
   index.ts     public barrel
 tests/         vitest unit tests (pure-logic modules)
-docs/          architecture & design
-todo/          milestone task tracking (start here for "what's next")
+example/       demos + browser e2e verify pages (verify:* harness)
+```
+
+### `packages/server` — server-side rendering
+
+```
+src/            TimelineSpec protocol + buildTimeline (the serializable JSON contract; barrel = src/index.ts)
+route-a/        Route A: headless Chrome (ssr-render.html/.ts + ssr-render.cjs worker)
+route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, export-node.ts, fonts-node.ts + verify-*)
+tests/          headless spec→graph unit tests
+```
+
+### `packages/studio` — reference editor
+
+```
+index.html      the editor page
+src/            main.ts (the editor app), editor-export.ts (forked offscreen export)
+example/        editor e2e verify pages + video-import test
+tests/          editor-export unit tests
 ```
 
 Unimplemented methods `throw` with a pointer to the relevant `todo/*.md` file,
@@ -63,9 +100,9 @@ so callers fail loudly rather than rendering silent black frames.
   milestones); re-enable them as stubs get filled.
 - **`pixi.js` is a peer dependency** and stays external in the build. Never
   bundle it.
-- **Public surface** is whatever `src/index.ts` exports. Internal helpers
-  (`Reconciler`, `FrameCache`, `TextureManager`, demuxers, muxers) are exported
-  for advanced extension but are not stable API — see the table in
+- **Public surface** is whatever `packages/engine/src/index.ts` exports. Internal
+  helpers (`Reconciler`, `FrameCache`, `TextureManager`, demuxers, muxers) are
+  exported for advanced extension but are not stable API — see the table in
   `docs/architecture.md`.
 - **Times are seconds at the API boundary**, quantized to frames internally via
   `Timebase`. Never thread raw float seconds through without quantizing.
@@ -73,13 +110,17 @@ so callers fail loudly rather than rendering silent black frames.
 
 ## Commands
 
+All commands run **from the workspace root** and delegate to the owning package
+via `pnpm -F <pkg>` (or `pnpm -r` for all). You can also `cd packages/<pkg>` and
+run the same script locally.
+
 ```bash
-pnpm install        # install deps
-pnpm test           # run vitest once
-pnpm test:watch     # watch mode
-pnpm typecheck      # tsc --noEmit
-pnpm build          # typecheck + vite library build (ESM + CJS + d.ts)
-pnpm dev            # vite dev server (for example/playground)
+pnpm install        # install workspace deps + link packages
+pnpm test           # run vitest once across every package (pnpm -r test)
+pnpm test:watch     # engine watch mode
+pnpm typecheck      # tsc --noEmit across every package (pnpm -r typecheck)
+pnpm build          # build the engine library (ESM + CJS + d.ts)
+pnpm dev            # studio: vite dev server for the editor (dev:engine / dev:server for the others)
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
 pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen
@@ -102,15 +143,18 @@ pnpm ssr:render-node -- --timeline <spec.json> [--scale 2] --out out.mp4  # SSR 
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's
 bundled Chromium lacks WebCodecs, so we use Puppeteer's Chrome-for-Testing —
-fetch it once with `pnpm exec puppeteer browsers install chrome`. Both scripts
-share `scripts/verify-page.cjs` (spawns Vite, asserts a page's `window.*` result).
+fetch it once with `pnpm exec puppeteer browsers install chrome`. The engine,
+studio and server each carry a copy of `scripts/verify-page.cjs` (spawns Vite in
+that package, asserts a page's `window.*` result).
 
-**Server-side rendering** (render a timeline to a video file on a server) has two
-routes: **A) headless Chrome** — `scripts/ssr-render.cjs` drives
-`example/ssr-render.html` (full fidelity, reuses the verify path); and **B) pure
-Node** — `example/ssr-node/` renders via PixiJS WebGPU (Dawn) with **filters** and
-**media sources** (video/image decode), no browser (needs a GPU or Mesa lavapipe).
-Both share the `example/ssr/` timeline protocol. The SDK hooks that enable Route B
+**Server-side rendering** (render a timeline to a video file on a server) lives in
+`packages/server` and has two routes: **A) headless Chrome** —
+`packages/server/route-a/ssr-render.cjs` drives `route-a/ssr-render.html` (full
+fidelity, reuses the verify path); and **B) pure Node** — `packages/server/route-b/`
+renders via PixiJS WebGPU (Dawn) with **filters** and **media sources**
+(video/image decode), no browser (needs a GPU or Mesa lavapipe). Both share the
+`packages/server/src/` timeline protocol (`@video-editor-canvas/server`). The SDK
+hooks that enable Route B
 (all no-ops in the browser): `CompositorOptions.createRenderer` (inject a renderer),
 `loadMediabunny()`/`setMediabunnyModule()` (pin one mediabunny instance — dual-package
 hazard), `setFrameImageExtractor()` (how a decoded frame becomes a texture). Design,
@@ -124,8 +168,10 @@ protocol, the Route B shims and usage are in
   it will OOM).
 - When you implement a stub, remove its `throw … not implemented` and add a
   test where the logic is deterministic.
-- Keep `index.ts` the single source of truth for the public API.
-- Don't add persistence / undo / UI to the SDK — that's the consumer's job.
+- Keep `packages/engine/src/index.ts` the single source of truth for the engine's
+  public API.
+- Don't add persistence / undo / UI to the engine — that's the consumer's job
+  (the `studio` package is a reference consumer, not part of the SDK surface).
 
 ## Tests & docs are part of "done" (not optional)
 
@@ -133,18 +179,18 @@ Every milestone and every functional change must land with tests and docs in
 the same change. A stub is not "implemented" until both exist.
 
 - **Tests per milestone.** Each milestone in [`todo/`](todo/) ships with tests
-  that cover its acceptance criteria (验收标准). Add/extend tests under
-  `tests/` (vitest) before marking the milestone done; a milestone with no
-  passing tests for its new behavior is not complete. For GPU/render paths that
+  that cover its acceptance criteria (验收标准). Add/extend tests under the owning
+  package's `tests/` (vitest) before marking the milestone done; a milestone with
+  no passing tests for its new behavior is not complete. For GPU/render paths that
   can't run in a headless unit test, cover the deterministic logic (reconcile,
   timing, budgets, idempotence of `render(t)`) and note what is verified
-  manually in the `example/`.
+  manually in that package's `example/`.
 - **Docs update with the code.** Any implementation, signature, or behavior
   change must update the relevant docs **in the same commit**: at minimum
   [`docs/architecture.md`](docs/architecture.md) when structure/contracts/public
   surface change, the milestone file's status line + the progress table in
   [`todo/README.md`](todo/README.md), and the module-status markers in the
-  [Layout](#layout) section above (e.g. `🚧 → ✅`). Don't leave docs describing
-  the old skeleton after the behavior has changed.
+  [Monorepo layout](#monorepo-layout) section above (e.g. `🚧 → ✅`). Don't leave
+  docs describing the old skeleton after the behavior has changed.
 - **Definition of done for a change:** code + tests + docs all updated, and
   `pnpm typecheck` and `pnpm test` pass.

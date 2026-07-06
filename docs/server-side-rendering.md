@@ -21,7 +21,7 @@ WebCodecs 解/编码、`OfflineAudioContext` 混音、`document.fonts` 字体度
 ## 路线 A：Headless Chrome（本仓库实现的方案）
 
 无头 Chrome 天生带 WebGL、WebCodecs、Web Audio 和字体，所以 **SDK 一行不用改**就能在服务器
-上跑。项目的 `verify:*` 脚本（`scripts/verify-page.cjs`）本来就用 Puppeteer + Chrome-for-Testing
+上跑。项目的 `verify:*` 脚本（`packages/*/scripts/verify-page.cjs`）本来就用 Puppeteer + Chrome-for-Testing
 （Playwright 精简版 Chromium 不带 WebCodecs，故必须用带 WebCodecs 的 Chrome）在无头环境里跑真实
 导出——本方案就是把它产品化成一个"输入时间线 JSON → 输出视频文件"的渲染 worker。
 
@@ -30,16 +30,17 @@ WebCodecs 解/编码、`OfflineAudioContext` 混音、`document.fonts` 字体度
 ### 组成
 
 ```
-example/ssr/timeline.ts        时间线 JSON 协议（TimelineSpec）+ buildTimeline() 重建对象图
-example/ssr/sample-timeline.ts 自包含 demo spec（纯文字 + 图形，无需外部素材）
-example/ssr-render.{html,ts}   浏览器入口：暴露 window.__SSR__.render(spec) → base64 视频
-scripts/ssr-render.cjs         Node worker：起 Vite + 无头 Chrome，喂 spec，取回字节写盘
-tests/ssr-timeline.test.ts     builder 的 headless 单测（spec→对象图映射）
+packages/server/src/timeline.ts        时间线 JSON 协议（TimelineSpec）+ buildTimeline() 重建对象图
+packages/server/src/sample-timeline.ts 自包含 demo spec（纯文字 + 图形，无需外部素材）
+packages/server/route-a/ssr-render.{html,ts}   浏览器入口：暴露 window.__SSR__.render(spec) → base64 视频
+packages/server/route-a/ssr-render.cjs         Node worker：起 Vite + 无头 Chrome，喂 spec，取回字节写盘
+packages/server/tests/ssr-timeline.test.ts     builder 的 headless 单测（spec→对象图映射）
 ```
 
-**为什么时间线协议放在 `example/` 而不是 `src/`**：SDK 刻意把持久化 / schema 交给上层
-（见 `AGENT.md`）。`TimelineSpec` 是一种消费者层的序列化格式，因此它属于示例/消费者代码，
-`src/` 的公开面保持不变。
+**为什么时间线协议放在 `packages/server` 而不是引擎包**：引擎（`@video-editor-canvas/engine`）
+刻意把持久化 / schema 交给上层（见 `AGENT.md`）。`TimelineSpec` 是一种消费者层的序列化格式，
+因此它属于 server 包（`@video-editor-canvas/server`，也被 studio 的“Server Render”复用），
+引擎的公开面保持不变。
 
 ### 数据流
 
@@ -47,8 +48,8 @@ tests/ssr-timeline.test.ts     builder 的 headless 单测（spec→对象图映
  时间线 JSON（服务器/DB）
       │  JSON.parse
       ▼
- scripts/ssr-render.cjs ──启动──► Vite dev server
-      │                              │ 提供 example/ssr-render.html
+ packages/server/route-a/ssr-render.cjs ──启动──► Vite dev server
+      │                              │ 提供 packages/server/route-a/ssr-render.html
       │  puppeteer.launch(headless)  ▼
       └──────────────────────► 无头 Chrome
                                      │ window.__SSR__.render(spec)
@@ -164,24 +165,24 @@ Canvas 2D，它没有 filter）。方案是 **PixiJS 的 WebGPU 渲染器 + Dawn
 
 ```
 src/compositor/compositor.ts     新增 CompositorOptions.createRenderer 注入 seam（唯一的 SDK 改动）
-example/ssr-node/env.ts          Node 环境引导：jsdom + rAF/addEventListener shim + DOMAdapter(napi-canvas)
+packages/server/route-b/env.ts          Node 环境引导：jsdom + rAF/addEventListener shim + DOMAdapter(napi-canvas)
                                  + navigator.gpu(Dawn) + GPU* globals + Dawn 兼容 shim + registerMediabunnyServer
                                  + createNodeWebGPURenderer 工厂
-example/ssr-node/export-node.ts  GPU 读帧导出：renderToTexture → copyTextureToBuffer → BGRA→RGBA
+packages/server/route-b/export-node.ts  GPU 读帧导出：renderToTexture → copyTextureToBuffer → BGRA→RGBA
                                  → VideoSample → VideoSampleSource → Output + FilePathTarget（写盘）
                                  + 音频轨（AudioEngine.renderOffline → AudioBufferSource）
-example/ssr-node/fonts-node.ts   Node 字体加载：自托管 URL + Google 字体（css2→文件→GlobalFonts.register）
-example/ssr-node/render.ts       worker 主程序：读 TimelineSpec，建图（复用 buildTimeline），渲成文件
-example/ssr-node/verify-audio.ts 自包含校验：合成正弦 → 视频+音频 MP4，解回断言两轨都在
-example/ssr-node/verify-font.ts  自包含校验：从 Google 加载 Roboto 渲染文字，断言字形像素渲出
-example/ssr-node/verify-media.ts 自包含校验：渲一段视频→作为 VideoSource 解回 + data-URL 图片，合成断言像素
+packages/server/route-b/fonts-node.ts   Node 字体加载：自托管 URL + Google 字体（css2→文件→GlobalFonts.register）
+packages/server/route-b/render.ts       worker 主程序：读 TimelineSpec，建图（复用 buildTimeline），渲成文件
+packages/server/route-b/verify-audio.ts 自包含校验：合成正弦 → 视频+音频 MP4，解回断言两轨都在
+packages/server/route-b/verify-font.ts  自包含校验：从 Google 加载 Roboto 渲染文字，断言字形像素渲出
+packages/server/route-b/verify-media.ts 自包含校验：渲一段视频→作为 VideoSource 解回 + data-URL 图片，合成断言像素
 ```
 
 SDK 侧为 Route B 新增的 seam（都不影响浏览器：不设置就是原行为）：`CompositorOptions.createRenderer`
 （注入 renderer）、`loadMediabunny()`/`setMediabunnyModule()`（pin mediabunny 实例）、
 `setFrameImageExtractor()`（视频帧→纹理的取像方式）。
 
-时间线协议、`buildTimeline`、`buildEffect` 与路线 A 复用同一份 `example/ssr/`（`TimelineSpec` 现支持
+时间线协议、`buildTimeline`、`buildEffect` 与路线 A 复用同一份 `packages/server/src/`（`TimelineSpec` 现支持
 clip 级与全局 `effects`）。
 
 ### 依赖与前置

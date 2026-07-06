@@ -1,50 +1,39 @@
 {
   "name": "video-editor-canvas",
   "version": "0.0.0",
-  "description": "A command-style object-graph engine for building video editors on top of PixiJS. Provides the runtime (decode / composite / audio / export); persistence, schema, undo, collaboration and UI are left to the consumer.",
+  "private": true,
+  "description": "Monorepo for video-editor-canvas: a PixiJS-based video-editor runtime (engine), its server-side renderer (server) and a reference multi-track editor (studio).",
   "type": "module",
   "license": "MIT",
   "packageManager": "pnpm@10.33.0",
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "sideEffects": false,
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "verify:decode": "node scripts/verify-page.cjs example/decode-test.html __DECODE_TEST__ \"VideoSource decode\"",
-    "verify:render": "node scripts/verify-page.cjs example/multitrack-test.html __RENDER_TEST__ \"multi-track render\"",
-    "verify:clips": "node scripts/verify-page.cjs example/clips-test.html __CLIPS_TEST__ \"image/text/shape clips\"",
-    "verify:font": "node scripts/verify-page.cjs example/font-test.html __FONT_TEST__ \"google font\"",
-    "verify:audio": "node scripts/verify-page.cjs example/audio-test.html __AUDIO_TEST__ \"audio engine\"",
-    "verify:effects": "node scripts/verify-page.cjs example/effects-test.html __EFFECTS_TEST__ \"effects & transitions\"",
-    "verify:export": "node scripts/verify-page.cjs example/export-test.html __EXPORT_TEST__ \"exporter\"",
-    "verify:editor-export": "node scripts/verify-page.cjs example/editor-export-test.html __EDITOR_EXPORT_TEST__ \"editor forked export\"",
-    "verify:video-import": "node scripts/verify-page.cjs example/video-import-test.html __VIDEO_IMPORT_TEST__ \"video import (bounded fps scan)\"",
-    "verify:editor-audio": "node scripts/verify-page.cjs example/editor-audio-test.html __EDITOR_AUDIO_TEST__ \"editor audio (import + export mux)\"",
-    "verify:origin": "node scripts/verify-page.cjs example/origin-test.html __ORIGIN_TEST__ \"compositor origin\"",
-    "verify:ssr": "node scripts/verify-page.cjs example/ssr-render.html __SSR_TEST__ \"server-side render\"",
-    "verify:ssr-node": "tsx example/ssr-node/render.ts --verify --out .ssr-out/node-demo.mp4",
-    "verify:ssr-node-audio": "tsx example/ssr-node/verify-audio.ts",
-    "verify:ssr-node-font": "tsx example/ssr-node/verify-font.ts",
-    "verify:ssr-node-media": "tsx example/ssr-node/verify-media.ts",
-    "ssr:render": "node scripts/ssr-render.cjs",
-    "ssr:render-node": "tsx example/ssr-node/render.ts",
-    "lint": "eslint . --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\""
+    "build": "pnpm -F @video-editor-canvas/engine build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:watch": "pnpm -F @video-editor-canvas/engine test:watch",
+    "dev": "pnpm -F @video-editor-canvas/studio dev",
+    "dev:engine": "pnpm -F @video-editor-canvas/engine dev",
+    "dev:server": "pnpm -F @video-editor-canvas/server dev",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format",
+    "verify:decode": "pnpm -F @video-editor-canvas/engine verify:decode",
+    "verify:render": "pnpm -F @video-editor-canvas/engine verify:render",
+    "verify:clips": "pnpm -F @video-editor-canvas/engine verify:clips",
+    "verify:font": "pnpm -F @video-editor-canvas/engine verify:font",
+    "verify:audio": "pnpm -F @video-editor-canvas/engine verify:audio",
+    "verify:effects": "pnpm -F @video-editor-canvas/engine verify:effects",
+    "verify:export": "pnpm -F @video-editor-canvas/engine verify:export",
+    "verify:origin": "pnpm -F @video-editor-canvas/engine verify:origin",
+    "verify:video-import": "pnpm -F @video-editor-canvas/studio verify:video-import",
+    "verify:editor-export": "pnpm -F @video-editor-canvas/studio verify:editor-export",
+    "verify:editor-audio": "pnpm -F @video-editor-canvas/studio verify:editor-audio",
+    "verify:ssr": "pnpm -F @video-editor-canvas/server verify:ssr",
+    "verify:ssr-node": "pnpm -F @video-editor-canvas/server verify:ssr-node",
+    "verify:ssr-node-audio": "pnpm -F @video-editor-canvas/server verify:ssr-node-audio",
+    "verify:ssr-node-font": "pnpm -F @video-editor-canvas/server verify:ssr-node-font",
+    "verify:ssr-node-media": "pnpm -F @video-editor-canvas/server verify:ssr-node-media",
+    "ssr:render": "pnpm -F @video-editor-canvas/server ssr:render",
+    "ssr:render-node": "pnpm -F @video-editor-canvas/server ssr:render-node"
   },
   "keywords": [
     "pixijs",
@@ -52,29 +41,17 @@
     "webcodecs",
     "compositor",
     "timeline",
-    "canvas"
+    "canvas",
+    "monorepo"
   ],
-  "peerDependencies": {
-    "pixi.js": "^8.0.0"
-  },
   "devDependencies": {
-    "@mediabunny/server": "^1.50.4",
-    "@napi-rs/canvas": "^1.0.2",
     "@types/jsdom": "^28.0.3",
     "@types/node": "^26.1.0",
-    "jsdom": "^29.1.1",
-    "node-web-audio-api": "^2.0.0",
-    "pixi.js": "^8.6.0",
     "puppeteer": "^25.2.1",
     "tsx": "^4.22.5",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
     "vite-plugin-dts": "^4.4.0",
-    "vitest": "^2.1.0",
-    "webgpu": "^0.4.0"
-  },
-  "dependencies": {
-    "@evomap/evolver": "^1.89.20",
-    "mediabunny": "^1.49.0"
+    "vitest": "^2.1.0"
   }
 }

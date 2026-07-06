@@ -1,0 +1,29 @@
+{
+  "name": "@video-editor-canvas/studio",
+  "version": "0.0.0",
+  "description": "A reference multi-track video editor built on @video-editor-canvas/engine — timeline, canvas manipulation, forked export and Server Render.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify:editor-export": "node scripts/verify-page.cjs example/editor-export-test.html __EDITOR_EXPORT_TEST__ \"editor forked export\"",
+    "verify:editor-audio": "node scripts/verify-page.cjs example/editor-audio-test.html __EDITOR_AUDIO_TEST__ \"editor audio (import + export mux)\"",
+    "verify:video-import": "node scripts/verify-page.cjs example/video-import-test.html __VIDEO_IMPORT_TEST__ \"video import (bounded fps scan)\""
+  },
+  "keywords": [
+    "video-editor",
+    "timeline",
+    "pixijs",
+    "editor"
+  ],
+  "dependencies": {
+    "@video-editor-canvas/engine": "workspace:*",
+    "@video-editor-canvas/server": "workspace:*",
+    "mediabunny": "^1.49.0",
+    "pixi.js": "^8.6.0"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "name": "@video-editor-canvas/engine",
+  "version": "0.0.0",
+  "description": "A command-style object-graph engine for building video editors on top of PixiJS. Provides the runtime (decode / composite / audio / export); persistence, schema, undo, collaboration and UI are left to the consumer.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify:decode": "node scripts/verify-page.cjs example/decode-test.html __DECODE_TEST__ \"VideoSource decode\"",
+    "verify:render": "node scripts/verify-page.cjs example/multitrack-test.html __RENDER_TEST__ \"multi-track render\"",
+    "verify:clips": "node scripts/verify-page.cjs example/clips-test.html __CLIPS_TEST__ \"image/text/shape clips\"",
+    "verify:font": "node scripts/verify-page.cjs example/font-test.html __FONT_TEST__ \"google font\"",
+    "verify:audio": "node scripts/verify-page.cjs example/audio-test.html __AUDIO_TEST__ \"audio engine\"",
+    "verify:effects": "node scripts/verify-page.cjs example/effects-test.html __EFFECTS_TEST__ \"effects & transitions\"",
+    "verify:export": "node scripts/verify-page.cjs example/export-test.html __EXPORT_TEST__ \"exporter\"",
+    "verify:origin": "node scripts/verify-page.cjs example/origin-test.html __ORIGIN_TEST__ \"compositor origin\"",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "keywords": [
+    "pixijs",
+    "video-editor",
+    "webcodecs",
+    "compositor",
+    "timeline",
+    "canvas"
+  ],
+  "peerDependencies": {
+    "pixi.js": "^8.0.0"
+  },
+  "dependencies": {
+    "mediabunny": "^1.49.0"
+  },
+  "devDependencies": {
+    "pixi.js": "^8.6.0"
+  }
+}

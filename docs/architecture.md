@@ -27,6 +27,13 @@
 
 ## 模块与源码位置
 
+> **Monorepo**：本仓库是 pnpm workspace，分三个包——`packages/engine`
+> （`@video-editor-canvas/engine`，即本 SDK）、`packages/server`
+> （`@video-editor-canvas/server`，服务端渲染）、`packages/studio`
+> （`@video-editor-canvas/studio`，参考编辑器）。除非另有 `packages/…` 前缀，本文
+> 提到的 `src/`、`tests/`、`example/` 路径均相对 **`packages/engine/`**；消费包以
+> `@video-editor-canvas/engine` 从源码直接引用引擎。
+
 | 模块 | 源码 | 状态 |
 |---|---|---|
 | 时间与时钟 | `src/time/` | ✅ Timebase / RealtimeClock / FixedStepClock 已实现（视频元素式控制面：play / pause / seek + 到 `duration` 自动停止）|
@@ -214,13 +221,13 @@ clock.play();
 - **渲染核心是浏览器栈**(WebGL/WebGPU + WebCodecs + Web Audio + `document.fonts`),Node 无这些
   原生 API,所以 SSR 本质是**在无头环境跑完整条 decode→composite→encode**。
 - **采用路线 A(Headless Chrome)**:无头 Chrome 天生带这些 API,故 **SDK 一行不改**即可服务端运行,
-  且预览与导出共用同一渲染核心(契约 #3)。这是把 `verify:*`(`scripts/verify-page.cjs`,
+  且预览与导出共用同一渲染核心(契约 #3)。这是把 `verify:*`(`packages/*/scripts/verify-page.cjs`,
   Puppeteer + 带 WebCodecs 的 Chrome-for-Testing)产品化成"时间线 JSON → 视频文件"的 worker。
-- **组成**:`example/ssr/timeline.ts`(可序列化的 `TimelineSpec` 协议 + `buildTimeline()` 重建对象图,
-  文字/图形/图片/视频/音频 + 变换与关键帧)、`example/ssr-render.{html,ts}`(浏览器入口,暴露
-  `window.__SSR__.render(spec)` → base64 视频)、`scripts/ssr-render.cjs`(Node worker:起 Vite +
-  无头 Chrome,喂 spec,取回字节写盘)。**时间线协议刻意放在 `example/` 而非 `src/`**——SDK 把
-  持久化/schema 交给上层,SSR 的 JSON 格式是消费者层的事,`src/` 公开面不变。
+- **组成**:`packages/server/src/timeline.ts`(可序列化的 `TimelineSpec` 协议 + `buildTimeline()` 重建对象图,
+  文字/图形/图片/视频/音频 + 变换与关键帧)、`packages/server/route-a/ssr-render.{html,ts}`(浏览器入口,暴露
+  `window.__SSR__.render(spec)` → base64 视频)、`packages/server/route-a/ssr-render.cjs`(Node worker:起 Vite +
+  无头 Chrome,喂 spec,取回字节写盘)。**时间线协议刻意放在 `packages/server` 而非引擎包**——SDK 把
+  持久化/schema 交给上层,SSR 的 JSON 格式是消费者层的事,引擎的公开面不变。
 - 校验:`tests/ssr-timeline.test.ts`(headless 单测 spec→对象图映射:clip 时序、变换/透明度取值、
   命名 easing、时间线时长)+ e2e `pnpm verify:ssr`(浏览器半侧:无头 Chrome 里 render 内置 demo 产出
   合法 MP4)+ `pnpm ssr:render -- --verify`(Node worker 全链路:Node→无头 Chrome→写盘,魔数断言合法容器)。
@@ -229,7 +236,7 @@ clock.play();
   (node-av/FFmpeg)编码、`@napi-rs/canvas` 供文字度量/字体、jsdom 补 DOM。帧渲到 `RenderTexture` 后经
   `copyTextureToBuffer` 从 GPU 读回(BGRA→RGBA)再编码。SDK 侧仅新增 **`CompositorOptions.createRenderer`
   注入 seam**(`Compositor.init` 默认仍 `autoDetectRenderer`,Node 传入 WebGPU 工厂),其余引擎
-  (reconcile/renderSync/renderToTexture/转场)renderer 无关、零改动。代码在 `example/ssr-node/`,校验
+  (reconcile/renderSync/renderToTexture/转场)renderer 无关、零改动。代码在 `packages/server/route-b/`,校验
   `pnpm verify:ssr-node`;完整踩坑与 shim 见 `docs/server-side-rendering.md`。
 
 ### 文字与字体加载（TextClip / FontManager）
