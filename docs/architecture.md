@@ -178,6 +178,13 @@ clock.play();
 - **`ExportOptions`**:`fps` / `container`('mp4'|'webm')/ `videoCodec` / `bitrate` / `audio` /
   `audioCodec` / `audioBitrate` / `range`(默认整条时间线 = 最大 clip end)。`onProgress(p)`
   每帧上报;`cancel()` 置标志,下一帧抛 `ExportCancelledError` 并 `sink.cancel()` 释放编码器。
+- **单帧导出(`exportFrame(time, options?)`)**:导出**指定时刻的一帧静态画面**为图片 `Blob`。
+  复用同一渲染核心(契约 #3):先 `await fonts.ready()`(绝不抓到 fallback 字体,契约 #2)→
+  `await compositor.prepare(time)`(**await = 绝不抓到半解码帧**,契约 #1)→ `renderSync(time)`
+  画到共享 `view` 画布 → 把画布编码成图片。与逐帧循环无关,`time` **不必落在 fps 帧边界**。
+  `ExportFrameOptions`:`type`('image/png' 默认 | 'image/jpeg' | 'image/webp')/ `quality`
+  (有损格式,`[0,1]`,默认 0.92)。编码 = `encodeFrame` seam:优先 `OffscreenCanvas.convertToBlob`
+  (worker/Node),回落 `HTMLCanvasElement.toBlob`;测试可注入假 encoder。
 - **fork 导出(不打扰预览、不重复加载)**:导出会独占渲染循环。要让预览完全不受影响、
   **导出期间仍能正常播放**,消费者可**另起一个离屏 `Compositor` 专供导出**:
   - 通过 `CompositorOptions.textures` 共享预览的 `TextureManager`(从而共享已解码/上传的帧——
@@ -193,7 +200,8 @@ clock.play();
   `example/export-demo.ts` 即用此模式(旋律场景 + 加载视频都能在导出期间继续播放)。
 - 校验:`tests/exporter.test.ts`(纯 `exportFrameTimes`;用假 compositor/audio/sink 断言
   **每帧 prepare→render→addFrame 的顺序**、帧时刻、progress 单调到 1、`audio:false` 跳过音频、
-  `range` 覆盖时长、`cancel` 中止且不 finalize)+ e2e `pnpm verify:export`——真实导出:
+  `range` 覆盖时长、`cancel` 中止且不 finalize;`exportFrame` 断言 prepare→render→encode
+  单帧、不碰 movie sink/音频、`type`/`quality` 透传编码器)+ e2e `pnpm verify:export`——真实导出:
   ①视频-only 红 clip 到 MP4,解回断言帧数(8)、尺寸(160×120)、帧确实是红色(排除空画布抓取);
   ②音+画(排一段 440Hz 正弦进 `AudioEngine`)到 WebM(vp8/opus,挑能编码的),解回断言
   **视频轨 + 音频轨都在**。

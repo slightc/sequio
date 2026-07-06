@@ -24,6 +24,17 @@ export interface ExportOptions {
   range?: [number, number];
 }
 
+/** Options for {@link Exporter.exportFrame} (single still-frame export). */
+export interface ExportFrameOptions {
+  /** Image MIME type. @default 'image/png' */
+  type?: 'image/png' | 'image/jpeg' | 'image/webp';
+  /**
+   * Encoder quality for lossy formats (`image/jpeg`, `image/webp`), in `[0, 1]`.
+   * Ignored for `image/png`. @default 0.92
+   */
+  quality?: number;
+}
+
 /** Thrown by {@link Exporter.export} when {@link Exporter.cancel} was called. */
 export class ExportCancelledError extends Error {
   constructor() {
@@ -95,6 +106,24 @@ export class Exporter {
     }
   }
 
+  /**
+   * Render a single frame at `time` (seconds) and encode it to an image
+   * {@link Blob} (PNG by default; JPEG/WebP with an optional `quality`).
+   *
+   * Uses the same core as {@link export} so a still matches the movie
+   * (contract #3): `await prepare(time)` so the frame is never dropped
+   * (contract #1), then `renderSync(time)` to the shared `view` canvas, then
+   * encode. Fonts are awaited first so a fallback face is never captured
+   * (contract #2). Independent of {@link export}'s fixed-step loop — `time`
+   * need not fall on an fps boundary.
+   */
+  async exportFrame(time: number, options: ExportFrameOptions = {}): Promise<Blob> {
+    await this.waitForAssets();
+    await this.compositor.prepare(time); // await → never capture a half-decoded frame
+    this.compositor.renderSync(time);
+    return this.encodeFrame(this.compositor.view, options);
+  }
+
   cancel(): void {
     this.cancelled = true;
   }
@@ -120,5 +149,26 @@ export class Exporter {
   /** Seam: build the encode/mux sink (default = Mediabunny). Overridden in tests. */
   protected createSink(opts: ResolvedExportOptions): ExportSink {
     return new MediabunnyExportSink(this.compositor.view, opts);
+  }
+
+  /**
+   * Seam: encode the rendered `view` canvas to an image blob. Overridden in
+   * tests (no real canvas). Uses `OffscreenCanvas.convertToBlob` when available
+   * (workers / Node) and falls back to `HTMLCanvasElement.toBlob`.
+   */
+  protected encodeFrame(canvas: HTMLCanvasElement, options: ExportFrameOptions): Promise<Blob> {
+    const type = options.type ?? 'image/png';
+    const quality = options.quality ?? 0.92;
+    const offscreen = canvas as unknown as OffscreenCanvas;
+    if (typeof offscreen.convertToBlob === 'function') {
+      return offscreen.convertToBlob({ type, quality });
+    }
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('canvas.toBlob returned null'))),
+        type,
+        quality,
+      );
+    });
   }
 }

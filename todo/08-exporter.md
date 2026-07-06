@@ -15,6 +15,7 @@
 - 封装：Mediabunny `Output` + `Mp4OutputFormat`（fast-start / fragmented）/
   `WebMOutputFormat`，取代 `mp4-muxer` / `webm-muxer`。
 - `ExportOptions`（分辨率/fps/codec/bitrate/range）、`onProgress`、`cancel()`。
+- 单帧导出：`exportFrame(time, options?)` 把指定时刻渲染成图片 `Blob`（PNG/JPEG/WebP）。
 
 ## 验收标准
 - 导出结果与预览逐帧一致（golden-frame 对比）。🟡 共用同一 `renderSync` 渲染核心(契约 #3),
@@ -36,6 +37,11 @@
   readback + `AudioBufferSource` + `Output`(MP4/WebM) + `BufferTarget`,动态 import）。
 - **`ExportOptions`**:`fps`/`container`/`videoCodec`/`bitrate`/`audio`/`audioCodec`/
   `audioBitrate`/`range`;`onProgress`、`cancel()`/`ExportCancelledError`。
+- **`exportFrame(time, options?)`**:单帧静态画面导出——`await fonts.ready()` →
+  `await prepare(time)`（绝不抓半解码帧）→ `renderSync(time)` → 把 `view` 画布编码成图片
+  `Blob`。`ExportFrameOptions`:`type`（'image/png' 默认 | 'image/jpeg' | 'image/webp'）/
+  `quality`（有损,默认 0.92）。编码 = `encodeFrame` seam（`convertToBlob`/`toBlob`,测试可注入）。
+  `time` 不必落在 fps 帧边界。
 - 测试:`tests/exporter.test.ts` + `pnpm verify:export`(真实导出→Mediabunny 解回:①视频-only
   帧数 8、尺寸 160×120、帧是红色;②音+画到 WebM,解回断言视频轨 + 音频轨都在)。
 - 交互 demo:`pnpm dev` 后打开 `/example/export-demo.html`——并入了 av-player:一个时钟同时驱动
