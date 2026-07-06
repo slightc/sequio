@@ -1,32 +1,11 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
-    "types": ["vite/client", "vitest/globals", "node"],
-    "strict": true,
-    // Relaxed while the SDK is a skeleton: many fields are stored for
-    // milestones that aren't implemented yet. Re-enable once stubs are filled.
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "exactOptionalPropertyTypes": false,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    },
-    "outDir": "dist"
-  },
-  "include": ["src", "tests", "example"],
-  "exclude": ["node_modules", "dist"]
+  // Root solution config: no files of its own — each package has its own
+  // tsconfig extending `tsconfig.base.json`. Kept so editors resolve the
+  // workspace as a whole.
+  "files": [],
+  "references": [
+    { "path": "packages/engine" },
+    { "path": "packages/server" },
+    { "path": "packages/studio" }
+  ]
 }

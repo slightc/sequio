@@ -1,0 +1,43 @@
+{
+  "name": "@video-editor-canvas/server",
+  "version": "0.0.0",
+  "description": "Server-side rendering for video-editor-canvas: a serializable TimelineSpec protocol plus two render routes — Route A (headless Chrome) and Route B (pure Node, PixiJS WebGPU).",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify:ssr": "node scripts/verify-page.cjs route-a/ssr-render.html __SSR_TEST__ \"server-side render\"",
+    "verify:ssr-node": "tsx route-b/render.ts --verify --out .ssr-out/node-demo.mp4",
+    "verify:ssr-node-audio": "tsx route-b/verify-audio.ts",
+    "verify:ssr-node-font": "tsx route-b/verify-font.ts",
+    "verify:ssr-node-media": "tsx route-b/verify-media.ts",
+    "ssr:render": "node route-a/ssr-render.cjs",
+    "ssr:render-node": "tsx route-b/render.ts"
+  },
+  "keywords": [
+    "server-side-rendering",
+    "pixijs",
+    "webgpu",
+    "video",
+    "headless"
+  ],
+  "dependencies": {
+    "@video-editor-canvas/engine": "workspace:*",
+    "mediabunny": "^1.49.0",
+    "pixi.js": "^8.6.0"
+  },
+  "devDependencies": {
+    "@mediabunny/server": "^1.50.4",
+    "@napi-rs/canvas": "^1.0.2",
+    "jsdom": "^29.1.1",
+    "node-web-audio-api": "^2.0.0",
+    "webgpu": "^0.4.0"
+  }
+}

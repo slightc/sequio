@@ -112,7 +112,7 @@ dist
 # TernJS port file
 .tern-port
 
-# server-side render worker output (scripts/ssr-render.cjs)
+# server-side render worker output (packages/server/route-a/ssr-render.cjs)
 out.mp4
 out.webm
 .ssr-out/
