@@ -100,6 +100,15 @@ so callers fail loudly rather than rendering silent black frames.
   milestones); re-enable them as stubs get filled.
 - **`pixi.js` is a peer dependency** and stays external in the build. Never
   bundle it.
+- **Only `engine` imports `pixi.js` / `mediabunny` directly.** Upper packages
+  (`server`, `studio`) import from `@video-editor-canvas/engine` only: Pixi types
+  that leak into the public surface (`Renderer`, `AutoDetectOptions`,
+  `BLEND_MODES`) are re-exported type-only from `index.ts`, and the mediabunny
+  module is reached via `loadMediabunny()`. The sole exception is
+  `packages/server/route-b/env.ts` — Route B's Node environment adapter, which
+  must touch both libraries at runtime to bootstrap the environment (patch Pixi's
+  `DOMAdapter`/`CanvasSource`, `require('mediabunny')` for the dual-package
+  hazard).
 - **Public surface** is whatever `packages/engine/src/index.ts` exports. Internal
   helpers (`Reconciler`, `FrameCache`, `TextureManager`, demuxers, muxers) are
   exported for advanced extension but are not stable API — see the table in

@@ -7,6 +7,15 @@
  * extension but are not part of the stable API.
  */
 
+// ── PixiJS types (re-exported) ──────────────────────────────────────────────
+// The engine is the *only* package that imports `pixi.js` (and `mediabunny`)
+// directly; consumers (server, studio) go through the engine. These are the
+// PixiJS types that leak into the engine's own public surface — the renderer a
+// host injects via `CompositorOptions.createRenderer`, and the blend mode set on
+// a `Clip` — re-exported so a consumer can type against them without a direct
+// `pixi.js` import. Type-only, so nothing is bundled at runtime.
+export type { Renderer, AutoDetectOptions, BLEND_MODES } from 'pixi.js';
+
 // ── Core ──────────────────────────────────────────────────────────────────
 export type { Disposable, Subscription } from './core/disposable';
 export { createSubscription } from './core/disposable';
