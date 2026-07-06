@@ -28,7 +28,9 @@
     "baseUrl": ".",
     "paths": {
       "@video-editor-canvas/engine": ["packages/engine/src/index.ts"],
-      "@video-editor-canvas/server": ["packages/server/src/index.ts"]
+      "@video-editor-canvas/server": ["packages/server/src/index.ts"],
+      "@video-editor-canvas/runtime": ["packages/runtime/src/index.ts"],
+      "@video-editor-canvas/runtime/node-fs": ["packages/runtime/src/node-fs.ts"]
     }
   }
 }

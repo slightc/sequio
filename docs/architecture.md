@@ -27,12 +27,14 @@
 
 ## 模块与源码位置
 
-> **Monorepo**：本仓库是 pnpm workspace，分三个包——`packages/engine`
+> **Monorepo**：本仓库是 pnpm workspace，分四个包——`packages/engine`
 > （`@video-editor-canvas/engine`，即本 SDK）、`packages/server`
-> （`@video-editor-canvas/server`，服务端渲染）、`packages/studio`
-> （`@video-editor-canvas/studio`，参考编辑器）。除非另有 `packages/…` 前缀，本文
-> 提到的 `src/`、`tests/`、`example/` 路径均相对 **`packages/engine/`**；消费包以
-> `@video-editor-canvas/engine` 从源码直接引用引擎。
+> （`@video-editor-canvas/server`，服务端渲染）、`packages/runtime`
+> （`@video-editor-canvas/runtime`，编译并运行 TS/JS 代码得到一个 `Composer`）、
+> `packages/studio`（`@video-editor-canvas/studio`，参考编辑器）。除非另有
+> `packages/…` 前缀，本文提到的 `src/`、`tests/`、`example/` 路径均相对
+> **`packages/engine/`**；消费包以 `@video-editor-canvas/engine` 从源码直接引用引擎。
+> 代码运行时（虚拟文件系统 + 编译 + Composer）见 [`runtime.md`](runtime.md)。
 
 | 模块 | 源码 | 状态 |
 |---|---|---|
