@@ -23,7 +23,15 @@
  * set up for Route B. See `docs/server-side-rendering.md`.
  */
 import { createRequire } from 'node:module';
-import type { AutoDetectOptions, Renderer } from 'pixi.js';
+import type { AutoDetectOptions, MediabunnyModule, Renderer } from '@video-editor-canvas/engine';
+
+// NOTE: This file is Route B's *environment adapter* — it bootstraps the Node
+// runtime PixiJS/Mediabunny expect (WebGPU, canvas, WebCodecs polyfills) and is
+// the one deliberate exception to the "only the engine imports pixi.js /
+// mediabunny" rule. It reaches for those modules at runtime (`import('pixi.js')`
+// to patch Pixi's DOMAdapter/CanvasSource; a CJS `require('mediabunny')` to pin
+// the exact instance the node-av codecs register on — the dual-package hazard
+// below). Types still come from the engine's re-exports so the seam is thin.
 
 let ready = false;
 /** Tag identifying our `@napi-rs/canvas` instances to Pixi's canvas checks. */
@@ -40,10 +48,10 @@ const NAPI = Symbol('napi-canvas');
  * defined`. To avoid that, we load the server AND mediabunny through the same CJS
  * `require` (one cached instance) and hand that exact instance to all Route B code.
  */
-let registeredMediabunny: typeof import('mediabunny') | null = null;
+let registeredMediabunny: MediabunnyModule | null = null;
 
 /** The mediabunny instance carrying the node-av encoders. Call after {@link setupNodeEnvironment}. */
-export function getMediabunny(): typeof import('mediabunny') {
+export function getMediabunny(): MediabunnyModule {
   if (!registeredMediabunny) throw new Error('getMediabunny() before setupNodeEnvironment()');
   return registeredMediabunny;
 }
@@ -219,7 +227,7 @@ export async function setupNodeEnvironment(): Promise<void> {
   const require = createRequire(import.meta.url);
   const { registerMediabunnyServer } = require('@mediabunny/server') as typeof import('@mediabunny/server');
   registerMediabunnyServer();
-  registeredMediabunny = require('mediabunny') as typeof import('mediabunny');
+  registeredMediabunny = require('mediabunny') as MediabunnyModule;
   // Make the SDK's own decode/encode (VideoSource/AudioSource/export sink) use
   // this exact instance too — otherwise its `import('mediabunny')` gets the other
   // (ESM) instance without the node-av codecs (dual-package hazard).

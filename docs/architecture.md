@@ -428,6 +428,21 @@ resolution 1)。
 | **公开**（使用者直接用） | `Compositor`、`Track` / `VisualTrack` / `AudioTrack`、各 `Clip` 子类（含 `GroupClip` 子合成）、`Effect` / `EffectRegistry`、`Transition`、`Transform2D` / `AnimatableProperty`、`MediaSource` 子类、`Clock` 实现、`AudioEngine`、`Exporter`、`Timebase` |
 | **内部**（不暴露或仅高级扩展） | `Reconciler`、`FrameCache`、`TextureManager`、Mediabunny 读写适配层（解码 sink / 封装 output） |
 
+### 依赖收口：只有 `engine` 直接引用 `pixi.js` / `mediabunny`
+
+`pixi.js`（peer 依赖）和 `mediabunny` 是渲染/编解码内核，只在 **`engine`** 包里直接
+`import`。`server` / `studio` 等上层包**只引用 `@video-editor-canvas/engine`**，不直接
+依赖这两个库——它们需要的 Pixi 类型（`Renderer`、`AutoDetectOptions`、`BLEND_MODES`，即
+`CompositorOptions.createRenderer` 与 `Clip.blendMode` 暴露到公开面的那几个）由 engine 从
+`index.ts` **type-only 转出**（运行时不打包 Pixi）；需要 mediabunny 模块本身（如
+`canEncodeVideo` / `Input`）时走 engine 的 `loadMediabunny()`，同时天然复用其双包
+（ESM/CJS）实例收口。
+
+**唯一例外**是 `packages/server/route-b/env.ts`——Route B 的 Node 环境适配层，它要在运行时
+`import('pixi.js')` 打补丁（`DOMAdapter` / `CanvasSource` / `WebGPURenderer`）并用 CJS
+`require('mediabunny')` 钉住 node-av 编解码注册的那个实例（双包 hazard）。这属于环境 bootstrap，
+必须直接触达底层库；其类型仍从 engine 转出的 `MediabunnyModule` 等来。
+
 ## 推荐技术选型
 
 - **渲染**：PixiJS v8（可选 WebGPU 后端）；需要真 3D 再叠 Three.js（共享 context）。

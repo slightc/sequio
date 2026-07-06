@@ -12,7 +12,7 @@
  *
  * Result on `window.__VIDEO_IMPORT_TEST__`; run via `pnpm verify:video-import`.
  */
-import { AudioEngine, Compositor, Exporter, ShapeClip, Timebase, VideoSource, VisualTrack } from '@video-editor-canvas/engine';
+import { AudioEngine, Compositor, Exporter, loadMediabunny, ShapeClip, Timebase, VideoSource, VisualTrack } from '@video-editor-canvas/engine';
 import { videoCacheSettings } from '../src/editor-export';
 
 const W = 320;
@@ -21,7 +21,7 @@ const SRC_FPS = 50; // encode at 50fps …
 const SRC_DUR = 3; // … for 3s → 150 frames, well past the ~120-packet fps prefix
 
 async function pickCodec(): Promise<{ container: 'mp4' | 'webm'; videoCodec: string } | null> {
-  const { canEncodeVideo } = await import('mediabunny');
+  const { canEncodeVideo } = await loadMediabunny();
   if (await canEncodeVideo('avc')) return { container: 'mp4', videoCodec: 'avc' };
   if (await canEncodeVideo('vp9')) return { container: 'webm', videoCodec: 'vp9' };
   if (await canEncodeVideo('vp8')) return { container: 'webm', videoCodec: 'vp8' };

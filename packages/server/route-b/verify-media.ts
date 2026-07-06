@@ -6,8 +6,7 @@
  * video pixels (red block) and the image (blue square) actually show. Proves the
  * loadMediabunny() instance seam + the createImageBitmap polyfill.
  */
-import type { Renderer } from 'pixi.js';
-import { Compositor, ImageClip, ImageSource, Timebase, VideoClip, VideoSource, VisualTrack } from '@video-editor-canvas/engine';
+import { Compositor, ImageClip, ImageSource, type Renderer, Timebase, VideoClip, VideoSource, VisualTrack } from '@video-editor-canvas/engine';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';
 import { buildTimeline, type TimelineSpec } from '../src/timeline';

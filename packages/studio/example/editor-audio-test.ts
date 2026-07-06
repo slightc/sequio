@@ -18,6 +18,7 @@ import {
   AudioSource,
   Compositor,
   Exporter,
+  loadMediabunny,
   ShapeClip,
   Timebase,
   VideoClip,
@@ -34,7 +35,7 @@ const DUR = 1;
 
 /** Pick a container + video/audio codec the browser can actually encode. */
 async function pickAV(): Promise<{ container: 'mp4' | 'webm'; videoCodec: string; audioCodec: string } | null> {
-  const { canEncodeVideo, canEncodeAudio } = await import('mediabunny');
+  const { canEncodeVideo, canEncodeAudio } = await loadMediabunny();
   const combos = [
     { container: 'webm' as const, videoCodec: 'vp8', audioCodec: 'opus' },
     { container: 'webm' as const, videoCodec: 'vp9', audioCodec: 'opus' },
@@ -130,7 +131,7 @@ async function run(): Promise<void> {
     audio: true,
   });
 
-  const { Input, ALL_FORMATS, BlobSource } = await import('mediabunny');
+  const { Input, ALL_FORMATS, BlobSource } = await loadMediabunny();
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   const outVideo = await input.getPrimaryVideoTrack();
   const outAudio = await input.getPrimaryAudioTrack();

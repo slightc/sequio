@@ -15,6 +15,7 @@ import {
   AudioEngine,
   Compositor,
   Exporter,
+  loadMediabunny,
   ShapeClip,
   TextClip,
   Timebase,
@@ -30,7 +31,7 @@ const H = 120;
 const FPS = 15;
 
 async function pickCodec(): Promise<{ container: 'mp4' | 'webm'; videoCodec: string } | null> {
-  const { canEncodeVideo } = await import('mediabunny');
+  const { canEncodeVideo } = await loadMediabunny();
   if (await canEncodeVideo('avc')) return { container: 'mp4', videoCodec: 'avc' };
   if (await canEncodeVideo('vp9')) return { container: 'webm', videoCodec: 'vp9' };
   if (await canEncodeVideo('vp8')) return { container: 'webm', videoCodec: 'vp8' };
@@ -65,7 +66,7 @@ async function makeSourceVideo(codec: { container: 'mp4' | 'webm'; videoCodec: s
 
 /** Count decoded frames of a blob and how many have visible (non-black) pixels. */
 async function decodeAndInspect(blob: Blob, end: number): Promise<{ frames: number; lit: number; w: number; h: number }> {
-  const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } = await import('mediabunny');
+  const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } = await loadMediabunny();
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   const vtrack = await input.getPrimaryVideoTrack();
   let frames = 0;
