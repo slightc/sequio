@@ -7,13 +7,13 @@
  * for a decoded video (object-fit: cover). Mutations don't auto-repaint (SDK
  * contract #5), so every control change calls renderPreview explicitly.
  */
-import { Texture } from 'pixi.js';
-import type { BLEND_MODES } from 'pixi.js';
 import {
+  type BLEND_MODES,
   Compositor,
   fonts,
   ImageClip,
   RealtimeClock,
+  Texture,
   TextClip,
   Timebase,
   VisualClip,

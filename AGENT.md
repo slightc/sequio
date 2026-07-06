@@ -63,6 +63,16 @@ so callers fail loudly rather than rendering silent black frames.
   milestones); re-enable them as stubs get filled.
 - **`pixi.js` is a peer dependency** and stays external in the build. Never
   bundle it.
+- **`pixi.js` / `mediabunny` are only referenced inside the engine (`src/`)**,
+  and re-exported as part of the public surface. Consumers (`example/`, and any
+  layer above) should import what they need from the engine barrel — the
+  re-exported Pixi types/values (`Texture`, `Renderer`, `AutoDetectOptions`,
+  `BLEND_MODES`) and the Mediabunny gateway (`loadMediabunny()`) — rather than
+  importing `pixi.js` / `mediabunny` directly. The only sanctioned exceptions are
+  the host/white-box boundary files (`example/ssr-node/env.ts`, which constructs
+  the Node renderer and pins the Mediabunny instance, and `example/effects-test.ts`,
+  which drives Pixi directly to sample pixels). See the "依赖边界" note in
+  `docs/architecture.md`.
 - **Public surface** is whatever `src/index.ts` exports. Internal helpers
   (`Reconciler`, `FrameCache`, `TextureManager`, demuxers, muxers) are exported
   for advanced extension but are not stable API — see the table in

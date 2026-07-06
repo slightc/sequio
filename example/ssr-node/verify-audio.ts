@@ -5,8 +5,7 @@
  * scheduled directly (mirroring the browser `export-test.ts`), so it exercises
  * the offline-mix → mux path without a fetchable audio URL.
  */
-import type { Renderer } from 'pixi.js';
-import { AudioClip, AudioEngine, type AudioSource, Timebase } from '../../src/index';
+import { AudioClip, AudioEngine, type AudioSource, type Renderer, Timebase } from '../../src/index';
 import { buildTimeline, type TimelineSpec } from '../ssr/timeline';
 import { createNodeWebGPURenderer, getMediabunny, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';

@@ -16,6 +16,7 @@ import {
   Compositor,
   Exporter,
   hold,
+  loadMediabunny,
   RealtimeClock,
   ShapeClip,
   Timebase,
@@ -168,7 +169,7 @@ async function pickCodec(
   pref: string,
   withAudio: boolean,
 ): Promise<{ container: 'mp4' | 'webm'; videoCodec: string; audioCodec: string } | null> {
-  const { canEncodeVideo, canEncodeAudio } = await import('mediabunny');
+  const { canEncodeVideo, canEncodeAudio } = await loadMediabunny();
   const combos = [
     { container: 'mp4' as const, videoCodec: 'avc', audioCodec: 'aac' },
     { container: 'webm' as const, videoCodec: 'vp9', audioCodec: 'opus' },

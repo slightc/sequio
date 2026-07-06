@@ -7,6 +7,16 @@
  * extension but are not part of the stable API.
  */
 
+// ── PixiJS peer re-exports ───────────────────────────────────────────────────
+// The engine is the single gateway to PixiJS. Consumers that build a custom
+// `VisualSource` (`getTextureAt(): Texture`), set a clip's blend mode, or inject
+// a renderer (`CompositorOptions.createRenderer`) need these Pixi types — get
+// them here rather than importing `pixi.js` directly, so the rest of the app
+// stays decoupled from the peer. `pixi.js` remains an external peer dependency;
+// these names resolve to the host's single Pixi instance.
+export { Texture } from 'pixi.js';
+export type { Renderer, AutoDetectOptions, BLEND_MODES } from 'pixi.js';
+
 // ── Core ──────────────────────────────────────────────────────────────────
 export type { Disposable, Subscription } from './core/disposable';
 export { createSubscription } from './core/disposable';

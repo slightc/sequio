@@ -7,14 +7,15 @@
  * asserts the frame count, dimensions and that a decoded frame is actually red
  * (catches a blank-canvas capture). Result on `window.__EXPORT_TEST__`.
  */
-import { Texture } from 'pixi.js';
 import {
   AudioClip,
   AudioEngine,
   type AudioSource,
   Compositor,
   Exporter,
+  loadMediabunny,
   ShapeClip,
+  Texture,
   Timebase,
   VideoClip,
   VideoSource,
@@ -30,7 +31,7 @@ const DUR = 0.5;
 
 /** Pick a container + codec the browser can actually encode. */
 async function pickCodec(): Promise<{ container: 'mp4' | 'webm'; videoCodec: string } | null> {
-  const { canEncodeVideo } = await import('mediabunny');
+  const { canEncodeVideo } = await loadMediabunny();
   if (await canEncodeVideo('avc')) return { container: 'mp4', videoCodec: 'avc' };
   if (await canEncodeVideo('vp9')) return { container: 'webm', videoCodec: 'vp9' };
   if (await canEncodeVideo('vp8')) return { container: 'webm', videoCodec: 'vp8' };
@@ -69,7 +70,7 @@ async function runVideoExport(): Promise<Record<string, unknown>> {
     (p) => progress.push(p),
   );
 
-  const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } = await import('mediabunny');
+  const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } = await loadMediabunny();
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   const vtrack = await input.getPrimaryVideoTrack();
 
@@ -109,7 +110,7 @@ async function runVideoExport(): Promise<Record<string, unknown>> {
 
 /** A/V export (audio scheduled via AudioEngine) → decode back: both tracks present. */
 async function runAudioExport(): Promise<Record<string, unknown>> {
-  const { canEncodeVideo, canEncodeAudio } = await import('mediabunny');
+  const { canEncodeVideo, canEncodeAudio } = await loadMediabunny();
   const combos = [
     { container: 'webm' as const, videoCodec: 'vp8', audioCodec: 'opus' },
     { container: 'webm' as const, videoCodec: 'vp9', audioCodec: 'opus' },
@@ -152,7 +153,7 @@ async function runAudioExport(): Promise<Record<string, unknown>> {
     ...combo,
   });
 
-  const { Input, ALL_FORMATS, BlobSource } = await import('mediabunny');
+  const { Input, ALL_FORMATS, BlobSource } = await loadMediabunny();
   const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
   const vtrack = await input.getPrimaryVideoTrack();
   const atrack = await input.getPrimaryAudioTrack();
@@ -248,7 +249,7 @@ async function runVideoRoundTrip(): Promise<Record<string, unknown>> {
 
     // Decode the re-exported video and count NON-black frames — frame-sync bugs
     // (prepare not awaiting an in-flight decode) show up as dropped/black frames.
-    const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } = await import('mediabunny');
+    const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } = await loadMediabunny();
     const input = new Input({ source: new BlobSource(out), formats: ALL_FORMATS });
     const vtrack = await input.getPrimaryVideoTrack();
     if (vtrack) {

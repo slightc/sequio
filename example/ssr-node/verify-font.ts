@@ -5,7 +5,7 @@
  * makes the font available to PixiJS's text measurement/rendering. Needs network
  * to fonts.googleapis.com / fonts.gstatic.com.
  */
-import type { Renderer } from 'pixi.js';
+import type { Renderer } from '../../src/index';
 import { buildTimeline, type TimelineSpec } from '../ssr/timeline';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { loadFontsNode } from './fonts-node';

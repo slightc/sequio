@@ -8,10 +8,10 @@
  *
  * Automated: `pnpm verify:render` reads `window.__RENDER_TEST__`.
  */
-import { Texture } from 'pixi.js';
 import {
   Compositor,
   ImageClip,
+  Texture,
   Timebase,
   VisualSource,
   VisualTrack,

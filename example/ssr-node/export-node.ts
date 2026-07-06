@@ -19,8 +19,7 @@
  * the very first frame, so a rejected codec costs one wasted frame, then we retry
  * with VP9/WebM (which node-av reliably has).
  */
-import type { Renderer } from 'pixi.js';
-import { type AudioEngine, Compositor, exportFrameTimes } from '../../src/index';
+import { type AudioEngine, Compositor, exportFrameTimes, type Renderer } from '../../src/index';
 import { getMediabunny } from './env';
 
 export interface NodeExportOptions {

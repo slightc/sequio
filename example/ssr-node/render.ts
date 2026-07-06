@@ -11,7 +11,7 @@
  * (Mesa lavapipe — `apt install mesa-vulkan-drivers`). Without one the worker
  * exits with a clear "Route B unavailable" message.
  */
-import type { Renderer } from 'pixi.js';
+import type { Renderer } from '../../src/index';
 import { sampleTimeline } from '../ssr/sample-timeline';
 import { buildTimeline, type TimelineSpec } from '../ssr/timeline';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';

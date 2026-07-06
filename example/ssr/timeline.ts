@@ -15,11 +15,12 @@
  * `await`ing sources (`init()`, font loading, `source.load()`) is the only part
  * that needs a browser.
  */
-import type { AutoDetectOptions, BLEND_MODES, Renderer } from 'pixi.js';
 import {
   AudioClip,
   AudioEngine,
   AudioSource,
+  type AutoDetectOptions,
+  type BLEND_MODES,
   BlurEffect,
   ColorEffect,
   Compositor,
@@ -36,6 +37,7 @@ import {
   ImageClip,
   ImageSource,
   linear,
+  type Renderer,
   ShapeClip,
   type ShapeSpec,
   TextClip,

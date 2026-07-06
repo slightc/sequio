@@ -9,7 +9,7 @@
  * On load it also renders the built-in sample and publishes the result on
  * `window.__SSR_TEST__` so `pnpm verify:ssr` can assert the browser half works.
  */
-import { Exporter } from '../src/index';
+import { Exporter, loadMediabunny } from '../src/index';
 import { sampleTimeline } from './ssr/sample-timeline';
 import { buildTimeline, type TimelineSpec } from './ssr/timeline';
 
@@ -32,7 +32,7 @@ export interface RenderResult {
 async function negotiateCodec(
   want: { container?: 'mp4' | 'webm'; videoCodec?: string },
 ): Promise<{ container: 'mp4' | 'webm'; videoCodec: string } | null> {
-  const { canEncodeVideo } = await import('mediabunny');
+  const { canEncodeVideo } = await loadMediabunny();
   const candidates: Array<{ container: 'mp4' | 'webm'; videoCodec: string }> = [];
   if (want.container && want.videoCodec) candidates.push({ container: want.container, videoCodec: want.videoCodec });
   candidates.push(

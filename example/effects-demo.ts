@@ -13,7 +13,6 @@
  *      {@link CrossfadeTransition}; the progress slider scrubs the mix and Play
  *      ping-pongs it. `out = A*(1-p) + B*p`.
  */
-import { Texture } from 'pixi.js';
 import {
   BlurEffect,
   BulgeEffect,
@@ -25,6 +24,7 @@ import {
   PerspectiveEffect,
   RealtimeClock,
   ShapeClip,
+  Texture,
   Timebase,
   VisualClip,
   VisualSource,

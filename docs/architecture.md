@@ -418,8 +418,25 @@ resolution 1)。
 
 | 类别 | 内容 |
 |---|---|
-| **公开**（使用者直接用） | `Compositor`、`Track` / `VisualTrack` / `AudioTrack`、各 `Clip` 子类（含 `GroupClip` 子合成）、`Effect` / `EffectRegistry`、`Transition`、`Transform2D` / `AnimatableProperty`、`MediaSource` 子类、`Clock` 实现、`AudioEngine`、`Exporter`、`Timebase` |
+| **公开**（使用者直接用） | `Compositor`、`Track` / `VisualTrack` / `AudioTrack`、各 `Clip` 子类（含 `GroupClip` 子合成）、`Effect` / `EffectRegistry`、`Transition`、`Transform2D` / `AnimatableProperty`、`MediaSource` 子类、`Clock` 实现、`AudioEngine`、`Exporter`、`Timebase`；以及 engine 转出的 PixiJS peer 面（`Texture` 值 + `Renderer` / `AutoDetectOptions` / `BLEND_MODES` 类型）与 Mediabunny 网关（`loadMediabunny` / `setMediabunnyModule`） |
 | **内部**（不暴露或仅高级扩展） | `Reconciler`、`FrameCache`、`TextureManager`、Mediabunny 读写适配层（解码 sink / 封装 output） |
+
+### 依赖边界：pixi.js / mediabunny 只经 engine 出入
+
+`pixi.js`（peer）与 `mediabunny`（runtime dep）**只允许在 engine（`src/`）里直接引用**，
+并作为 engine 公开面的一部分转出——上层（`example/` 及任何消费方）**尽量只引用 engine，
+不直接 `import 'pixi.js'` / `import('mediabunny')`**：
+
+- 需要 Pixi 类型/值时从 barrel 取：自定义 `VisualSource`（`getTextureAt(): Texture`）用转出的
+  `Texture`；设 clip 混合模式、注入 renderer（`CompositorOptions.createRenderer`）用转出的
+  `BLEND_MODES` / `Renderer` / `AutoDetectOptions`。
+- 需要 demux / 编码能力时用 `loadMediabunny()`（而非 `import('mediabunny')`）——同时避开
+  ESM/CJS 双实例（dual-package）陷阱，拿到宿主 `setMediabunnyModule()` 钉住的同一实例。
+- **例外（宿主/白盒层）**：`example/ssr-node/env.ts`（Route B 用 `import('pixi.js')` 造
+  `WebGPURenderer`、`require('@mediabunny/server')` 注册 node-av 编码器——这正是注入 seam
+  本身）与 `example/effects-test.ts`（直接驱动 Pixi `Renderer` / `RenderTexture` 采像素的
+  白盒渲染测试）仍直接触 pixi/mediabunny。`tests/public-exports.test.ts` 守住 barrel 的转出面
+  不回退。
 
 ## 推荐技术选型
 
