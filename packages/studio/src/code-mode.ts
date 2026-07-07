@@ -26,7 +26,7 @@ import { Runtime, type Composer, type PreviewHandle } from '@video-editor-canvas
 // Compositor. It reads exactly like an `example/` demo — the runtime injects any
 // server renderer into `new Compositor` implicitly, so there's no env plumbing.
 const DEFAULT_FILES: Record<string, string> = {
-  '/index.ts': `import { Compositor, Timebase, VisualTrack } from '@video-editor-canvas/engine';
+  '/index.ts': `import { Compositor, VisualTrack } from '@video-editor-canvas/engine';
 import { defineComposition } from '@video-editor-canvas/runtime';
 import { W, H, DURATION, background, ball } from './scene';
 import { title } from './title';
@@ -36,7 +36,7 @@ export default defineComposition(async () => {
   const compositor = new Compositor({
     width: W,
     height: H,
-    timebase: new Timebase(30),
+    fps: 30, // or pass a Timebase; omit both for 30fps
     background: 0x0b0b0e,
     preferWebGPU: true,
   });

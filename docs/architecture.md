@@ -71,7 +71,7 @@ canvas，因此对象图可以在没有 GPU 的环境里构建与单测。GPU re
 可测），只是不出像素；`renderToTexture(t)` 在未 `init()` 时直接抛错。典型接线：
 
 ```ts
-const c = new Compositor({ width, height, timebase });
+const c = new Compositor({ width, height, fps: 30 }); // 或 timebase；两者都不传默认 30fps
 await c.init();
 document.body.append(c.view);
 const clock = new RealtimeClock();
@@ -82,6 +82,10 @@ clock.play();
 
 `renderToTexture(t)` 返回的 `RenderTexture` 由调用方拥有并负责 `destroy()`（契约 #4）。
 完整可运行示例见 [`example/`](../example/)（`pnpm dev`）。
+
+**时基（`timebase` / `fps`）**：`CompositorOptions.timebase` 可选——传一个 `Timebase` 做完全
+控制，或用简化的 `fps` 快捷参数（内部 `new Timebase(fps)`），或两者都不传（默认 30fps）。
+优先级 `timebase > fps > 30`；解析后的时基由 `compositor.timebase` 读出（时间按其帧网格量化）。
 
 **HiDPI**：渲染器以 `resolution`（默认 `devicePixelRatio`）+ `autoDensity` 创建——canvas
 内部按 `width*resolution` 绘制、CSS 仍是 `width` px，所以高分屏上文字/矢量边缘清晰不糊。

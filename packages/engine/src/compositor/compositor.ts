@@ -1,7 +1,7 @@
 import { autoDetectRenderer, type AutoDetectOptions, Container, type Renderer, RenderTexture } from 'pixi.js';
 import type { Disposable } from '../core/disposable';
 import type { Effect } from '../effects/effect';
-import type { Timebase } from '../time/timebase';
+import { Timebase } from '../time/timebase';
 import { Reconciler, type RenderContext } from './reconciler';
 import type { Track } from './track';
 import type { VisualClip } from './clip';
@@ -22,7 +22,19 @@ function isTextureManagerAware(source: unknown): source is TextureManagerAware {
 export interface CompositorOptions {
   width: number;
   height: number;
-  timebase: Timebase;
+  /**
+   * Frame reference. Times are quantized to its frame grid (contract: seconds at
+   * the boundary, frames internally). Optional — pass a {@link Timebase} for full
+   * control, or the simpler {@link fps} shortcut, or neither. If both are given
+   * `timebase` wins. Read the resolved value back via {@link Compositor.timebase}.
+   */
+  timebase?: Timebase;
+  /**
+   * Shorthand for `timebase: new Timebase(fps)`. Ignored if {@link timebase} is
+   * given. Defaults to `30` when neither is set, so `new Compositor({ width,
+   * height })` just works.
+   */
+  fps?: number;
   background?: number;
   /** Prefer the PixiJS v8 WebGPU backend when available. */
   preferWebGPU?: boolean;
@@ -123,6 +135,8 @@ export class Compositor implements Disposable {
   holdLastFrameAtEnd: boolean;
   /** Normalized coordinate-frame origin (`0..1` of the canvas); default `[0,0]`. */
   readonly origin: readonly [number, number];
+  /** Resolved frame reference (from `options.timebase`, else `options.fps`, else 30fps). */
+  readonly timebase: Timebase;
   private renderer: Renderer | null = null;
   private initPromise: Promise<void> | null = null;
   private dirty = true;
@@ -138,6 +152,9 @@ export class Compositor implements Disposable {
       ({ width: options.width, height: options.height } as HTMLCanvasElement)) as HTMLCanvasElement;
     this.view.width = options.width;
     this.view.height = options.height;
+    // Resolve the frame reference: explicit timebase wins, else the fps shortcut,
+    // else 30fps — so `new Compositor({ width, height })` works with no time setup.
+    this.timebase = options.timebase ?? new Timebase(options.fps ?? 30);
     this.resolution = options.resolution ?? (globalThis.devicePixelRatio || 1);
     this.prewarmSeconds = options.prewarmSeconds ?? 0.5;
     this.holdLastFrameAtEnd = options.holdLastFrameAtEnd ?? true;
@@ -259,7 +276,7 @@ export class Compositor implements Disposable {
     if (!this.holdLastFrameAtEnd) return t;
     const end = this.timelineEnd();
     if (!(end > 0) || !Number.isFinite(end) || t < end) return t;
-    const tb = this.options.timebase;
+    const tb = this.timebase;
     const last = tb.toSeconds(tb.toFrame(end) - 1); // last real frame = export's final frame
     return last > 0 ? last : 0;
   }

@@ -44,12 +44,12 @@ const FILES: Record<string, string> = {
     }
   `,
   '/index.ts': `
-    import { Compositor, Timebase } from '@video-editor-canvas/engine';
+    import { Compositor } from '@video-editor-canvas/engine';
     import { defineComposition } from '@video-editor-canvas/runtime';
     import { W, H, buildTrack } from './scene';
     export default defineComposition(async () => {
       const compositor = new Compositor({
-        width: W, height: H, timebase: new Timebase(${FPS}),
+        width: W, height: H, fps: ${FPS},
         background: 0x000000, preferWebGPU: false,
       });
       await compositor.init();
