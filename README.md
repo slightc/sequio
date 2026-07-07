@@ -1,12 +1,14 @@
-# video-editor-canvas
+# Sequio
+
+**Programmable timelines for web video and AI.**
 
 A **pnpm monorepo** for a PixiJS-based video editor, split into three packages:
 
 | Package | Name | What it is |
 |---|---|---|
-| [`packages/engine`](packages/engine) | `@video-editor-canvas/engine` | The SDK: a command-style object-graph runtime — **decode, composite, audio, export**. The published library. |
-| [`packages/server`](packages/server) | `@video-editor-canvas/server` | **Server-side rendering** — a serializable `TimelineSpec` protocol plus two render routes (headless Chrome / pure-Node WebGPU). Depends on engine. |
-| [`packages/studio`](packages/studio) | `@video-editor-canvas/studio` | A reference **multi-track editor** app (timeline, canvas manipulation, forked export, Server Render). Depends on engine + server. |
+| [`packages/engine`](packages/engine) | `@sequio/engine` | The SDK: a command-style object-graph runtime — **decode, composite, audio, export**. The published library. |
+| [`packages/server`](packages/server) | `@sequio/server` | **Server-side rendering** — a serializable `TimelineSpec` protocol plus two render routes (headless Chrome / pure-Node WebGPU). Depends on engine. |
+| [`packages/studio`](packages/studio) | `@sequio/studio` | A reference **multi-track editor** app (timeline, canvas manipulation, forked export, Server Render). Depends on engine + server. |
 
 The **engine** is a command-style object-graph engine on top of
 [PixiJS v8](https://pixijs.com/): you build a tree of `Track / Clip / Effect`
@@ -47,7 +49,7 @@ pnpm dev         # run the studio editor (dev:engine / dev:server for the others
 ```
 
 ```ts
-import { Timebase, RealtimeClock, Compositor, VisualTrack } from '@video-editor-canvas/engine';
+import { Timebase, RealtimeClock, Compositor, VisualTrack } from '@sequio/engine';
 
 const timebase = new Timebase(30);
 const compositor = new Compositor({ width: 1920, height: 1080, timebase });

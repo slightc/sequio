@@ -24,7 +24,7 @@ import {
   VideoClip,
   VideoSource,
   VisualTrack,
-} from '@video-editor-canvas/engine';
+} from '@sequio/engine';
 import { applyCover } from './cover';
 import { type ExportTrackLike, exportTimeline } from '../src/editor-export';
 

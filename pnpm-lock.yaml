@@ -45,7 +45,7 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@video-editor-canvas/engine':
+      '@sequio/engine':
         specifier: workspace:*
         version: link:../engine
       typescript:
@@ -54,10 +54,10 @@ importers:
 
   packages/server:
     dependencies:
-      '@video-editor-canvas/engine':
+      '@sequio/engine':
         specifier: workspace:*
         version: link:../engine
-      '@video-editor-canvas/runtime':
+      '@sequio/runtime':
         specifier: workspace:*
         version: link:../runtime
       mediabunny:
@@ -85,13 +85,13 @@ importers:
 
   packages/studio:
     dependencies:
-      '@video-editor-canvas/engine':
+      '@sequio/engine':
         specifier: workspace:*
         version: link:../engine
-      '@video-editor-canvas/runtime':
+      '@sequio/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@video-editor-canvas/server':
+      '@sequio/server':
         specifier: workspace:*
         version: link:../server
       mediabunny:

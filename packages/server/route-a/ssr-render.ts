@@ -14,8 +14,8 @@
  * On load it also renders the built-in sample and publishes the result on
  * `window.__SSR_TEST__` so `pnpm verify:ssr` can assert the browser half works.
  */
-import { Exporter, loadMediabunny } from '@video-editor-canvas/engine';
-import { Runtime, type RuntimeBundle } from '@video-editor-canvas/runtime';
+import { Exporter, loadMediabunny } from '@sequio/engine';
+import { Runtime, type RuntimeBundle } from '@sequio/runtime';
 import { sampleTimeline } from '../src/sample-timeline';
 import { buildTimeline, type TimelineSpec } from '../src/timeline';
 

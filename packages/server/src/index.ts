@@ -1,5 +1,5 @@
 /**
- * `@video-editor-canvas/server` — server-side rendering.
+ * `@sequio/server` — server-side rendering.
  *
  * Public surface: the serializable {@link TimelineSpec} protocol and the
  * {@link buildTimeline} builder that rebuilds the SDK object graph from it. Both

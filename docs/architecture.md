@@ -28,13 +28,13 @@
 ## 模块与源码位置
 
 > **Monorepo**：本仓库是 pnpm workspace，分四个包——`packages/engine`
-> （`@video-editor-canvas/engine`，即本 SDK）、`packages/runtime`
-> （`@video-editor-canvas/runtime`，编译并运行 TS/JS 代码得到一个 `Composer`，仅依赖
-> engine）、`packages/server`（`@video-editor-canvas/server`，服务端渲染，依赖
-> engine + runtime）、`packages/studio`（`@video-editor-canvas/studio`，参考编辑器）。
+> （`@sequio/engine`，即本 SDK）、`packages/runtime`
+> （`@sequio/runtime`，编译并运行 TS/JS 代码得到一个 `Composer`，仅依赖
+> engine）、`packages/server`（`@sequio/server`，服务端渲染，依赖
+> engine + runtime）、`packages/studio`（`@sequio/studio`，参考编辑器）。
 > DAG：`engine ← runtime ← server ← studio`，`engine ← {server, studio}`。除非另有
 > `packages/…` 前缀，本文提到的 `src/`、`tests/`、`example/` 路径均相对
-> **`packages/engine/`**；消费包以 `@video-editor-canvas/engine` 从源码直接引用引擎。
+> **`packages/engine/`**；消费包以 `@sequio/engine` 从源码直接引用引擎。
 > 代码运行时（虚拟文件系统 + 编译 + 命令式 Composer）见 [`runtime.md`](runtime.md)。
 
 | 模块 | 源码 | 状态 |
@@ -438,7 +438,7 @@ resolution 1)。
 ### 依赖收口：只有 `engine` 直接引用 `pixi.js` / `mediabunny`
 
 `pixi.js`（peer 依赖）和 `mediabunny` 是渲染/编解码内核，只在 **`engine`** 包里直接
-`import`。`server` / `studio` 等上层包**只引用 `@video-editor-canvas/engine`**，不直接
+`import`。`server` / `studio` 等上层包**只引用 `@sequio/engine`**，不直接
 依赖这两个库——它们需要的 Pixi 类型（`Renderer`、`AutoDetectOptions`、`BLEND_MODES`，即
 `CompositorOptions.createRenderer` 与 `Clip.blendMode` 暴露到公开面的那几个）由 engine 从
 `index.ts` **type-only 转出**（运行时不打包 Pixi）；需要 mediabunny 模块本身（如

@@ -1,5 +1,5 @@
 /**
- * `@video-editor-canvas/runtime` — compile and run multi-file TS/JS into a
+ * `@sequio/runtime` — compile and run multi-file TS/JS into a
  * {@link Composer}.
  *
  * The runtime takes a set of source files (an in-memory {@link InMemoryFileSystem}
@@ -13,7 +13,7 @@
  * rendering — one object, three destinations.
  *
  * Everything here is browser-safe. A Node/real-filesystem adapter lives in
- * `@video-editor-canvas/runtime/node-fs` (imports `node:fs`, kept out of this
+ * `@sequio/runtime/node-fs` (imports `node:fs`, kept out of this
  * barrel) so importing the runtime never drags Node built-ins into a bundle.
  */
 

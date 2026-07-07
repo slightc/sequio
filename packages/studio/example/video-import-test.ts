@@ -12,7 +12,7 @@
  *
  * Result on `window.__VIDEO_IMPORT_TEST__`; run via `pnpm verify:video-import`.
  */
-import { AudioEngine, Compositor, Exporter, loadMediabunny, ShapeClip, Timebase, VideoSource, VisualTrack } from '@video-editor-canvas/engine';
+import { AudioEngine, Compositor, Exporter, loadMediabunny, ShapeClip, Timebase, VideoSource, VisualTrack } from '@sequio/engine';
 import { videoCacheSettings } from '../src/editor-export';
 
 const W = 320;

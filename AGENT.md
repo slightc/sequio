@@ -5,7 +5,7 @@ Guidance for AI coding agents (and humans) working in this repository.
 
 ## What this project is
 
-`video-editor-canvas` is a **command-style object-graph engine** for building
+`sequio` is a **command-style object-graph engine** for building
 video editors on top of **PixiJS v8**. Consumers construct a tree of
 `Track / Clip / Effect` objects and drive a clock; the SDK owns the low-level
 runtime: **decode, composite, audio, export**. Persistence, schema, undo,
@@ -41,17 +41,17 @@ in a clean dependency DAG — `engine ← runtime ← server ← studio`, and
 
 ```
 packages/
-  engine/   @video-editor-canvas/engine    the SDK runtime (the published library)
-  runtime/  @video-editor-canvas/runtime   compile+run TS/JS → a Composer (depends on engine)
-  server/   @video-editor-canvas/server    server-side rendering (depends on engine + runtime)
-  studio/   @video-editor-canvas/studio    reference multi-track editor (depends on engine + server + runtime)
+  engine/   @sequio/engine    the SDK runtime (the published library)
+  runtime/  @sequio/runtime   compile+run TS/JS → a Composer (depends on engine)
+  server/   @sequio/server    server-side rendering (depends on engine + runtime)
+  studio/   @sequio/studio    reference multi-track editor (depends on engine + server + runtime)
 docs/       architecture & design (workspace-level)
 todo/       milestone task tracking (start here for "what's next")
 ```
 
 Tooling (TypeScript, Vite, Vitest, Puppeteer, tsx) lives in the **root**
 `devDependencies`; each package declares only its own runtime deps. Consumer
-packages import the engine as `@video-editor-canvas/engine` and resolve it
+packages import the engine as `@sequio/engine` and resolve it
 **straight from source** (tsconfig `paths` + a Vite/Vitest alias), so
 `pnpm typecheck` / `pnpm test` never need a prior `pnpm build`.
 
@@ -105,7 +105,7 @@ injected real one), transpiles + links them, and runs the entry. The program
 builds its video **imperatively with the engine's own classes** (`new Compositor()`,
 `new VisualTrack()`, `track.add(new TextClip(...))` — same style as `example/`, so
 a user can bring their own `Clip`/`Effect` subclasses) inside
-`defineComposition(builder)`; the runtime injects the real `@video-editor-canvas/engine`
+`defineComposition(builder)`; the runtime injects the real `@sequio/engine`
 namespace as a sandbox module so the code can `new` it. Environment options a host
 needs (a Node renderer, an output scale) are folded into `new Compositor(...)`
 **implicitly** (`engineForEnv` subclasses `Compositor` per build), so the code reads
@@ -114,7 +114,7 @@ that (1) previews and (2) exports in the browser and whose (3) `toBundle()` retu
 the **source files themselves** — the SSR routes re-run that code on the server
 (no spec to serialize/keep in sync). One object, three destinations (client preview /
 client export / server render). Browser-safe (only `typescript` + `engine` barrels);
-the `node:fs` adapter is the `@video-editor-canvas/runtime/node-fs` subpath, kept out
+the `node:fs` adapter is the `@sequio/runtime/node-fs` subpath, kept out
 of the browser barrel. See [`docs/runtime.md`](docs/runtime.md).
 
 ### `packages/studio` — reference editor
@@ -139,7 +139,7 @@ so callers fail loudly rather than rendering silent black frames.
 - **`pixi.js` is a peer dependency** and stays external in the build. Never
   bundle it.
 - **Only `engine` imports `pixi.js` / `mediabunny` directly.** Upper packages
-  (`server`, `runtime`, `studio`) import from `@video-editor-canvas/engine` only: Pixi types
+  (`server`, `runtime`, `studio`) import from `@sequio/engine` only: Pixi types
   that leak into the public surface (`Renderer`, `AutoDetectOptions`,
   `BLEND_MODES`) are re-exported type-only from `index.ts`, and the mediabunny
   module is reached via `loadMediabunny()`. The sole exception is
@@ -201,7 +201,7 @@ that package, asserts a page's `window.*` result).
 fidelity, reuses the verify path); and **B) pure Node** — `packages/server/route-b/`
 renders via PixiJS WebGPU (Dawn) with **filters** and **media sources**
 (video/image decode), no browser (needs a GPU or Mesa lavapipe). Both share the
-`packages/server/src/` timeline protocol (`@video-editor-canvas/server`). The SDK
+`packages/server/src/` timeline protocol (`@sequio/server`). The SDK
 hooks that enable Route B
 (all no-ops in the browser): `CompositorOptions.createRenderer` (inject a renderer),
 `loadMediabunny()`/`setMediabunnyModule()` (pin one mediabunny instance — dual-package

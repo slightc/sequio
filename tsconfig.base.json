@@ -27,10 +27,10 @@
     "verbatimModuleSyntax": true,
     "baseUrl": ".",
     "paths": {
-      "@video-editor-canvas/engine": ["packages/engine/src/index.ts"],
-      "@video-editor-canvas/server": ["packages/server/src/index.ts"],
-      "@video-editor-canvas/runtime": ["packages/runtime/src/index.ts"],
-      "@video-editor-canvas/runtime/node-fs": ["packages/runtime/src/node-fs.ts"]
+      "@sequio/engine": ["packages/engine/src/index.ts"],
+      "@sequio/server": ["packages/server/src/index.ts"],
+      "@sequio/runtime": ["packages/runtime/src/index.ts"],
+      "@sequio/runtime/node-fs": ["packages/runtime/src/node-fs.ts"]
     }
   }
 }

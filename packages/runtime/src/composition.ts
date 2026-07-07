@@ -9,8 +9,8 @@
  * runs in a demo runs here, with no schema to keep in sync.
  *
  * ```ts
- * import { Compositor, VisualTrack, TextClip, Timebase } from '@video-editor-canvas/engine';
- * import { defineComposition } from '@video-editor-canvas/runtime';
+ * import { Compositor, VisualTrack, TextClip, Timebase } from '@sequio/engine';
+ * import { defineComposition } from '@sequio/runtime';
  *
  * export default defineComposition(async (env) => {
  *   const compositor = new Compositor({
@@ -27,10 +27,10 @@
  * });
  * ```
  */
-import type { AudioEngine, Compositor, CompositorOptions, Track } from '@video-editor-canvas/engine';
+import type { AudioEngine, Compositor, CompositorOptions, Track } from '@sequio/engine';
 
 /** Brand marking a value produced by {@link defineComposition}. */
-export const COMPOSITION_TAG = '@video-editor-canvas/runtime:composition' as const;
+export const COMPOSITION_TAG = '@sequio/runtime:composition' as const;
 
 /**
  * The live object graph a builder returns: an initialized {@link Compositor} plus

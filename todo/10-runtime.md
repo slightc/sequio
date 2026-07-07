@@ -1,4 +1,4 @@
-# 里程碑 10 — 代码运行时（`@video-editor-canvas/runtime`）
+# 里程碑 10 — 代码运行时（`@sequio/runtime`）
 
 **状态：✅ Done**（编译 + 链接 + 运行多文件 TS/JS → `Composer`；用户用引擎 class **命令式**
 搭图；预览 / 导出 / 服务端渲染三处消费；studio「代码模式」demo 落地。设计见
@@ -14,10 +14,10 @@
 ## 范围
 
 - **虚拟文件系统**：`FileSystem` 接口 + `InMemoryFileSystem`（浏览器安全）；可注入真实文件系统
-  （`NodeFileSystem`，`node:fs`，走 `@video-editor-canvas/runtime/node-fs` 子路径，不进 barrel）。
+  （`NodeFileSystem`，`node:fs`，走 `@sequio/runtime/node-fs` 子路径，不进 barrel）。
 - **编译**：`typescript` 的 `transpileModule` 逐文件 TS/JS → CommonJS（纯 JS，浏览器可跑）。
 - **模块链接器**：极小 CJS 加载器；相对 import 在 VFS 解析，裸标识走注入的 `externals`——**默认注入
-  真实的 `@video-editor-canvas/engine` 命名空间**（让用户 `new` 引擎 class）+ runtime 作者 API；
+  真实的 `@sequio/engine` 命名空间**（让用户 `new` 引擎 class）+ runtime 作者 API；
   惰性求值 + 缓存 + 循环 import。
 - **作者 API**：`defineComposition(builder)`——builder 命令式建图、返回
   `{ compositor, audioEngine?, duration? }`（duration 省略则从 clip 末端推导）；`env.compositorOptions`

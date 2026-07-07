@@ -1,5 +1,5 @@
 {
-  "name": "@video-editor-canvas/runtime",
+  "name": "@sequio/runtime",
   "version": "0.0.0",
   "description": "Compile and run multi-file TS/JS (virtual or injected real filesystem) into a Composer that renders/exports in the client or feeds server-side rendering.",
   "type": "module",
@@ -24,7 +24,7 @@
     "composer"
   ],
   "dependencies": {
-    "@video-editor-canvas/engine": "workspace:*",
+    "@sequio/engine": "workspace:*",
     "typescript": "^5.7.0"
   }
 }

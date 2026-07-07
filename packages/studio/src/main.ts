@@ -43,9 +43,9 @@ import {
   type VisualClip,
   type VisualSource,
   VisualTrack,
-} from '@video-editor-canvas/engine';
+} from '@sequio/engine';
 import { exportTimeline, videoCacheSettings } from './editor-export';
-import type { ClipSpec, TimelineSpec, TrackSpec } from '@video-editor-canvas/server';
+import type { ClipSpec, TimelineSpec, TrackSpec } from '@sequio/server';
 
 const W = 640;
 const H = 360;

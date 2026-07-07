@@ -24,7 +24,7 @@ import {
   type VisualClip,
   type VisualSource,
   VisualTrack,
-} from '@video-editor-canvas/engine';
+} from '@sequio/engine';
 
 /**
  * Bound a video's decode-cache so a high-resolution source can't pile up

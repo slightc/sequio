@@ -8,7 +8,7 @@
  * Supports self-hosted URLs and Google Fonts: for Google, fetch the css2
  * stylesheet, pull the font-file URLs out of it, fetch those and register them.
  */
-import { buildGoogleCss2Url } from '@video-editor-canvas/engine';
+import { buildGoogleCss2Url } from '@sequio/engine';
 import type { FontSpec } from '../src/timeline';
 
 /**

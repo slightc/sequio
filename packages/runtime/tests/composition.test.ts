@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Compositor } from '@video-editor-canvas/engine';
+import type { Compositor } from '@sequio/engine';
 import {
   COMPOSITION_TAG,
   defineComposition,

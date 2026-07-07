@@ -6,7 +6,7 @@
  *  - **relative** (`./foo`, `../bar`) → walked against the VFS with the usual
  *    extension/index candidates (`.ts`, `.tsx`, `.js`, `.jsx`, `.json`,
  *    `/index.*`);
- *  - **bare** (`@video-editor-canvas/runtime`, `engine`, …) → looked up in an
+ *  - **bare** (`@sequio/runtime`, `engine`, …) → looked up in an
  *    injected `externals` map so host-provided modules (the runtime's own
  *    authoring API, the engine namespace, …) are reachable without bundling.
  *

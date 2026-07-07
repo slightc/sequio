@@ -1,4 +1,4 @@
-import type { VisualClip } from '@video-editor-canvas/engine';
+import type { VisualClip } from '@sequio/engine';
 
 /**
  * Lay a clip out like CSS `object-fit: cover`: scale uniformly to fill the

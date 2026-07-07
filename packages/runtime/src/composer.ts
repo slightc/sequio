@@ -24,7 +24,7 @@ import {
   RealtimeClock,
   type Subscription,
   Timebase,
-} from '@video-editor-canvas/engine';
+} from '@sequio/engine';
 import {
   type Composition,
   type CompositionEnv,

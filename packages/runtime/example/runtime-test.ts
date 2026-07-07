@@ -1,5 +1,5 @@
 /**
- * Puppeteer e2e for `@video-editor-canvas/runtime`.
+ * Puppeteer e2e for `@sequio/runtime`.
  *
  * Compiles + runs a **two-file TypeScript program** that builds the composition
  * **imperatively** with the engine's own classes (`new Compositor()`,
@@ -12,7 +12,7 @@
  *
  * Result on `window.__RUNTIME_TEST__`.
  */
-import { loadMediabunny } from '@video-editor-canvas/engine';
+import { loadMediabunny } from '@sequio/engine';
 import { runComposition } from '../src/index';
 
 const W = 160;
@@ -25,7 +25,7 @@ const DUR = 0.5;
 // fills the frame; the title sits at the top so the centre pixel stays teal.
 const FILES: Record<string, string> = {
   '/scene.ts': `
-    import { ShapeClip, TextClip, VisualTrack } from '@video-editor-canvas/engine';
+    import { ShapeClip, TextClip, VisualTrack } from '@sequio/engine';
     export const W = ${W};
     export const H = ${H};
     export function buildTrack() {
@@ -44,8 +44,8 @@ const FILES: Record<string, string> = {
     }
   `,
   '/index.ts': `
-    import { Compositor } from '@video-editor-canvas/engine';
-    import { defineComposition } from '@video-editor-canvas/runtime';
+    import { Compositor } from '@sequio/engine';
+    import { defineComposition } from '@sequio/runtime';
     import { W, H, buildTrack } from './scene';
     export default defineComposition(async () => {
       const compositor = new Compositor({

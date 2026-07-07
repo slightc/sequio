@@ -97,7 +97,7 @@ interface TrackDef {
 async function loadTitleFont(): Promise<string> {
   const family = 'Pacifico';
   try {
-    await fonts.loadGoogleFont({ family, text: 'video-editor-canvas' });
+    await fonts.loadGoogleFont({ family, text: 'sequio' });
   } catch {
     await fonts.load({ family, src: '/example/assets/pacifico.ttf' }).catch(() => {});
   }
@@ -237,7 +237,7 @@ async function main(): Promise<void> {
     titleTrack.zIndex = 3;
     // Breathe via GPU scale, not fontSize: rasterize once at the max size and
     // animate scale in [0.7, 1] (never upscale a raster) — smooth and crisp.
-    const titleClip = new TextClip({ text: 'video-editor-canvas', fontFamily: family, fontSize: 40, fill: 0xffffff });
+    const titleClip = new TextClip({ text: 'sequio', fontFamily: family, fontSize: 40, fill: 0xffffff });
     titleClip.start = 0;
     titleClip.end = DURATION;
     titleClip.transform.anchor.setStatic([0.5, 0.5]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BlurEffect, ColorEffect, ShapeClip, TextClip } from '@video-editor-canvas/engine';
+import { BlurEffect, ColorEffect, ShapeClip, TextClip } from '@sequio/engine';
 import { buildClip, buildEffect, timelineEnd, type TimelineSpec } from '../src/timeline';
 import { sampleTimeline } from '../src/sample-timeline';
 import { parseGoogleFontUrls } from '../route-b/fonts-node';

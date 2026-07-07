@@ -1,7 +1,7 @@
 {
-  "name": "@video-editor-canvas/server",
+  "name": "@sequio/server",
   "version": "0.0.0",
-  "description": "Server-side rendering for video-editor-canvas: a serializable TimelineSpec protocol plus two render routes — Route A (headless Chrome) and Route B (pure Node, PixiJS WebGPU).",
+  "description": "Server-side rendering for sequio: a serializable TimelineSpec protocol plus two render routes — Route A (headless Chrome) and Route B (pure Node, PixiJS WebGPU).",
   "type": "module",
   "license": "MIT",
   "main": "./src/index.ts",
@@ -29,8 +29,8 @@
     "headless"
   ],
   "dependencies": {
-    "@video-editor-canvas/engine": "workspace:*",
-    "@video-editor-canvas/runtime": "workspace:*",
+    "@sequio/engine": "workspace:*",
+    "@sequio/runtime": "workspace:*",
     "mediabunny": "^1.49.0",
     "pixi.js": "^8.6.0"
   },

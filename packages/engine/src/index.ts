@@ -1,5 +1,5 @@
 /**
- * video-editor-canvas — a command-style object-graph engine for building video
+ * sequio — a command-style object-graph engine for building video
  * editors on top of PixiJS.
  *
  * Public surface only. Internal helpers (Reconciler, FrameCache,
