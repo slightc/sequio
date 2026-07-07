@@ -42,10 +42,10 @@
 | 模块 | 源码 | 状态 |
 |---|---|---|
 | 时间与时钟 | `src/time/` | ✅ Timebase / RealtimeClock / FixedStepClock 已实现（视频元素式控制面：play / pause / seek + 到 `duration` 自动停止）|
-| 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现 |
+| 动画原语 | `src/animation/` | ✅ AnimatableProperty / Transform2D / Easing 已实现；`ClipAnimator` / `TextAnimator` seam + 内置 `StaggerTextAnimator`（逐行/逐词/逐字）/ `TweenAnimator` + GSAP 绑定（`gsapClipAnimator` / `gsapTextAnimator`，引擎不依赖 gsap）——见 [text-animation.md](text-animation.md) |
 | 媒体源 | `src/media/` | 🚧 `VideoSource`（Mediabunny）+ `ImageSource`（ImageBitmap→Texture）已实现；Audio 解码待实现。`load()` 的帧率从**首段 packet 前缀**估计（`computePacketStats(120)`），不扫全文件——否则长/高分辨率大文件导入会卡住 |
 | 纹理显存 | `src/texture/` | ✅ 字节预算 + LRU + keyed upload（`sourceId:frameIdx`）；与 FrameCache 联动，Compositor 持共享池 |
-| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）+ 轨道内重叠驱动转场（`track.addTransition`）已实现 |
+| 合成图 | `src/compositor/` | 🚧 对象图 + 渲染核心 + 多轨叠层 + 视觉 clip（Video/Image/Text/Shape/Group）+ 三级 effects（clip/track/全局 `compositor.effects`）+ 轨道内重叠驱动转场（`track.addTransition`）已实现；`VisualClip.animator` + `TextClip.split`（逐行/逐词/逐字）文字动效 |
 | 特效转场 | `src/effects/` | 🚧 `Effect` 惰性 filter + 内置 `ColorEffect`/`BlurEffect` + warp（`BulgeEffect`/`PerspectiveEffect`/`DisplacementEffect`）+ `registerBuiltins` + clip 级接线 + `CrossfadeTransition` 已实现；chroma/LUT/wipe 及 Compositor 驱动的自动转场待后续 |
 | 音频引擎 | `src/audio/` | ✅ AudioSource（Mediabunny AudioBufferSink）+ AudioEngine（Web Audio 排程 + speed/gain/fade + OfflineAudioContext 导出）已实现 |
 | 导出 | `src/export/` | ✅ `Exporter`（定步循环 + `await prepare` 不丢帧 + Mediabunny `Output` 封装 MP4/WebM,视频 + 音频）已实现;golden-frame 全帧对比为后续 |
@@ -434,7 +434,7 @@ resolution 1)。
 
 | 类别 | 内容 |
 |---|---|
-| **公开**（使用者直接用） | `Compositor`、`Track` / `VisualTrack` / `AudioTrack`、各 `Clip` 子类（含 `GroupClip` 子合成）、`Effect` / `EffectRegistry`、`Transition`、`Transform2D` / `AnimatableProperty`、`MediaSource` 子类、`Clock` 实现、`AudioEngine`、`Exporter`、`Timebase` |
+| **公开**（使用者直接用） | `Compositor`、`Track` / `VisualTrack` / `AudioTrack`、各 `Clip` 子类（含 `GroupClip` 子合成、`TextClip.split` 拆分文字）、`Effect` / `EffectRegistry`、`Transition`、`Transform2D` / `AnimatableProperty`、动画器（`ClipAnimator` / `TextAnimator` / `StaggerTextAnimator` / `TweenAnimator` + GSAP 绑定 `gsapClipAnimator` / `gsapTextAnimator`）、`MediaSource` 子类、`Clock` 实现、`AudioEngine`、`Exporter`、`Timebase` |
 | **内部**（不暴露或仅高级扩展） | `Reconciler`、`FrameCache`、`TextureManager`、Mediabunny 读写适配层（解码 sink / 封装 output） |
 
 ### 依赖收口：只有 `engine` 直接引用 `pixi.js` / `mediabunny`

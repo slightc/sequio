@@ -18,6 +18,7 @@
 | 8 | Exporter（FixedStep + 编码封装） | [08-exporter.md](08-exporter.md) | ✅ Done（MP4/WebM,视频 + 音频;golden-frame 全帧对比为后续） |
 | 9 | GroupClip 子合成（嵌套分组） | [09-group-clip.md](09-group-clip.md) | ✅ Done |
 | 10 | 代码运行时（编译+运行 TS/JS → Composer） | [10-runtime.md](10-runtime.md) | ✅ Done（多文件 + 虚拟/真实文件系统；命令式 `new` 引擎 class；预览/导出/服务端渲染；studio 代码模式 demo） |
+| 11 | Clip 动画器 + GSAP 绑定 + 文字动效（逐行/逐词/逐字） | [11-clip-gsap-text-animation.md](11-clip-gsap-text-animation.md) | ✅ Done（`ClipAnimator`/`TextAnimator` seam + 内置 `StaggerTextAnimator`/`TweenAnimator` + `TextClip.split` + GSAP 绑定；引擎不依赖 gsap） |
 
 状态约定：`⬜ Todo` / `🚧 In progress` / `✅ Done` / `🅿️ Blocked`。
 

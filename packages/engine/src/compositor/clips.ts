@@ -1,5 +1,7 @@
-import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import { CanvasTextMetrics, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
 import { AnimatableProperty } from '../animation/animatable-property';
+import type { TextAnimator, TextPart, TextSplit } from '../animation/clip-animator';
+import { computeTextParts } from '../text/text-layout';
 import type { VisualSource } from '../media/media-source';
 import { VisualClip } from './clip';
 
@@ -75,6 +77,18 @@ export interface TextStyleLike {
  * plain settable fields; `fontSize` is an {@link AnimatableProperty} so it can
  * be keyframed. Re-layout only happens when a value actually changes.
  *
+ * **Text motion effects.** Set {@link split} to `'char'`, `'word'` or `'line'`
+ * and the clip renders one `PIXI.Text` per unit inside a container, each
+ * animatable on its own. Assign a {@link TextAnimator} (the built-in
+ * {@link StaggerTextAnimator} for逐字/逐词/逐行 reveals, or bind GSAP via
+ * `gsapTextAnimator`) to drive them; it's sampled per part at the clip's local
+ * time and composed over each part's laid-out position. Split layout uses the
+ * **base** font size (`fontSize.valueAt(0)`) — animate a part's size through the
+ * animator's `scaleX`/`scaleY`, not `fontSize`. `split` must be chosen before the
+ * clip mounts when crossing the `'none'` boundary (the backing object differs:
+ * `Text` vs `Container`); switching among `char`/`word`/`line`, or changing
+ * `text`, re-lays out in place.
+ *
  * Custom/web fonts must be loaded **before** rendering (Pixi measures glyphs via
  * Canvas, and `render(t)` must be reproducible — contract #2). Load them up
  * front with the `fonts` registry, then reference the family here:
@@ -83,10 +97,20 @@ export interface TextStyleLike {
 export class TextClip extends VisualClip {
   text: string;
   fontFamily: string;
-  /** Font size in px; animatable. */
+  /** Font size in px; animatable (only when {@link split} is `'none'`). */
   fontSize = new AnimatableProperty<number>(32);
   fill: number | string;
+  /** Break the text into per-unit objects for motion effects (default `'none'`). */
+  split: TextSplit = 'none';
+  /** Per-part animator, sampled at local time when {@link split} != `'none'`. */
+  textAnimator: TextAnimator | null = null;
+
   private textObj: Text | null = null;
+  private root: Container | null = null;
+  private partObjs: Text[] = [];
+  private parts: TextPart[] = [];
+  /** Snapshot of what the split children were last built from. */
+  private builtFrom: { text: string; split: TextSplit } | null = null;
 
   constructor(style: TextStyleLike) {
     super();
@@ -96,26 +120,117 @@ export class TextClip extends VisualClip {
     this.fill = style.fill ?? 0xffffff;
   }
 
+  /**
+   * Number of animatable parts for the current text + {@link split}. Reads the
+   * measured layout, so call it after the font is loaded (needed to size
+   * `gsapTextAnimator`). `0` when `split` is `'none'`.
+   */
+  get partCount(): number {
+    if (this.split === 'none') return 0;
+    return this.layout().length;
+  }
+
+  /** Read-only snapshot of the current laid-out parts (empty when not split). */
+  getParts(): readonly TextPart[] {
+    return this.split === 'none' ? [] : this.layout();
+  }
+
   override mount(): Container {
-    this.textObj = new Text({
-      text: this.text,
-      style: { fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill },
-    });
-    return this.textObj;
+    if (this.split === 'none') {
+      this.textObj = new Text({
+        text: this.text,
+        style: { fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill },
+      });
+      return this.textObj;
+    }
+    this.root = new Container();
+    this.rebuildParts();
+    return this.root;
   }
 
   override update(t: number): void {
-    if (!this.textObj) return;
-    if (this.textObj.text !== this.text) this.textObj.text = this.text;
-    const size = this.fontSize.valueAt(t);
-    if (this.textObj.style.fontSize !== size) this.textObj.style.fontSize = size;
-    if (this.textObj.style.fill !== this.fill) this.textObj.style.fill = this.fill;
-    this.applyCommon(this.textObj, t);
+    if (this.split === 'none') {
+      if (!this.textObj) return;
+      if (this.textObj.text !== this.text) this.textObj.text = this.text;
+      const size = this.fontSize.valueAt(t);
+      if (this.textObj.style.fontSize !== size) this.textObj.style.fontSize = size;
+      if (this.textObj.style.fill !== this.fill) this.textObj.style.fill = this.fill;
+      this.applyCommon(this.textObj, t);
+      return;
+    }
+
+    if (!this.root) return;
+    // Re-lay-out if the text or split granularity changed since the last build.
+    if (!this.builtFrom || this.builtFrom.text !== this.text || this.builtFrom.split !== this.split) {
+      this.rebuildParts();
+    }
+    // Settle every part to its base layout first so the block's bounds — and thus
+    // the clip-level anchor pivot computed in applyCommon — stay stable while the
+    // parts animate away from it.
+    for (let i = 0; i < this.partObjs.length; i++) {
+      const p = this.parts[i]!;
+      const o = this.partObjs[i]!;
+      o.position.set(p.x, p.y);
+      o.scale.set(1, 1);
+      o.rotation = 0;
+      o.alpha = 1;
+    }
+    // Clip-level transform / opacity / effects / whole-clip animator on the block.
+    this.applyCommon(this.root, t);
+    // Per-part override on top.
+    if (this.textAnimator) {
+      const localT = t - this.start;
+      for (let i = 0; i < this.partObjs.length; i++) {
+        const p = this.parts[i]!;
+        const o = this.partObjs[i]!;
+        const s = this.textAnimator.sampleForPart(p, localT);
+        o.position.set(p.x + (s.x ?? 0), p.y + (s.y ?? 0));
+        o.scale.set(s.scaleX ?? 1, s.scaleY ?? 1);
+        o.rotation = s.rotation ?? 0;
+        o.alpha = s.alpha ?? 1;
+      }
+    }
   }
 
   override unmount(): void {
     this.textObj?.destroy();
     this.textObj = null;
+    for (const o of this.partObjs) o.destroy();
+    this.partObjs = [];
+    this.root?.destroy();
+    this.root = null;
+    this.builtFrom = null;
+  }
+
+  /** Build the `TextStyle` used for both rendering and measurement. */
+  private buildStyle(): TextStyle {
+    return new TextStyle({ fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill });
+  }
+
+  /** Measure and split the text into parts using Pixi's canvas metrics. */
+  private layout(): TextPart[] {
+    const style = this.buildStyle(); // wordWrap defaults off → measures raw advance
+    const metrics = CanvasTextMetrics.measureText(this.text, style);
+    const measure = (s: string): number =>
+      s.length === 0 ? 0 : CanvasTextMetrics.measureText(s, style).width;
+    return computeTextParts(this.text, this.split, measure, metrics.lineHeight);
+  }
+
+  /** (Re)create the per-part Text objects under the shared root container. */
+  private rebuildParts(): void {
+    if (!this.root) return;
+    for (const o of this.partObjs) o.destroy();
+    this.partObjs = [];
+    this.parts = this.layout();
+    const style = { fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill };
+    for (const p of this.parts) {
+      const o = new Text({ text: p.text, style });
+      o.anchor.set(0.5, 0.5); // pivot each glyph around its center for scale/rotate
+      o.position.set(p.x, p.y);
+      this.partObjs.push(o);
+      this.root.addChild(o);
+    }
+    this.builtFrom = { text: this.text, split: this.split };
   }
 }
 

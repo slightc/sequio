@@ -23,8 +23,11 @@ const ROOT = path.resolve(__dirname, '..');
 const PORT = 5199;
 
 // Resolve Vite's CLI regardless of whether it's hoisted into this package or
-// only present at the workspace root (tooling is a root devDependency).
-const VITE_BIN = require.resolve('vite/bin/vite.js', { paths: [ROOT, process.cwd()] });
+// only present at the workspace root (tooling is a root devDependency). Resolve
+// via the package.json (always exported) then join `bin/vite.js`, so newer Vite
+// versions that don't list the bin in their `exports` map still work.
+const VITE_PKG = require.resolve('vite/package.json', { paths: [ROOT, process.cwd()] });
+const VITE_BIN = path.join(path.dirname(VITE_PKG), 'bin/vite.js');
 
 function waitForServer(url, timeoutMs = 20000) {
   const start = Date.now();

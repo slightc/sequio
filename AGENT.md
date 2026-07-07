@@ -62,11 +62,11 @@ packages import the engine as `@sequio/engine` and resolve it
 src/
   core/        Disposable / Subscription primitives
   time/        Timebase, Clock (Realtime / FixedStep)        ✅ implemented
-  animation/   Easing, AnimatableProperty, Transform2D       ✅ implemented
+  animation/   Easing, AnimatableProperty, Transform2D + ClipAnimator/TextAnimator seam  ✅ implemented (keyframes + Stagger/Tween animators + GSAP binding, engine has no gsap dep)
   media/       MediaSource + Video/Image/Audio, FrameCache   🚧 video (Mediabunny) + image decode done, audio TODO
   texture/     TextureManager (GPU budget + LRU)             ✅ implemented
-  text/        FontManager (web-font loading)                ✅ implemented
-  compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips + overlap-driven transitions done
+  text/        FontManager (web-font loading) + text-layout (split into line/word/char parts)  ✅ implemented
+  compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips + overlap-driven transitions + clip animators + TextClip.split motion done
   effects/     Effect, EffectRegistry, Transition            🚧 color/blur + warp (bulge/perspective/displacement) + crossfade done, chroma/LUT/wipe TODO
   audio/       AudioEngine + scheduling                      ✅ implemented (Web Audio + OfflineAudioContext)
   export/      Exporter (FixedStep loop + Mediabunny mux)     ✅ implemented (MP4/WebM, video + audio; golden-frame diff is a follow-up)
@@ -202,6 +202,8 @@ pnpm verify:runtime # Puppeteer e2e: compile+run multi-file TS → Composer → 
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
 pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen
+pnpm verify:text-anim # Puppeteer e2e: per-character drop-in (TextClip.split + StaggerTextAnimator)
+pnpm verify:gsap    # Puppeteer e2e: clips driven by a real (paused, seeked) GSAP timeline via the binding
 pnpm verify:font    # Puppeteer e2e: custom/Google web-font renders in a TextClip
 pnpm verify:audio   # Puppeteer e2e: AudioEngine offline mix + AudioSource decode
 pnpm verify:effects # Puppeteer e2e: color/blur effect on a clip + crossfade blend

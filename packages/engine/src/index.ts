@@ -39,6 +39,29 @@ export {
 } from './animation/easing';
 export { AnimatableProperty, type Keyframe } from './animation/animatable-property';
 export { Transform2D } from './animation/transform2d';
+export {
+  type AnimationSample,
+  type ClipAnimator,
+  type TextAnimator,
+  type TextPart,
+  type TextSplit,
+  type StaggerOrder,
+  type StaggerTextOptions,
+  type TweenAnimatorOptions,
+  IDENTITY_SAMPLE,
+  StaggerTextAnimator,
+  TweenAnimator,
+  lerpSample,
+} from './animation/clip-animator';
+export {
+  type GsapLike,
+  type GsapTimelineLike,
+  type GsapTarget,
+  gsapClipAnimator,
+  gsapTextAnimator,
+  identityTarget,
+} from './animation/gsap-animator';
+export { computeTextParts, type MeasureWidth } from './text/text-layout';
 
 // ── Media ─────────────────────────────────────────────────────────────────
 export { MediaSource, VisualSource, type SourceMetadata } from './media/media-source';
