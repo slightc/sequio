@@ -1,5 +1,6 @@
-import { Compositor, ShapeClip, TextClip, VisualTrack, fonts } from '@sequio/engine';
+import { Compositor, ShapeClip, TextClip, VisualTrack, fonts, gsapClipAnimator } from '@sequio/engine';
 import { defineComposition } from '@sequio/runtime';
+import gsap from 'gsap';
 import { W, H, DURATION, ball } from './scene';
 import { POPPINS_FAMILY, POPPINS_DATA_URL } from './font';
 
@@ -40,6 +41,12 @@ export default defineComposition(async () => {
   title.end = DURATION;
   title.transform.anchor.setStatic([0.5, 0.5]);
   title.transform.position.setStatic([W / 2, 72]);
+  // Drive the title's entrance with a real GSAP timeline. `gsap` is resolved by
+  // the CLI (which injects it as a runtime external) — no per-project install —
+  // and the engine's binding keeps it deterministic by seeking a paused timeline.
+  title.animator = gsapClipAnimator(gsap, (tl, o) => {
+    tl.from(o, { y: -60, alpha: 0, duration: 0.8, ease: 'back.out(1.7)' });
+  });
   text.add(title);
   compositor.addTrack(text);
 

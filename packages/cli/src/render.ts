@@ -13,6 +13,7 @@
  * fails with a clear "Route B needs a GPU or a software Vulkan driver" message.
  */
 import { readBundle } from './bundle';
+import { cliExternals } from './externals';
 
 export interface RenderOptions {
   out?: string;
@@ -46,6 +47,9 @@ export async function runRender(entryFile: string, options: RenderOptions = {}):
     const result = await renderBundleToFile(bundle, {
       out,
       scale: options.scale,
+      // Make gsap (and any other CLI-provided lib) resolvable to the composition
+      // in the Node render, same as the browser preview does.
+      externals: cliExternals(),
       onProgress: (p) => {
         const pct = Math.round(p * 100);
         if (pct !== lastPct && pct % 10 === 0) {

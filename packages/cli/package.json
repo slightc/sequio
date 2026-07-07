@@ -28,6 +28,7 @@
   "dependencies": {
     "@sequio/engine": "workspace:*",
     "@sequio/runtime": "workspace:*",
-    "@sequio/server": "workspace:*"
+    "@sequio/server": "workspace:*",
+    "gsap": "^3.12.0"
   }
 }
