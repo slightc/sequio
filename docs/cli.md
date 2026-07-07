@@ -32,7 +32,7 @@ src/
   cli.ts        解析 + 分发 + 进程生命周期（退出码、Ctrl-C）；index.ts 是程序化 barrel
 preview/        预览页（index.html + preview.ts：fetch /__bundle → Runtime → preview() + 播放条）
 scripts/        verify-cli.ts（端到端：render + preview 都跑一遍 example/）
-example/        一段样例作曲（index.ts + scene.ts，跨文件 import）
+example/        一段样例作曲（index.ts + scene.ts + font.ts=内嵌 data: URL 字体，跨文件 import）
 tests/          args + bundle 单测
 ```
 
@@ -60,6 +60,22 @@ WebCodecs；再 `new Runtime(bundle).run()` → `composer.build({ target:'server
 
 > 同一个 `renderBundleToFile` 也被 Route B worker 复用：`pnpm ssr:render-node -- --bundle bundle.json`
 > （与 `--timeline` 互斥），和 Route A 的 `--bundle` 对称。
+
+#### 字体：预览与渲染一致
+
+浏览器里 `TextClip` 用 `document.fonts` 里的字体,Node 里 PixiJS 用 `@napi-rs/canvas` 的
+`GlobalFonts` 画字——两边的**系统默认字体不同**,所以不指定字体的文字在预览和渲染里会是不同字形。
+要一致就得让作曲**显式加载一个 web 字体**,两边都用它。
+
+`TimelineSpec` 路线靠 `spec.fonts` 喂 `loadFontsNode`;**代码/bundle 路线**没有这份清单——作曲是
+命令式地 `fonts.load(...)` 加载字体的,而引擎的 `FontManager` 在 Node 里是 no-op。于是
+`renderBundleToFile` 在渲染前调 **`bridgeFontManagerToNode()`**:把 `FontManager` 的
+`loadFace`/`loadGoogle` 钩子改接到 `loadFontsNode`,于是作曲里同一句 `fonts.load(...)` 在浏览器预览
+（`document.fonts`）和 Node 渲染（`GlobalFonts`）里注册的是**同一个字体**,文字字形一致（契约 #3）。
+
+样例 `example/font.ts` 把 Poppins 的 Latin 子集（~8 KB）作为 **`data:` URL** 内嵌,`index.ts`
+`await fonts.load({ family:'Poppins', src: POPPINS_DATA_URL })` 加载它——浏览器 `FontFace` 与
+Node `fetch` 都吃 `data:` URL,所以样例**零网络依赖、可复现**,预览与渲染的标题字体完全一致。
 
 ### `preview`（`--watch`）
 

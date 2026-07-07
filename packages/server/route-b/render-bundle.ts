@@ -16,7 +16,7 @@ import type { Renderer } from '@sequio/engine';
 import { Runtime, type RuntimeBundle } from '@sequio/runtime';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';
-import { loadFontsNode } from './fonts-node';
+import { bridgeFontManagerToNode } from './fonts-node';
 
 export interface RenderBundleNodeOptions {
   /** Output file path. The extension is corrected to match the encoded container. */
@@ -48,9 +48,10 @@ export async function renderBundleToFile(
   opts: RenderBundleNodeOptions,
 ): Promise<RenderBundleNodeResult> {
   await setupNodeEnvironment();
-  // Register the fonts @napi-rs/canvas ships so TextClips measure/draw in Node
-  // (the composition's own font loading, if any, runs inside its builder).
-  await loadFontsNode(undefined);
+  // Make the composition's own `fonts.load*` calls (run inside its builder)
+  // register with @napi-rs/canvas, so text renders with the same web font the
+  // browser preview uses instead of the Node default (contract #3).
+  bridgeFontManagerToNode();
 
   const scale = Math.max(1, opts.scale ?? 1);
   let renderer: Renderer | null = null;

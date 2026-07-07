@@ -11,7 +11,7 @@
  */
 export { setupNodeEnvironment, createNodeWebGPURenderer, getMediabunny } from './env';
 export { renderTimelineToFile, type NodeExportOptions } from './export-node';
-export { loadFontsNode } from './fonts-node';
+export { loadFontsNode, bridgeFontManagerToNode } from './fonts-node';
 export {
   renderBundleToFile,
   type RenderBundleNodeOptions,

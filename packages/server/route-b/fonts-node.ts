@@ -8,7 +8,7 @@
  * Supports self-hosted URLs and Google Fonts: for Google, fetch the css2
  * stylesheet, pull the font-file URLs out of it, fetch those and register them.
  */
-import { buildGoogleCss2Url } from '@sequio/engine';
+import { buildGoogleCss2Url, FontManager, type FontSpec as EngineFontSpec, type GoogleFontSpec } from '@sequio/engine';
 import type { FontSpec } from '../src/timeline';
 
 /**
@@ -51,4 +51,34 @@ export async function loadFontsNode(specs: FontSpec[] | undefined): Promise<void
       GlobalFonts.register(bytes, f.family);
     }
   }
+}
+
+/**
+ * Bridge the engine's {@link FontManager} to Node so a composition's own font
+ * loads reach the text rasterizer.
+ *
+ * In a browser, `fonts.load(...)` / `fonts.loadGoogleFont(...)` register into
+ * `document.fonts`, which PixiJS's text measurement reads. In Node those calls
+ * are no-ops (text is drawn via `@napi-rs/canvas`, whose fonts come from
+ * `GlobalFonts`). The `TimelineSpec` route sidesteps this by taking a separate
+ * `spec.fonts` list; the **code/bundle** route has no such list — the composition
+ * loads fonts imperatively — so we retarget `FontManager`'s (overridable) load
+ * hooks at {@link loadFontsNode}. After this runs, the same `fonts.load*` call a
+ * composition makes renders identically in the browser preview and the Node
+ * render (contract #3). Idempotent; call once after {@link setupNodeEnvironment}.
+ */
+export function bridgeFontManagerToNode(): void {
+  const proto = FontManager.prototype as unknown as {
+    loadFace(spec: EngineFontSpec): Promise<void>;
+    loadGoogle(spec: GoogleFontSpec): Promise<void>;
+  };
+  proto.loadFace = (spec) => {
+    // Unwrap a url(...) source; local(...) refers to an installed font we can't
+    // fetch, so skip it and let the fallback apply.
+    const url = /^\s*url\(\s*['"]?([^'")]+)['"]?\s*\)\s*$/.exec(spec.src)?.[1]
+      ?? (/^\s*(url|local)\s*\(/.test(spec.src) ? null : spec.src);
+    return url ? loadFontsNode([{ family: spec.family, src: url }]) : Promise.resolve();
+  };
+  proto.loadGoogle = (spec) =>
+    loadFontsNode([{ family: spec.family, google: { weights: spec.weights, italic: spec.italic, cssBase: spec.cssBase } }]);
 }

@@ -1,6 +1,7 @@
-import { Compositor, ShapeClip, TextClip, VisualTrack } from '@sequio/engine';
+import { Compositor, ShapeClip, TextClip, VisualTrack, fonts } from '@sequio/engine';
 import { defineComposition } from '@sequio/runtime';
 import { W, H, DURATION, ball } from './scene';
+import { POPPINS_FAMILY, POPPINS_DATA_URL } from './font';
 
 // A tiny sample composition for the CLI:
 //   sequio preview example/index.ts --watch
@@ -9,6 +10,13 @@ import { W, H, DURATION, ball } from './scene';
 export default defineComposition(async () => {
   const compositor = new Compositor({ width: W, height: H, fps: 30, background: 0x0b0b0e });
   await compositor.init();
+
+  // Load the title font (embedded as a data: URL — see ./font). The same call
+  // feeds the browser preview (document.fonts) and the Node render
+  // (@napi-rs/canvas, via Route B's font bridge), so the title renders with the
+  // identical typeface in both — a system-default family would otherwise resolve
+  // to different fonts per platform/renderer.
+  await fonts.load({ family: POPPINS_FAMILY, src: POPPINS_DATA_URL });
 
   const bg = new VisualTrack();
   const backdrop = new ShapeClip({ kind: 'rect', width: W, height: H, fill: 0x0f172a });
@@ -27,7 +35,7 @@ export default defineComposition(async () => {
 
   const text = new VisualTrack();
   text.zIndex = 2;
-  const title = new TextClip({ text: 'sequio', fontSize: 56, fill: 0xffffff });
+  const title = new TextClip({ text: 'sequio', fontFamily: POPPINS_FAMILY, fontSize: 56, fill: 0xffffff });
   title.start = 0;
   title.end = DURATION;
   title.transform.anchor.setStatic([0.5, 0.5]);

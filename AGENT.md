@@ -146,7 +146,7 @@ src/
   cli.ts        dispatch + process lifecycle;  index.ts = programmatic barrel
 preview/        the preview page (index.html + preview.ts: fetch /__bundle → Runtime → preview())
 scripts/        verify-cli.ts (e2e: render + preview against example/)
-example/        a sample composition (index.ts + scene.ts)
+example/        a sample composition (index.ts + scene.ts + font.ts: embedded data: URL font)
 tests/          args + bundle unit tests
 ```
 
