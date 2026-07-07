@@ -70,6 +70,9 @@ async function boot(): Promise<void> {
     scrub.disabled = false;
     playBtn.disabled = false;
     preview.clock.onTick((t) => updateTransport(t));
+    // Reaching the end auto-pauses the clock but fires no further tick, so
+    // refresh the transport (Play button label, scrub) on `ended` too.
+    preview.clock.onEnded(() => updateTransport(preview!.clock.currentTime));
     updateTransport(0);
 
     const tracks = preview.built.compositor.getTracks();
