@@ -1,12 +1,14 @@
 /**
  * Puppeteer e2e for `@video-editor-canvas/runtime`.
  *
- * Compiles + runs a **two-file TypeScript program** (an `index.ts` importing a
- * `scene.ts` helper, using `defineComposition` from the injected runtime module)
- * into a `Composer`, then drives that one Composer three ways:
- *   1. preview  — mount + render a frame, read pixels back (non-black, right colour);
- *   2. export   — render to a real video Blob, decode it back and check frames/colour;
- *   3. toSpec   — the serializable spec the server-render routes would consume.
+ * Compiles + runs a **two-file TypeScript program** that builds the composition
+ * **imperatively** with the engine's own classes (`new Compositor()`,
+ * `new VisualTrack()`, `new ShapeClip()`, `track.add(...)`) inside
+ * `defineComposition(builder)` — the same style as the `example/` demos. The
+ * resulting `Composer` is then driven three ways:
+ *   1. preview   — mount + render a frame, read pixels back (non-black, right colour);
+ *   2. export    — render to a real video Blob, decode it back and check frames/colour;
+ *   3. toBundle  — the portable source files + entry a server runtime would re-run.
  *
  * Result on `window.__RUNTIME_TEST__`.
  */
@@ -18,38 +20,42 @@ const H = 120;
 const FPS = 15;
 const DUR = 0.5;
 
-// A multi-file program the runtime will compile + link. `scene.ts` exports typed
-// clip specs; `index.ts` assembles them with `defineComposition`. Teal fills the
-// frame; the title sits at the top so the centre pixel stays teal.
+// A multi-file program the runtime compiles + links. `scene.ts` exports a factory
+// that builds engine clips; `index.ts` assembles a Compositor from them. Teal
+// fills the frame; the title sits at the top so the centre pixel stays teal.
 const FILES: Record<string, string> = {
   '/scene.ts': `
-    import type { ShapeClipSpec, TextClipSpec } from '@video-editor-canvas/runtime';
+    import { ShapeClip, TextClip, VisualTrack } from '@video-editor-canvas/engine';
     export const W = ${W};
     export const H = ${H};
-    export const background: ShapeClipSpec = {
-      type: 'shape',
-      shape: { kind: 'rect', width: W, height: H, fill: 0x0f766e },
-      start: 0, end: ${DUR},
-      transform: { anchor: [0, 0], position: [0, 0] },
-    };
-    export const title: TextClipSpec = {
-      type: 'text', text: 'Code Mode', fontSize: 20, fill: 0xffd60a,
-      start: 0, end: ${DUR},
-      transform: { anchor: [0.5, 0.5], position: [W / 2, 16] },
-    };
+    export function buildTrack() {
+      const track = new VisualTrack();
+      const bg = new ShapeClip({ kind: 'rect', width: W, height: H, fill: 0x0f766e });
+      bg.start = 0; bg.end = ${DUR};
+      bg.transform.anchor.setStatic([0, 0]);
+      bg.transform.position.setStatic([0, 0]);
+      track.add(bg);
+      const title = new TextClip({ text: 'Code Mode', fontSize: 20, fill: 0xffd60a });
+      title.start = 0; title.end = ${DUR};
+      title.transform.anchor.setStatic([0.5, 0.5]);
+      title.transform.position.setStatic([W / 2, 16]);
+      track.add(title);
+      return track;
+    }
   `,
   '/index.ts': `
+    import { Compositor, Timebase } from '@video-editor-canvas/engine';
     import { defineComposition } from '@video-editor-canvas/runtime';
-    import { W, H, background, title } from './scene';
-    export default defineComposition({
-      width: W, height: H, fps: ${FPS},
-      background: 0x000000,
-      range: [0, ${DUR}],
-      tracks: [
-        { zIndex: 0, clips: [background] },
-        { zIndex: 1, clips: [title] },
-      ],
-      export: { container: 'mp4', videoCodec: 'avc', bitrate: 1_000_000 },
+    import { W, H, buildTrack } from './scene';
+    export default defineComposition(async (env) => {
+      const compositor = new Compositor({
+        width: W, height: H, timebase: new Timebase(${FPS}),
+        background: 0x000000, preferWebGPU: false,
+        ...env.compositorOptions,
+      });
+      await compositor.init();
+      compositor.addTrack(buildTrack());
+      return { compositor, duration: ${DUR} };
     });
   `,
 };
@@ -65,28 +71,25 @@ async function pickCodec(): Promise<{ container: 'mp4' | 'webm'; videoCodec: str
 }
 
 async function run(): Promise<void> {
-  // 1. Compile + run the program → a Composer (no GPU touched yet).
+  // 1. Compile + run the program → a Composer.
   const composer = await runComposition(FILES, { entry: '/index.ts' });
 
-  // toSpec round-trips the timeline for server render.
-  const spec = composer.toSpec();
-  const specOk =
-    spec.width === W &&
-    spec.height === H &&
-    spec.fps === FPS &&
-    spec.tracks?.length === 2 &&
-    spec.tracks?.[1]?.clips[0]?.type === 'text';
+  // toBundle round-trips the portable code (what ships to server render).
+  const bundle = composer.toBundle();
+  const bundleOk =
+    bundle.entry === '/index.ts' &&
+    !!bundle.files['/scene.ts'] &&
+    bundle.files['/index.ts'].includes('defineComposition');
 
   // 2. Preview: build the live graph, render a frame, read pixels back.
   const stage = document.getElementById('stage')!;
   const preview = await composer.preview(stage);
   preview.seek(DUR / 2);
-  const view = preview.view;
   const off = document.createElement('canvas');
   off.width = W;
   off.height = H;
   const octx = off.getContext('2d')!;
-  octx.drawImage(view, 0, 0);
+  octx.drawImage(preview.view, 0, 0);
   const center = octx.getImageData(W / 2, H / 2, 1, 1).data;
   const previewOk = isTeal(center[0]!, center[1]!, center[2]!);
   preview.dispose();
@@ -97,7 +100,7 @@ async function run(): Promise<void> {
   let exportInfo: Record<string, unknown> = { skipped: 'no encodable video codec' };
   if (codec) {
     const progress: number[] = [];
-    const blob = await composer.export({ ...codec, audio: false }, (p) => progress.push(p));
+    const blob = await composer.export({ ...codec, fps: FPS, audio: false }, (p) => progress.push(p));
     const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } = await loadMediabunny();
     const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
     const vtrack = await input.getPrimaryVideoTrack();
@@ -131,10 +134,10 @@ async function run(): Promise<void> {
     exportOk = true; // can't encode here → don't fail the suite on codec support
   }
 
-  const ok = Boolean(specOk && previewOk && exportOk);
+  const ok = Boolean(bundleOk && previewOk && exportOk);
   (window as unknown as { __RUNTIME_TEST__: unknown }).__RUNTIME_TEST__ = {
     ok,
-    specOk,
+    bundleOk,
     previewOk,
     exportOk,
     files: Object.keys(FILES),

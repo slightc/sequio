@@ -25,7 +25,6 @@
   ],
   "dependencies": {
     "@video-editor-canvas/engine": "workspace:*",
-    "@video-editor-canvas/server": "workspace:*",
     "typescript": "^5.7.0"
   }
 }

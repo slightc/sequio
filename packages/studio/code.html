@@ -181,7 +181,7 @@
           <option value="webm">WebM</option>
         </select>
         <button id="export" class="ghost" disabled title="Render the Composer to a video in the browser">⬇ Export</button>
-        <button id="download-spec" class="ghost" disabled title="Download the TimelineSpec JSON for server-side render">⇪ Server Render JSON</button>
+        <button id="download-spec" class="ghost" disabled title="Download the portable code bundle for server-side render">⇪ Server Render</button>
         <span class="spacer"></span>
         <a href="/">← Back to editor</a>
       </div>
@@ -197,10 +197,11 @@
             <input id="scrub" type="range" min="0" max="1" step="0.001" value="0" disabled />
             <span id="time">0.00 / 0.00s</span>
           </div>
-          <div class="log" id="log">The runtime compiles these TS files, links them, and runs the entry (<code>/index.ts</code>). Its default export — <code>defineComposition(...)</code> — becomes a <strong>Composer</strong> that previews and exports here, or serializes to JSON for <code>pnpm ssr:render</code>.</div>
+          <div class="log" id="log">The runtime compiles these TS files, links them, and runs the entry (<code>/index.ts</code>). Its <code>defineComposition(builder)</code> default export builds the graph with the engine's own classes (<code>new Compositor()</code>, <code>new ShapeClip()</code>…) and becomes a <strong>Composer</strong> that previews and exports here, or ships its source as a bundle for <code>pnpm ssr:render</code>.</div>
           <div class="hint">
-            Edit across multiple files (imports resolve in a virtual filesystem). The same
-            <code>Composer</code> drives client preview, client export, and server render.
+            Edit across multiple files (imports resolve in a virtual filesystem). Import the
+            engine and <code>new</code> its classes — even your own <code>Clip</code>/<code>Effect</code>
+            subclasses. The same <code>Composer</code> drives preview, export, and server render.
           </div>
         </div>
       </div>

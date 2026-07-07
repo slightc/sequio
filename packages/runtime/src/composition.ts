@@ -1,30 +1,73 @@
 /**
  * The authoring entry point sandboxed user code calls to describe a video.
  *
- * User code (compiled + run by the {@link Runtime}) produces a
- * {@link TimelineSpec} — the same serializable protocol the server-side render
- * routes consume — by default-exporting `defineComposition(spec)`. Wrapping the
- * spec in a tagged {@link Composition} lets the runtime tell "the user returned a
- * composition" from "the user returned some other object", and gives one obvious
- * name to import:
+ * Unlike a declarative JSON spec, a composition is **imperative code**: the user
+ * builds a live object graph with the engine's own classes — exactly the
+ * `new Compositor()` / `new VisualTrack()` / `track.add(new TextClip(...))` style
+ * the `example/` demos use — inside a builder function. This is what lets a user
+ * bring their **own** `Clip` / `Effect` subclasses and arbitrary logic: whatever
+ * runs in a demo runs here, with no schema to keep in sync.
  *
  * ```ts
+ * import { Compositor, VisualTrack, TextClip, Timebase } from '@video-editor-canvas/engine';
  * import { defineComposition } from '@video-editor-canvas/runtime';
- * export default defineComposition({
- *   width: 640, height: 360, fps: 30,
- *   tracks: [{ clips: [{ type: 'text', text: 'Hello', start: 0, end: 3 }] }],
+ *
+ * export default defineComposition(async (env) => {
+ *   const compositor = new Compositor({
+ *     width: 640, height: 360, timebase: new Timebase(30),
+ *     ...env.compositorOptions,          // lets a server inject its renderer
+ *   });
+ *   await compositor.init();
+ *   const track = new VisualTrack();
+ *   const title = new TextClip({ text: 'Hello', fontSize: 44 });
+ *   title.start = 0; title.end = 4;
+ *   track.add(title);
+ *   compositor.addTrack(track);
+ *   return { compositor, duration: 4 };
  * });
  * ```
  */
-import type { TimelineSpec } from '@video-editor-canvas/server';
+import type { AudioEngine, Compositor, CompositorOptions, Track } from '@video-editor-canvas/engine';
 
 /** Brand marking a value produced by {@link defineComposition}. */
 export const COMPOSITION_TAG = '@video-editor-canvas/runtime:composition' as const;
 
-/** A tagged, validated {@link TimelineSpec} returned by {@link defineComposition}. */
+/**
+ * The live object graph a builder returns: an initialized {@link Compositor} plus
+ * (optionally) the {@link AudioEngine} driving its audio, and the timeline length.
+ */
+export interface CompositionResult {
+  /** The built + `init()`-ed compositor to preview / export / server-render. */
+  compositor: Compositor;
+  /** The audio engine for preview playback and the export mix, if any. */
+  audioEngine?: AudioEngine;
+  /**
+   * Timeline duration in seconds. Optional — when omitted it's derived from the
+   * largest clip end across the compositor's tracks (see {@link deriveDuration}).
+   */
+  duration?: number;
+}
+
+/**
+ * The environment a composition is built in. The same builder runs for client
+ * preview, client export and server render; `compositorOptions` is how the host
+ * injects what differs (a Node WebGPU renderer, an output scale), so portable
+ * code spreads it into `new Compositor({ ... })`.
+ */
+export interface CompositionEnv {
+  /** Merge into the `Compositor` options. Browser: `{}`; Node: `{ createRenderer, resolution }`. */
+  readonly compositorOptions: Partial<CompositorOptions>;
+  /** Where this build runs, in case user code wants to branch (e.g. output scale). */
+  readonly target: 'preview' | 'export' | 'server';
+}
+
+/** A function that builds a live composition. May be async (it `await`s `init()`). */
+export type CompositionBuilder = (env: CompositionEnv) => CompositionResult | Promise<CompositionResult>;
+
+/** A tagged builder returned by {@link defineComposition}. */
 export interface Composition {
   readonly __tag: typeof COMPOSITION_TAG;
-  readonly spec: TimelineSpec;
+  readonly build: CompositionBuilder;
 }
 
 /** Whether `value` is a {@link Composition} produced by {@link defineComposition}. */
@@ -32,34 +75,29 @@ export function isComposition(value: unknown): value is Composition {
   return (
     typeof value === 'object' &&
     value !== null &&
-    (value as { __tag?: unknown }).__tag === COMPOSITION_TAG
-  );
-}
-
-/** Cheap structural check that a value looks like a {@link TimelineSpec}. */
-export function isTimelineSpec(value: unknown): value is TimelineSpec {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Partial<TimelineSpec>;
-  return (
-    typeof v.width === 'number' && typeof v.height === 'number' && typeof v.fps === 'number'
+    (value as { __tag?: unknown }).__tag === COMPOSITION_TAG &&
+    typeof (value as { build?: unknown }).build === 'function'
   );
 }
 
 /**
- * Validate the essentials of a {@link TimelineSpec} and wrap it as a
- * {@link Composition}. Kept intentionally light — the full shape is the server's
- * `TimelineSpec` type; this only guards the fields the runtime relies on so a
- * typo fails loudly at author time rather than as a black frame.
+ * Tag a builder function as a composition. Kept intentionally thin — all the
+ * power is in the builder body (real engine classes, real control flow); this
+ * just marks the value so the runtime can tell "the user returned a composition"
+ * from "the user returned something else", and fails loudly if handed a non-function.
  */
-export function defineComposition(spec: TimelineSpec): Composition {
-  if (!isTimelineSpec(spec)) {
-    throw new Error(
-      'defineComposition expects a TimelineSpec with numeric width, height and fps.',
-    );
+export function defineComposition(build: CompositionBuilder): Composition {
+  if (typeof build !== 'function') {
+    throw new Error('defineComposition expects a builder function (env) => { compositor, duration }.');
   }
-  if (spec.width <= 0 || spec.height <= 0) {
-    throw new Error(`Composition width/height must be positive (got ${spec.width}×${spec.height}).`);
+  return { __tag: COMPOSITION_TAG, build };
+}
+
+/** Largest clip end across every track of a compositor (the timeline duration). */
+export function deriveDuration(compositor: Compositor): number {
+  let end = 0;
+  for (const track of compositor.getTracks() as ReadonlyArray<Track>) {
+    for (const clip of track.clips) if (clip.end > end) end = clip.end;
   }
-  if (spec.fps <= 0) throw new Error(`Composition fps must be positive (got ${spec.fps}).`);
-  return { __tag: COMPOSITION_TAG, spec };
+  return end;
 }

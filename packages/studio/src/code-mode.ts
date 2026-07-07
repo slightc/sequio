@@ -1,16 +1,19 @@
 /**
- * Studio "Code Mode" — author a composition **as code** and run it.
+ * Studio "Code Mode" — author a composition **as imperative code** and run it.
  *
  * This is the reference consumer of `@video-editor-canvas/runtime`. The user
- * edits a small multi-file TS program in the browser; pressing Run hands those
- * files to a {@link Runtime}, which compiles + links them and executes the entry.
- * The entry's `defineComposition(...)` default export becomes a {@link Composer} —
- * and the same Composer object then drives all three destinations from this page:
+ * edits a small multi-file TS program in the browser that builds the object graph
+ * with the engine's own classes — `new Compositor()`, `new VisualTrack()`,
+ * `track.add(new ShapeClip(...))` — exactly like the `example/` demos (so a user
+ * can bring their own `Clip` / `Effect` subclasses, no schema to sync). Pressing
+ * Run hands those files to a {@link Runtime}, which compiles + links them and
+ * executes the entry; its `defineComposition(builder)` default export becomes a
+ * {@link Composer}. The same Composer then drives all three destinations:
  *
  *   • **Preview**       — `composer.preview(stage)` mounts + plays it live;
  *   • **Export**        — `composer.export({ container })` renders a video Blob;
- *   • **Server Render** — `composer.toSpec()` downloads the TimelineSpec JSON that
- *                         `pnpm ssr:render` / `ssr:render-node` consume.
+ *   • **Server Render** — `composer.toBundle()` downloads the portable source
+ *                         files; a runtime re-runs that code on a server.
  *
  * Everything runs in the tab against an in-memory virtual filesystem — no build
  * step, no server round-trip to see a change.
@@ -18,81 +21,91 @@
 import { Runtime, type Composer, type PreviewHandle } from '@video-editor-canvas/runtime';
 
 // ── Default multi-file sample program ──────────────────────────────────────
-// Three files that import each other, to show the virtual filesystem + linker:
-// scene.ts (config + shape factories), title.ts (a keyframed title), index.ts
-// (the entry that assembles them via defineComposition).
+// Three files that import each other, to show the virtual filesystem + linker.
+// scene.ts / title.ts build engine clips imperatively; index.ts assembles a
+// Compositor. Spread `env.compositorOptions` so the same code also runs on a
+// server renderer (Node injects its WebGPU renderer there).
 const DEFAULT_FILES: Record<string, string> = {
-  '/index.ts': `import { defineComposition } from '@video-editor-canvas/runtime';
+  '/index.ts': `import { Compositor, Timebase, VisualTrack } from '@video-editor-canvas/engine';
+import { defineComposition } from '@video-editor-canvas/runtime';
 import { W, H, DURATION, background, ball } from './scene';
 import { title } from './title';
 
-// The entry's default export becomes the Composer. Edit any file and press Run.
-export default defineComposition({
-  width: W,
-  height: H,
-  fps: 30,
-  background: 0x0b0b0e,
-  range: [0, DURATION],
-  tracks: [
-    { zIndex: 0, clips: [background] },
-    { zIndex: 1, clips: [ball(0x38bdf8, 210), ball(0xf472b6, 285)] },
-    { zIndex: 2, clips: [title] },
-  ],
+// The builder's default export becomes the Composer. Edit any file and press Run.
+export default defineComposition(async (env) => {
+  const compositor = new Compositor({
+    width: W,
+    height: H,
+    timebase: new Timebase(30),
+    background: 0x0b0b0e,
+    preferWebGPU: true,
+    ...env.compositorOptions, // lets a server inject its own renderer
+  });
+  await compositor.init();
+
+  const bg = new VisualTrack();
+  bg.add(background());
+  compositor.addTrack(bg);
+
+  const balls = new VisualTrack();
+  balls.zIndex = 1;
+  balls.add(ball(0x38bdf8, 210));
+  balls.add(ball(0xf472b6, 285));
+  compositor.addTrack(balls);
+
+  const text = new VisualTrack();
+  text.zIndex = 2;
+  text.add(title());
+  compositor.addTrack(text);
+
+  return { compositor, duration: DURATION };
 });
 `,
-  '/scene.ts': `import type { ShapeClipSpec } from '@video-editor-canvas/runtime';
+  '/scene.ts': `import { ShapeClip, easeInOutCubic } from '@video-editor-canvas/engine';
 
 export const W = 640;
 export const H = 360;
 export const DURATION = 4;
 
 // A full-frame backdrop.
-export const background: ShapeClipSpec = {
-  type: 'shape',
-  shape: { kind: 'rect', width: W, height: H, fill: 0x0f172a },
-  start: 0,
-  end: DURATION,
-  transform: { anchor: [0, 0], position: [0, 0] },
-};
+export function background(): ShapeClip {
+  const bg = new ShapeClip({ kind: 'rect', width: W, height: H, fill: 0x0f172a });
+  bg.start = 0;
+  bg.end = DURATION;
+  bg.transform.anchor.setStatic([0, 0]);
+  bg.transform.position.setStatic([0, 0]);
+  return bg;
+}
 
-// A circle that slides left → right over the whole timeline.
-export function ball(fill: number, y: number): ShapeClipSpec {
-  return {
-    type: 'shape',
-    shape: { kind: 'ellipse', width: 64, height: 64, fill },
-    start: 0,
-    end: DURATION,
-    transform: {
-      anchor: [0.5, 0.5],
-      position: {
-        keyframes: [
-          { time: 0, value: [80, y] },
-          { time: DURATION, value: [W - 80, y], easing: 'easeInOutCubic' },
-        ],
-      },
-    },
-  };
+// A circle that slides left → right over the whole timeline (keyframed).
+export function ball(fill: number, y: number): ShapeClip {
+  const c = new ShapeClip({ kind: 'ellipse', width: 64, height: 64, fill });
+  c.start = 0;
+  c.end = DURATION;
+  c.transform.anchor.setStatic([0.5, 0.5]);
+  c.transform.position.setKeyframes([
+    { time: 0, value: [80, y] },
+    { time: DURATION, value: [W - 80, y], easing: easeInOutCubic },
+  ]);
+  return c;
 }
 `,
-  '/title.ts': `import type { TextClipSpec } from '@video-editor-canvas/runtime';
+  '/title.ts': `import { TextClip, easeOutQuad } from '@video-editor-canvas/engine';
 import { W, DURATION } from './scene';
 
 // A title that fades in over the first second.
-export const title: TextClipSpec = {
-  type: 'text',
-  text: 'Hello from code',
-  fontSize: 44,
-  fill: 0xffffff,
-  start: 0,
-  end: DURATION,
-  transform: { anchor: [0.5, 0.5], position: [W / 2, 80] },
-  opacity: {
-    keyframes: [
-      { time: 0, value: 0 },
-      { time: 1, value: 1, easing: 'easeOutQuad' },
-    ],
-  },
-};
+export function title(): TextClip {
+  const t = new TextClip({ text: 'Hello from code', fontSize: 44, fill: 0xffffff });
+  t.start = 0;
+  t.end = DURATION;
+  t.transform.anchor.setStatic([0.5, 0.5]);
+  t.transform.position.setStatic([W / 2, 80]);
+  t.opacity.setKeyframes([
+    { time: 0, value: 0 },
+    { time: 1, value: 1, easing: easeOutQuad },
+  ]);
+  return t;
+}
 `,
 };
 
@@ -129,7 +142,7 @@ function main(): void {
   const runBtn = $<HTMLButtonElement>('run');
   const playBtn = $<HTMLButtonElement>('play');
   const exportBtn = $<HTMLButtonElement>('export');
-  const specBtn = $<HTMLButtonElement>('download-spec');
+  const bundleBtn = $<HTMLButtonElement>('download-spec');
   const scrub = $<HTMLInputElement>('scrub');
   const timeLabel = $<HTMLSpanElement>('time');
   const exportFormat = $<HTMLSelectElement>('export-format');
@@ -257,7 +270,7 @@ function main(): void {
     preview = null;
     playBtn.disabled = true;
     exportBtn.disabled = true;
-    specBtn.disabled = true;
+    bundleBtn.disabled = true;
 
     try {
       composer = await new Runtime({ files, entry: ENTRY }).run();
@@ -270,16 +283,16 @@ function main(): void {
       scrub.disabled = false;
       playBtn.disabled = false;
       exportBtn.disabled = false;
-      specBtn.disabled = false;
+      bundleBtn.disabled = false;
 
       tickSub = preview.clock.onTick((t) => updateTransport(t));
       updateTransport(0);
 
-      const spec = composer.toSpec();
-      const clips = (spec.tracks ?? []).reduce((n, tr) => n + tr.clips.length, 0);
+      const tracks = preview.built.compositor.getTracks();
+      const clips = tracks.reduce((n, t) => n + t.clips.length, 0);
       log(
-        `Ran ${Object.keys(files).length} file(s) → Composer: ${spec.width}×${spec.height} @ ${spec.fps}fps, ` +
-          `${spec.tracks?.length ?? 0} track(s), ${clips} clip(s), ${fmt(preview.duration)}s.`,
+        `Ran ${Object.keys(files).length} file(s) → Composer: ${tracks.length} track(s), ` +
+          `${clips} clip(s), ${fmt(preview.duration)}s.`,
         'ok',
       );
     } catch (err) {
@@ -315,15 +328,14 @@ function main(): void {
     }
   });
 
-  // ── Server render (download the serializable spec) ────────────────────
-  specBtn.addEventListener('click', () => {
+  // ── Server render (download the portable code bundle) ─────────────────
+  bundleBtn.addEventListener('click', () => {
     if (!composer) return;
-    const spec = composer.toSpec();
-    downloadBlob(new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' }), 'timeline.json');
+    const bundle = composer.toBundle();
+    downloadBlob(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }), 'bundle.json');
     log(
-      'Saved timeline.json — render it on a server with:\n' +
-        '  pnpm ssr:render      -- --timeline timeline.json --out out.mp4   (headless Chrome)\n' +
-        '  pnpm ssr:render-node -- --timeline timeline.json --out out.mp4   (pure Node WebGPU)',
+      'Saved bundle.json (the source files themselves) — render it on a server with:\n' +
+        '  pnpm ssr:render -- --bundle bundle.json --out out.mp4   (headless Chrome runs the same code)',
       'ok',
     );
   });

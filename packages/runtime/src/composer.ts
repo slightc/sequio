@@ -1,95 +1,136 @@
 /**
- * The {@link Composer} is what running user code yields: a wrapper around the
- * resolved {@link TimelineSpec} that can go three ways from one object —
+ * The {@link Composer} is what running user code yields: a handle around the
+ * composition **builder** (imperative engine code) plus the portable source
+ * {@link RuntimeBundle} it came from. From one object it goes three ways —
  *
- *  1. **Client preview** — `preview(container)` builds the live `Compositor`
- *     graph (decoding sources, loading fonts) and drives a `RealtimeClock`, so
- *     the composition plays on screen.
- *  2. **Client export** — `export(options)` renders the same graph to a video
- *     `Blob` through the engine's `Exporter` (same render core as the preview,
- *     contract #3).
- *  3. **Server render** — `toSpec()` returns the plain, JSON-serializable spec
- *     that both SSR routes (`pnpm ssr:render` / `ssr:render-node`) consume; the
- *     Composer is the same object whether it renders here or ships off to a box.
+ *  1. **Client preview** — `preview(container)` runs the builder to make a live
+ *     `Compositor`, drives a `RealtimeClock`, and plays it on screen.
+ *  2. **Client export** — `export(options)` runs the builder to a fresh graph and
+ *     renders it to a video `Blob` through the engine's `Exporter`.
+ *  3. **Server render** — `toBundle()` hands back the exact source files + entry;
+ *     the *same* runtime runs that code on a server (headless Chrome / Node),
+ *     rebuilding the graph there. The code is the artifact — nothing to serialize,
+ *     nothing to keep in sync.
  *
- * Client build reuses the server package's {@link buildTimeline} (spec → live
- * graph) rather than re-implementing it — the SSR routes call the exact same
- * builder, so a composition previews, exports and server-renders identically.
+ * Each destination runs the builder **again** to an independent graph, so an
+ * export never disturbs the live preview and every consumer owns its own
+ * resources.
  */
 import {
+  AudioEngine,
+  type Compositor,
   Exporter,
-  RealtimeClock,
   type ExportOptions,
+  RealtimeClock,
   type Subscription,
+  Timebase,
 } from '@video-editor-canvas/engine';
 import {
-  buildTimeline,
-  type BuildOverrides,
-  type BuiltTimeline,
-  type TimelineSpec,
-} from '@video-editor-canvas/server';
+  type Composition,
+  type CompositionEnv,
+  deriveDuration,
+} from './composition';
 
-/** A live preview: the built graph, its clock, and media-element-style controls. */
-export interface PreviewHandle {
-  /** The built object graph (compositor + audio engine + range). */
-  readonly built: BuiltTimeline;
-  /** The rAF-driven preview clock (`[0, duration]`). */
-  readonly clock: RealtimeClock;
-  /** The compositor's canvas (already appended if a container was given). */
-  readonly view: HTMLCanvasElement;
-  /** Timeline duration in seconds (`range[1]`). */
-  readonly duration: number;
-  play(): void;
-  pause(): void;
-  /** Jump to an absolute time (seconds); repaints immediately. */
-  seek(t: number): void;
-  /** Whether playback is running. */
-  readonly playing: boolean;
-  /** Dispose the built graph and detach the clock (frees sources/decoders). */
+/** A portable snapshot of the program: its source files and entry path. */
+export interface RuntimeBundle {
+  /** Absolute virtual path → source text. */
+  files: Record<string, string>;
+  /** Entry module path (e.g. `/index.ts`). */
+  entry: string;
+}
+
+/** A built, initialized composition graph plus a teardown. */
+export interface BuiltComposition {
+  compositor: Compositor;
+  audioEngine: AudioEngine;
+  /** Timeline duration in seconds (builder value, else derived from clip ends). */
+  duration: number;
+  /** Dispose the compositor and its audio engine. */
   dispose(): void;
 }
 
+/** A live preview: the built graph, its clock, and media-element-style controls. */
+export interface PreviewHandle {
+  readonly built: BuiltComposition;
+  readonly clock: RealtimeClock;
+  readonly view: HTMLCanvasElement;
+  readonly duration: number;
+  play(): void;
+  pause(): void;
+  seek(t: number): void;
+  readonly playing: boolean;
+  dispose(): void;
+}
+
+const DEFAULT_ENV: CompositionEnv = { compositorOptions: {}, target: 'export' };
+
 export class Composer {
-  constructor(private readonly _spec: TimelineSpec) {}
+  constructor(
+    private readonly composition: Composition,
+    private readonly bundle: RuntimeBundle,
+  ) {}
 
-  /** The resolved timeline spec (identity — not a copy). */
-  get spec(): TimelineSpec {
-    return this._spec;
+  /** The entry module path the program ran from. */
+  get entry(): string {
+    return this.bundle.entry;
   }
 
-  /** The JSON-serializable spec to hand to server-side rendering. */
-  toSpec(): TimelineSpec {
-    return this._spec;
-  }
-
-  /** Alias of {@link toSpec} so `JSON.stringify(composer)` yields the spec. */
-  toJSON(): TimelineSpec {
-    return this._spec;
+  /** The source files, as a fresh copy (edit freely; the Composer keeps its own). */
+  get files(): Record<string, string> {
+    return { ...this.bundle.files };
   }
 
   /**
-   * Build the live object graph (compositor, audio engine, range) from the spec.
-   * Async: this initializes the GPU renderer and loads every font/source. The
-   * caller owns the returned {@link BuiltTimeline} and must `dispose()` it.
+   * The portable code bundle to hand to server-side rendering: the same files +
+   * entry, run by a runtime on the server. This replaces "serialize a spec" —
+   * the code itself is what ships, so there's no schema to drift.
    */
-  async build(overrides?: BuildOverrides): Promise<BuiltTimeline> {
-    return buildTimeline(this._spec, overrides);
+  toBundle(): RuntimeBundle {
+    return { files: { ...this.bundle.files }, entry: this.bundle.entry };
+  }
+
+  /** `JSON.stringify(composer)` yields the portable bundle. */
+  toJSON(): RuntimeBundle {
+    return this.toBundle();
+  }
+
+  /**
+   * Run the builder to a fresh, initialized graph. The caller owns the result and
+   * must {@link BuiltComposition.dispose} it. `env` lets a host inject a renderer
+   * (Node) or an output scale; it defaults to the browser (`{}`).
+   */
+  async build(env: Partial<CompositionEnv> = {}): Promise<BuiltComposition> {
+    const result = await this.composition.build({ ...DEFAULT_ENV, ...env });
+    const compositor = result.compositor;
+    const duration = result.duration ?? deriveDuration(compositor);
+    // Exporter needs an AudioEngine; synthesize an empty one when the composition
+    // has no audio so audio-less compositions still export.
+    const audioEngine = result.audioEngine ?? new AudioEngine(new Timebase(30));
+    return {
+      compositor,
+      audioEngine,
+      duration,
+      dispose() {
+        audioEngine.dispose();
+        compositor.dispose();
+      },
+    };
   }
 
   /**
    * Build the graph and start a preview loop. If `container` is given the
    * compositor's canvas is appended to it. Returns a {@link PreviewHandle} with
-   * play/pause/seek; the first frame is rendered immediately so the canvas is
-   * never blank before playback starts.
+   * play/pause/seek; the first frame renders immediately so the canvas is never
+   * blank before playback starts.
    */
-  async preview(container?: HTMLElement, overrides?: BuildOverrides): Promise<PreviewHandle> {
-    const built = await this.build(overrides);
-    const { compositor, audioEngine, range } = built;
+  async preview(container?: HTMLElement, env: Partial<CompositionEnv> = {}): Promise<PreviewHandle> {
+    const built = await this.build({ target: 'preview', ...env });
+    const { compositor, audioEngine, duration } = built;
     const view = compositor.view;
     if (container) container.append(view);
 
     const clock = new RealtimeClock();
-    clock.duration = range[1];
+    clock.duration = duration;
     let playing = false;
 
     const tick: Subscription = clock.onTick((t) => compositor.renderPreview(t));
@@ -98,15 +139,14 @@ export class Composer {
       audioEngine.pause();
     });
 
-    // Paint the first frame so the canvas isn't blank before play.
-    clock.seek(range[0]);
-    compositor.renderPreview(range[0]);
+    clock.seek(0);
+    compositor.renderPreview(0);
 
     return {
       built,
       clock,
       view,
-      duration: range[1],
+      duration,
       get playing() {
         return playing;
       },
@@ -137,28 +177,17 @@ export class Composer {
 
   /**
    * Render the composition to a video `Blob` in the client. Builds a fresh graph,
-   * runs the engine's {@link Exporter} over the spec's range, then disposes the
-   * graph. `options` override the spec's `fps`/container/codec defaults.
+   * runs the engine's {@link Exporter} over `[0, duration]`, then disposes it.
    */
   async export(
     options: Partial<ExportOptions> = {},
     onProgress?: (progress: number) => void,
   ): Promise<Blob> {
-    const built = await this.build();
+    const built = await this.build({ target: 'export' });
     try {
       const exporter = new Exporter(built.compositor, built.audioEngine);
       return await exporter.export(
-        {
-          fps: this._spec.fps,
-          range: built.range,
-          audio: built.hasAudio,
-          container: built.exportOptions.container,
-          videoCodec: built.exportOptions.videoCodec,
-          audioCodec: built.exportOptions.audioCodec,
-          bitrate: built.exportOptions.bitrate,
-          audioBitrate: built.exportOptions.audioBitrate,
-          ...options,
-        },
+        { fps: 30, range: [0, built.duration], audio: false, ...options },
         onProgress,
       );
     } finally {

@@ -1,112 +1,125 @@
 import { describe, expect, it } from 'vitest';
+import { isComposition } from '../src/composition';
 import { Runtime, runComposition } from '../src/runtime';
 import type { FileSystem } from '../src/vfs';
 
-describe('Runtime.runToSpec', () => {
-  it('compiles + runs a multi-file program into a TimelineSpec', async () => {
+// A DOM-free fake compositor the sandboxed builders return, so these unit tests
+// exercise the compile → link → build plumbing without a GPU. (Real Compositor
+// preview/export is covered by the e2e `pnpm verify:runtime`.)
+const FAKE_COMPOSITOR = `{ getTracks: () => [{ clips: [{ end: 4 }] }], dispose() {} }`;
+
+describe('Runtime.runToComposition', () => {
+  it('compiles + runs a multi-file imperative program into a Composition', () => {
     const files = {
       '/index.ts': `
         import { defineComposition } from '@video-editor-canvas/runtime';
-        import { title } from './title';
-        import { W, H } from './config';
-        export default defineComposition({
-          width: W,
-          height: H,
-          fps: 30,
-          range: [0, 2],
-          tracks: [{ clips: [title] }],
+        import { scene } from './scene';
+        export default defineComposition((env) => {
+          const compositor = scene(env);
+          return { compositor, duration: 4 };
         });
       `,
-      '/config.ts': `export const W = 320; export const H = 180;`,
-      '/title.ts': `
-        import type { TextClipSpec } from '@video-editor-canvas/runtime';
-        export const title: TextClipSpec = {
-          type: 'text', text: 'Hello from code', start: 0, end: 2,
-          transform: { anchor: [0.5, 0.5], position: [160, 90] },
-        };
-      `,
+      '/scene.ts': `export const scene = (_env) => (${FAKE_COMPOSITOR});`,
     };
-    const spec = await new Runtime({ files }).runToSpec();
-    expect(spec.width).toBe(320);
-    expect(spec.height).toBe(180);
-    expect(spec.tracks?.[0]?.clips[0]).toMatchObject({ type: 'text', text: 'Hello from code' });
+    const composition = new Runtime({ files }).runToComposition();
+    expect(isComposition(composition)).toBe(true);
   });
 
-  it('accepts a bare TimelineSpec default export (no defineComposition)', async () => {
-    const spec = await new Runtime({
-      files: { '/index.ts': `export default { width: 100, height: 50, fps: 24, tracks: [] };` },
-    }).runToSpec();
-    expect(spec).toMatchObject({ width: 100, height: 50, fps: 24 });
+  it('injects the real engine namespace so user code can `new` engine classes', async () => {
+    // Timebase is a pure (DOM-free) engine class — proves the real module is wired.
+    const composer = await runComposition({
+      '/index.ts': `
+        import { defineComposition } from '@video-editor-canvas/runtime';
+        import { Timebase } from '@video-editor-canvas/engine';
+        export default defineComposition(() => {
+          const tb = new Timebase(30);
+          return { compositor: ${FAKE_COMPOSITOR}, duration: tb.toSeconds(120) };
+        });
+      `,
+    });
+    const built = await composer.build();
+    expect(built.duration).toBe(4); // 120 frames / 30fps
   });
 
-  it('accepts a factory function default export (sync or async)', async () => {
-    const spec = await new Runtime({
-      files: {
-        '/index.ts': `
-          import { defineComposition } from '@video-editor-canvas/runtime';
-          export default async () => defineComposition({ width: 64, height: 64, fps: 30, tracks: [] });
-        `,
-      },
-    }).runToSpec();
-    expect(spec.width).toBe(64);
+  it('accepts a bare builder function default export', async () => {
+    const composer = await runComposition({
+      '/index.ts': `export default () => ({ compositor: ${FAKE_COMPOSITOR}, duration: 3 });`,
+    });
+    const built = await composer.build();
+    expect(built.duration).toBe(3);
   });
 
-  it('resolves the default entry when none is given', async () => {
-    const spec = await new Runtime({
-      files: { '/index.ts': `export default { width: 10, height: 10, fps: 1 };` },
-    }).runToSpec();
-    expect(spec.width).toBe(10);
+  it('derives duration from clip ends when the builder omits it', async () => {
+    const composer = await runComposition({
+      '/index.ts': `
+        import { defineComposition } from '@video-editor-canvas/runtime';
+        export default defineComposition(() => ({
+          compositor: { getTracks: () => [{ clips: [{ end: 1 }, { end: 5 }] }], dispose() {} },
+        }));
+      `,
+    });
+    const built = await composer.build();
+    expect(built.duration).toBe(5);
   });
 
-  it('throws a helpful error when there is no entry', async () => {
-    await expect(new Runtime({ files: { '/lib.ts': 'export const a = 1;' } }).runToSpec()).rejects.toThrow(
+  it('resolves the default entry when none is given', () => {
+    const composition = new Runtime({
+      files: { '/index.ts': `export default () => ({ compositor: ${FAKE_COMPOSITOR} });` },
+    }).runToComposition();
+    expect(isComposition(composition)).toBe(true);
+  });
+
+  it('throws a helpful error when there is no entry', () => {
+    expect(() => new Runtime({ files: { '/lib.ts': 'export const a = 1;' } }).runToComposition()).toThrow(
       /No entry module/,
     );
   });
 
-  it('throws when the entry exports something that is not a composition/spec', async () => {
-    await expect(
-      new Runtime({ files: { '/index.ts': `export default 42;` } }).runToSpec(),
-    ).rejects.toThrow(/must export/);
+  it('throws when the entry exports something that is not a composition/builder', () => {
+    expect(() => new Runtime({ files: { '/index.ts': `export default 42;` } }).runToComposition()).toThrow(
+      /must export/,
+    );
   });
 
-  it('exposes host-provided externals to user code', async () => {
-    const spec = await new Runtime({
+  it('exposes host-provided externals to user code', () => {
+    const composition = new Runtime({
       files: {
         '/index.ts': `
           import { defineComposition } from '@video-editor-canvas/runtime';
           import { BRAND } from 'host-config';
-          export default defineComposition({ width: BRAND.w, height: 20, fps: 30, tracks: [] });
+          export default defineComposition(() => ({ compositor: BRAND.compositor, duration: 1 }));
         `,
       },
-      externals: { 'host-config': { BRAND: { w: 200 } } },
-    }).runToSpec();
-    expect(spec.width).toBe(200);
+      externals: { 'host-config': { BRAND: { compositor: {} } } },
+    }).runToComposition();
+    expect(isComposition(composition)).toBe(true);
   });
 
-  it('reads from an injected (duck-typed) real filesystem', async () => {
+  it('reads from an injected (duck-typed) real filesystem', () => {
     const backing: Record<string, string> = {
-      '/index.ts': `export default { width: 7, height: 7, fps: 7 };`,
+      '/index.ts': `export default () => ({ compositor: ${FAKE_COMPOSITOR}, duration: 7 });`,
     };
     const injected: FileSystem = {
       readFile: (p) => backing[p] ?? null,
       exists: (p) => p in backing,
       listFiles: () => Object.keys(backing),
     };
-    const spec = await new Runtime({ files: injected }).runToSpec();
-    expect(spec.width).toBe(7);
+    expect(isComposition(new Runtime({ files: injected }).runToComposition())).toBe(true);
   });
 });
 
-describe('runComposition helper', () => {
-  it('builds a Composer whose toSpec() round-trips the timeline', async () => {
-    const composer = await runComposition({
-      '/index.ts': `
-        import { defineComposition } from '@video-editor-canvas/runtime';
-        export default defineComposition({ width: 128, height: 72, fps: 30, tracks: [] });
-      `,
-    });
-    expect(composer.toSpec()).toMatchObject({ width: 128, height: 72, fps: 30 });
-    expect(JSON.stringify(composer)).toContain('"width":128');
+describe('Composer.toBundle', () => {
+  it('snapshots the source files + entry for server render', async () => {
+    const files = {
+      '/index.ts': `export default () => ({ compositor: ${FAKE_COMPOSITOR}, duration: 2 });`,
+      '/helper.ts': `export const x = 1;`,
+    };
+    const composer = await runComposition(files, { entry: '/index.ts' });
+    const bundle = composer.toBundle();
+    expect(bundle.entry).toBe('/index.ts');
+    expect(Object.keys(bundle.files).sort()).toEqual(['/helper.ts', '/index.ts']);
+    expect(bundle.files['/helper.ts']).toContain('export const x = 1;');
+    // JSON.stringify(composer) yields the bundle.
+    expect(JSON.parse(JSON.stringify(composer)).entry).toBe('/index.ts');
   });
 });

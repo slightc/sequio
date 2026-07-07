@@ -6,10 +6,16 @@
  * video as base64 so the Node worker (`scripts/ssr-render.cjs`) can write it to
  * disk. The render core is the same one the live preview uses (contract #3).
  *
+ * It also exposes `window.__SSR__.renderBundle(bundle)` — the **code** path: a
+ * {@link RuntimeBundle} (the source files an editor's "Code Mode" produced) is
+ * re-run here by the {@link Runtime}, building the same object graph on the server
+ * that it built in the browser. No spec to serialize — the code is the artifact.
+ *
  * On load it also renders the built-in sample and publishes the result on
  * `window.__SSR_TEST__` so `pnpm verify:ssr` can assert the browser half works.
  */
 import { Exporter, loadMediabunny } from '@video-editor-canvas/engine';
+import { Runtime, type RuntimeBundle } from '@video-editor-canvas/runtime';
 import { sampleTimeline } from '../src/sample-timeline';
 import { buildTimeline, type TimelineSpec } from '../src/timeline';
 
@@ -99,9 +105,57 @@ export async function render(spec: TimelineSpec, onProgress?: (p: number) => voi
   }
 }
 
+/**
+ * Render a code {@link RuntimeBundle} — the imperative-code path. The runtime
+ * compiles + runs the bundle's files to a `Composer`, builds the live graph on
+ * the server (contract #3: same builder the browser preview ran), and encodes it.
+ */
+export async function renderBundle(
+  bundle: RuntimeBundle,
+  onProgress?: (p: number) => void,
+): Promise<RenderResult> {
+  const composer = await new Runtime(bundle).run();
+  const built = await composer.build({ target: 'server', compositorOptions: {} });
+  try {
+    const codec = await negotiateCodec({});
+    if (!codec) return { ok: false, error: 'no encodable video codec in this browser' };
+
+    document.getElementById('stage')?.append(built.compositor.view);
+
+    const exporter = new Exporter(built.compositor, built.audioEngine);
+    const blob = await exporter.export(
+      {
+        container: codec.container,
+        videoCodec: codec.videoCodec,
+        audio: false,
+        range: [0, built.duration],
+      },
+      onProgress,
+    );
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    return {
+      ok: blob.size > 0,
+      container: codec.container,
+      videoCodec: codec.videoCodec,
+      mime: blob.type,
+      size: blob.size,
+      base64: toBase64(bytes),
+    };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  } finally {
+    built.dispose();
+  }
+}
+
 // Publish the API the Node worker calls.
-(window as unknown as { __SSR__: { render: typeof render; sample: typeof sampleTimeline } }).__SSR__ = {
+(
+  window as unknown as {
+    __SSR__: { render: typeof render; renderBundle: typeof renderBundle; sample: typeof sampleTimeline };
+  }
+).__SSR__ = {
   render,
+  renderBundle,
   sample: sampleTimeline,
 };
 

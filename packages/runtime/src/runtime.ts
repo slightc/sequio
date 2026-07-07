@@ -3,24 +3,26 @@
  * {@link Composer}.
  *
  * It wires a {@link ModuleRuntime} (the CommonJS linker) over a
- * {@link FileSystem} (in-memory by default, or a real one injected by the host),
- * injects the runtime's own authoring API as the bare module
- * `@video-editor-canvas/runtime` so user code can `import { defineComposition }`,
- * runs the entry file, and normalizes whatever it exports into a `Composer`.
+ * {@link FileSystem} (in-memory by default, or a real one injected by the host)
+ * and injects two bare modules so user code reads like a demo:
+ *  - `@video-editor-canvas/engine` → the **real engine namespace**, so the program
+ *    can `import { Compositor, VisualTrack, TextClip } from '@video-editor-canvas/engine'`
+ *    and `new` them (and subclass `Clip` / `Effect` for its own primitives);
+ *  - `@video-editor-canvas/runtime` → `defineComposition`, to tag its builder.
  *
- * The entry's default export (or the module itself) may be:
- *  - a {@link Composition} from `defineComposition(...)`,
- *  - a bare {@link TimelineSpec} object, or
- *  - a function returning either (optionally async).
+ * It runs the entry and normalizes its default export into a `Composer`. The
+ * entry's default export (or the module itself) may be:
+ *  - a {@link Composition} from `defineComposition(builder)`, or
+ *  - a bare builder function `(env) => { compositor, duration }`.
  */
-import type { TimelineSpec } from '@video-editor-canvas/server';
-import { Composer } from './composer';
+import * as engine from '@video-editor-canvas/engine';
+import { Composer, type RuntimeBundle } from './composer';
 import {
   COMPOSITION_TAG,
+  type Composition,
+  type CompositionBuilder,
   defineComposition,
   isComposition,
-  isTimelineSpec,
-  type Composition,
 } from './composition';
 import { ModuleRuntime, type Externals } from './module-runtime';
 import { InMemoryFileSystem, type FileSystem } from './vfs';
@@ -34,6 +36,8 @@ export const RUNTIME_MODULE_API = {
 
 /** Bare specifier under which the authoring API is injected. */
 export const RUNTIME_MODULE_ID = '@video-editor-canvas/runtime';
+/** Bare specifier under which the engine namespace is injected. */
+export const ENGINE_MODULE_ID = '@video-editor-canvas/engine';
 
 export interface RuntimeOptions {
   /** Source files. Either a ready {@link FileSystem} or a path→content map. */
@@ -42,8 +46,8 @@ export interface RuntimeOptions {
   entry?: string;
   /**
    * Extra bare modules user code may `import`. Merged over the built-in
-   * `@video-editor-canvas/runtime` API (host entries win on key collision), so a
-   * host can expose e.g. the engine namespace or shared constants.
+   * `@video-editor-canvas/engine` and `@video-editor-canvas/runtime` modules
+   * (host entries win on key collision), so a host can expose more libraries.
    */
   externals?: Externals;
 }
@@ -58,22 +62,19 @@ function toFileSystem(files: RuntimeOptions['files']): FileSystem {
   return new InMemoryFileSystem(files as Record<string, string>);
 }
 
-/** Coerce whatever the entry exported into a {@link TimelineSpec}. */
-async function specFromExports(exported: unknown): Promise<TimelineSpec> {
+/** Coerce whatever the entry exported into a {@link Composition}. */
+function compositionFromExports(exported: unknown): Composition {
   // Unwrap an ES-module default (`export default …` under CJS interop).
   let value = exported;
   if (value && typeof value === 'object' && 'default' in (value as Record<string, unknown>)) {
     value = (value as Record<string, unknown>).default;
   }
-  // A factory function (sync or async).
-  if (typeof value === 'function') value = await (value as () => unknown)();
-  if (value && typeof (value as Promise<unknown>).then === 'function') value = await value;
-
-  if (isComposition(value)) return value.spec;
-  if (isTimelineSpec(value)) return value;
+  if (isComposition(value)) return value;
+  // A bare builder function is fine too — wrap it.
+  if (typeof value === 'function') return defineComposition(value as CompositionBuilder);
 
   throw new Error(
-    'Entry module must export (as default) a Composition from defineComposition() or a TimelineSpec object.',
+    'Entry module must export (as default) a Composition from defineComposition(builder) or a builder function.',
   );
 }
 
@@ -86,6 +87,7 @@ export class Runtime {
     this.fs = toFileSystem(options.files);
     this.entry = options.entry;
     this.externals = {
+      [ENGINE_MODULE_ID]: engine,
       [RUNTIME_MODULE_ID]: RUNTIME_MODULE_API,
       ...options.externals,
     };
@@ -106,20 +108,30 @@ export class Runtime {
     );
   }
 
+  /** Snapshot the current files into a portable {@link RuntimeBundle}. */
+  private toBundle(entry: string): RuntimeBundle {
+    const files: Record<string, string> = {};
+    for (const path of this.fs.listFiles()) {
+      const content = this.fs.readFile(path);
+      if (content !== null) files[path] = content;
+    }
+    return { files, entry };
+  }
+
   /**
-   * Compile + run the program and return the {@link TimelineSpec} its entry
-   * produced. Separated from {@link run} so callers that only want the spec
-   * (e.g. to download for server render) don't build a `Composer`.
+   * Compile + run the program and return the {@link Composition} its entry
+   * produced (the tagged builder), without wrapping it in a `Composer`.
    */
-  async runToSpec(): Promise<TimelineSpec> {
+  runToComposition(): Composition {
     const modules = new ModuleRuntime({ fs: this.fs, externals: this.externals });
-    const exported = modules.run(this.resolveEntry());
-    return specFromExports(exported);
+    return compositionFromExports(modules.run(this.resolveEntry()));
   }
 
   /** Compile + run the program and wrap its result in a {@link Composer}. */
   async run(): Promise<Composer> {
-    return new Composer(await this.runToSpec());
+    const entry = this.resolveEntry();
+    const composition = this.runToComposition();
+    return new Composer(composition, this.toBundle(entry));
   }
 }
 
@@ -127,7 +139,7 @@ export class Runtime {
  * One-shot convenience: build a {@link Runtime} from `files`/options and run it.
  *
  * ```ts
- * const composer = await runComposition({ '/index.ts': "export default defineComposition({...})" });
+ * const composer = await runComposition({ '/index.ts': "export default defineComposition(async () => {…})" });
  * await composer.preview(document.body);
  * ```
  */

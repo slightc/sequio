@@ -1,19 +1,25 @@
 # 代码运行时（`@video-editor-canvas/runtime`）
 
 > **定位**：把「一段多文件的 TS/JS 程序」编译、链接、运行，得到一个 **`Composer`**。
-> 这个 `Composer` 是**一处产出、三处消费**——在浏览器里**预览**、在浏览器里**导出**，
-> 或把它序列化成 `TimelineSpec` JSON**直接交给服务端渲染**。
+> 用户的代码**用引擎自己的 class 命令式地搭对象图**（`new Compositor()` /
+> `new VisualTrack()` / `track.add(new TextClip(...))`，和 `example/` 里的 demo 一模一样），
+> 而**不是**声明一份 JSON spec——所以用户可以写自己的逻辑、`new` 自己的 `Clip` / `Effect`
+> 子类，也不存在「JSON 定义要和引擎能力同步」的问题。
 >
-> SDK（engine）把「持久化 / schema」交给上层，`TimelineSpec` 协议放在 `server` 包；
-> runtime 建在两者之上：`engine ← server ← runtime`，`engine ← runtime`。
+> 得到的 `Composer` 是**一处产出、三处消费**：浏览器**预览**、浏览器**导出**，或把它的
+> **源码（bundle）** 交给服务端——服务端跑同一个 runtime、重新运行同一份代码。
+>
+> DAG：`engine ← runtime`（runtime 只依赖 engine）；`server` 依赖 `runtime` 以提供
+> 「代码 → 服务端渲染」。
 
-## 为什么需要它
+## 为什么是命令式代码，而不是 JSON
 
-编辑器（studio）用鼠标搭时间线；很多场景更适合**用代码描述视频**——模板化批量生成、
-参数化动画、把设计意图写成可复用的函数。runtime 提供这样一个「代码即合成」的入口：
-用户写普通 TS/JS（跨多个文件、彼此 `import`），`export default defineComposition({...})`，
-runtime 负责把它跑起来并把结果接到引擎的**同一套渲染核心**（契约 #3）——所以代码模式的
-预览、导出、服务端渲染，与手搭编辑器逐字一致。
+声明式 JSON spec 有两个硬伤：① 它只能表达 spec 作者预先定义好的字段，用户想加一种新
+clip / effect 就得改协议；② spec 和引擎能力必须时刻同步。命令式代码没有这两个问题——
+**能在 demo 里跑的，就能在这里跑**：用户 `import { Compositor, TextClip } from
+'@video-editor-canvas/engine'` 直接 `new`，写任意控制流、封装自己的工厂函数、甚至
+`class MyClip extends VisualClip`。runtime 只负责把这段代码**在任意环境里跑起来**，并把结果
+接到引擎的同一套渲染核心（契约 #3）。
 
 ## 组成（`packages/runtime/src`）
 
@@ -22,101 +28,112 @@ vfs.ts             FileSystem 接口 + InMemoryFileSystem（浏览器安全）
 node-fs.ts         NodeFileSystem —— 注入真实文件系统（不进 barrel，含 node:fs）
 compile.ts         单文件 TS/JS → CommonJS（TypeScript transpileModule，纯 JS，浏览器可跑）
 module-runtime.ts  极小的 CommonJS 链接器：解析相对 import + 注入的 externals
-composition.ts     defineComposition() 作者 API（给 TimelineSpec 打标记）
-composer.ts        Composer：preview / export（客户端）+ toSpec（服务端）
+composition.ts     defineComposition(builder) 作者 API（给命令式 builder 打标记）
+composer.ts        Composer：preview / export（客户端）+ toBundle（服务端）
 runtime.ts         Runtime.run()：编译 + 链接 + 运行入口 → Composer
 ```
 
 ### 虚拟文件系统（VFS）
 
-runtime **不直接碰 `node:fs`**——它通过 {@link FileSystem} 接口读文件，所以核心是
-**浏览器安全**的：studio 的「代码模式」整段跑在标签页里，文件放在
-`InMemoryFileSystem`（一个 `路径→内容` 的 map）。同一接口也能**注入真实文件系统**：任何
-满足 `readFile / exists / listFiles` 的对象都行，Node 侧用 `NodeFileSystem` 包一层
-`node:fs`（在 `@video-editor-canvas/runtime/node-fs` 子路径，刻意不进浏览器 barrel）。
+runtime **不直接碰 `node:fs`**——它通过 {@link FileSystem} 接口读文件，核心**浏览器安全**：
+studio 的「代码模式」整段跑在标签页里，文件放在 `InMemoryFileSystem`（`路径→内容` map）。
+同一接口也能**注入真实文件系统**：任何满足 `readFile / exists / listFiles` 的对象都行，Node
+侧用 `NodeFileSystem` 包一层 `node:fs`（在 `@video-editor-canvas/runtime/node-fs` 子路径，
+刻意不进浏览器 barrel）。路径 POSIX 风格、以虚拟根 `/` 为绝对基准；`normalizePath /
+dirname / joinPath` 纯函数、单测覆盖。
 
-路径是 POSIX 风格、以虚拟根 `/` 为绝对基准；`normalizePath / dirname / joinPath` 是纯
-函数，单测覆盖 `.`/`..` 折叠、不越过根、相对/绝对拼接。
+### 编译 + 模块链接
 
-### 编译（per-file transpile）
+链接器自己接管模块，所以每个文件先用 TypeScript 的 `transpileModule` **逐文件**降到
+CommonJS（去类型、不做类型检查、不跨文件解析；`typescript` 纯 JS，浏览器里由 Vite 打包后照跑）。
+`ModuleRuntime` 在 VFS 上做一个极小的 CJS 加载器，`require` 分两路：
 
-链接器自己接管模块，所以每个文件要降到 **CommonJS**（`require` / `module.exports`），而不是
-ESM。用 TypeScript 编译器的 `transpileModule`——**逐文件**去类型，不做类型检查、不跨文件
-解析（正是这里需要的隔离、快速转换，且 `typescript` 是纯 JS，浏览器里由 Vite 打包后照跑）。
-`.json` 文件包装成导出解析值的模块。类型错误在**运行时**才暴露，不在编译期拦截（作者体验
-上「能跑就行」，与 `isolatedModules` 一致）。
+- **相对**（`./foo`、`../bar`）→ VFS 上按扩展名/index 候选查找（`.ts` `.tsx` `.js` `.jsx`
+  `.mjs` `.cjs` `.json`、`/index.*`）。
+- **裸标识** → 注入的 `externals` map。runtime **默认注入两个**：
+  - `@video-editor-canvas/engine` → **真实的引擎命名空间**，于是用户代码能
+    `import { Compositor, VisualTrack, TextClip } from '@video-editor-canvas/engine'` 并 `new` 它们；
+  - `@video-editor-canvas/runtime` → `defineComposition` 等作者 API。
+  宿主可再追加更多 externals。
 
-### 模块链接器（CommonJS）
+模块**惰性求值 + 缓存**（标准 CJS，循环 import 看到部分 `exports`）；解析失败以
+`ModuleResolutionError` 透传。全是对 VFS + 代码转换钩子的纯控制流，脱离 GPU/DOM 单测。
 
-`ModuleRuntime` 在 VFS 上做一个极小的 CJS 加载器，`require` 分两路解析：
+### 作者 API：`defineComposition(builder)`
 
-- **相对**（`./foo`、`../bar`）→ 在 VFS 上按常规扩展名/index 候选查找（`.ts` `.tsx`
-  `.js` `.jsx` `.mjs` `.cjs` `.json`、`/index.*`）。
-- **裸标识**（`@video-editor-canvas/runtime`、宿主注入的名字…）→ 在注入的 `externals` map
-  里查，于是「runtime 自己的作者 API」「engine 命名空间」「共享常量」等无需打包即可被
-  `require`。默认注入 `@video-editor-canvas/runtime` → `{ defineComposition, … }`。
-
-模块**惰性求值 + 缓存**（标准 CJS：执行前先入缓存，故循环 import 看到的是**部分**
-`exports`）。执行体抛错时，包上「哪个模块失败」的信息；解析失败（找不到模块）以
-`ModuleResolutionError` 类型透传，便于区分「缺模块」与「运行时抛错」。全是对 VFS +
-一个代码转换钩子的**纯控制流**，脱离 GPU/DOM 单测。
-
-### 作者 API：`defineComposition`
-
-用户代码用它描述视频，产出的是 `server` 包里那份**可序列化** {@link TimelineSpec}：
+用户默认导出一个 **builder 函数**，在里面用引擎 class 搭好图、返回活的对象：
 
 ```ts
+import { Compositor, VisualTrack, TextClip, Timebase } from '@video-editor-canvas/engine';
 import { defineComposition } from '@video-editor-canvas/runtime';
-import { title } from './title';        // 跨文件 import 在 VFS 里解析
+import { title } from './title';                 // 跨文件 import 在 VFS 里解析
 
-export default defineComposition({
-  width: 640, height: 360, fps: 30,
-  range: [0, 4],
-  tracks: [{ clips: [title] }],
+export default defineComposition(async (env) => {
+  const compositor = new Compositor({
+    width: 640, height: 360, timebase: new Timebase(30),
+    ...env.compositorOptions,                     // 让服务端注入它自己的 renderer
+  });
+  await compositor.init();
+  const track = new VisualTrack();
+  track.add(title());                             // title() 里 new TextClip(...)
+  compositor.addTrack(track);
+  return { compositor, duration: 4 };             // duration 可省略，则从 clip 末端推导
 });
 ```
 
-`defineComposition` 给 spec 打一个 tag（`__tag`），让 runtime 能把「用户返回了一个
-composition」和「返回了别的东西」区分开，并对 `width/height/fps` 做轻校验（拼错时在作者
-期就报错，而不是渲成黑帧）。入口的默认导出也可以直接是一个裸 `TimelineSpec`，或一个返回
-它的函数（同步/异步皆可）。
+`build(env)` 收到的 `env` 携带**环境差异**——同一个 builder 会在客户端预览、客户端导出、
+服务端渲染下各跑一次；`env.compositorOptions` 是宿主注入「有什么不同」的口子（Node 的
+WebGPU renderer、输出倍率），所以可移植代码把它 spread 进 `new Compositor({...})`（浏览器
+下是空对象、无害）。返回值 `{ compositor, audioEngine?, duration? }`：`duration` 省略时从各
+轨道 clip 的最大 `end` 推导（`deriveDuration`）。`defineComposition` 只给 builder 打个 tag，
+让 runtime 能区分「用户返回了一个 composition」和「返回了别的东西」，其余全靠 builder 本体。
 
 ### `Composer`：一处产出、三处消费
 
-`Runtime.run()` 编译+运行入口，把结果规整成 `Composer`。同一个 `Composer` 对象：
+`Runtime.run()` 编译+运行入口，把 builder 规整成 `Composer`。同一个 `Composer`：
 
-1. **客户端预览** —— `composer.preview(container)`：用 `server` 的 `buildTimeline(spec)`
-   建**活的** `Compositor` 对象图（解码源、加载字体），挂一个 `RealtimeClock` 驱动
-   `renderPreview`，返回带 play/pause/seek 的 `PreviewHandle`。
-2. **客户端导出** —— `composer.export(options)`：对同一张图跑引擎的 `Exporter`，导出视频
-   `Blob`（与预览**同一渲染核心**，契约 #3）。
-3. **服务端渲染** —— `composer.toSpec()`：返回纯 JSON 的 `TimelineSpec`，正是两条 SSR 路线
-   （`pnpm ssr:render` 无头 Chrome / `pnpm ssr:render-node` 纯 Node WebGPU）消费的协议。
+1. **客户端预览** —— `composer.preview(container)`：跑 builder 得到活的 `Compositor`，挂一个
+   `RealtimeClock` 驱动 `renderPreview`，返回带 play/pause/seek 的 `PreviewHandle`。
+2. **客户端导出** —— `composer.export(options)`：**再跑一次 builder**得到一张独立的图，跑引擎
+   `Exporter` 导出视频 `Blob`（所以导出绝不打扰预览；与预览同一渲染核心，契约 #3）。
+3. **服务端渲染** —— `composer.toBundle()`：返回**源码文件本身**（`{ files, entry }`）。服务端
+   用同一个 runtime **重新运行这段代码**建图——代码就是产物，没有 spec 要序列化/同步。
 
-关键是**复用** `server` 的 `buildTimeline`（spec → 活对象图）而非另写一遍——SSR 路线调的是
-同一个 builder，所以一段 composition 无论在这里预览、导出，还是发到远端渲染，行为一致。
+每个目的地都**重新运行 builder**得到互不干扰的独立图。
+
+## 服务端渲染（跑同一份代码）
+
+`server` 的 **Route A（无头 Chrome）** 暴露 `window.__SSR__.renderBundle(bundle)`：用 runtime
+把 bundle 的文件编译+运行成 `Composer`，在服务端建**同一张图**（契约 #3）再编码。Node worker
+`route-a/ssr-render.cjs` 新增 `--bundle bundle.json`（与 `--timeline spec.json` 互斥）：
+
+```bash
+pnpm ssr:render -- --bundle bundle.json --out out.mp4   # 无头 Chrome 重新运行这段代码
+```
+
+无头 Chrome 天生有 WebGL/WebCodecs，所以命令式代码原样运行；Route B（Node WebGPU）可经
+`env.compositorOptions.createRenderer` 注入渲染器（需 GPU/lavapipe）。
 
 ## studio 的「代码模式」（Code Mode）
 
 `packages/studio/code.html` + `src/code-mode.ts` 是 runtime 的参考消费者：一个浏览器内的
-多文件编辑器（文件标签 + textarea，背后是 `InMemoryFileSystem`）。按 **Run** 把文件交给
-`Runtime` → `Composer`，然后同一个 `Composer` 在本页驱动三处：**预览**（挂到画布、
-play/scrub）、**导出**（`composer.export({container})` 下视频）、**Server Render JSON**
-（`composer.toSpec()` 下 `timeline.json`，配文案提示用哪条 SSR 命令渲染）。默认给了一份三文件
-样例（`index.ts` / `scene.ts` / `title.ts` 互相 import），编辑任意文件重跑即可即时看到变化——
-无构建步骤、无服务器往返。编辑器主工具栏有「‹› Code Mode」入口。
+多文件编辑器（文件标签 + textarea，背后 `InMemoryFileSystem`）。默认给了三文件命令式样例
+（`index.ts` / `scene.ts` / `title.ts` 互相 import，全用 `new` 引擎 class）。按 **Run** 把文件交给
+`Runtime` → `Composer`，同一个 `Composer` 驱动三处：**预览**（挂画布、play/scrub）、**导出**
+（`composer.export({container})` 下视频）、**Server Render**（`composer.toBundle()` 下 `bundle.json`
++ 提示用 `pnpm ssr:render -- --bundle` 渲染）。编辑任意文件重跑即时可见——无构建步骤、无服务器
+往返。主编辑器工具栏有「‹› Code Mode」入口。
 
 ## 校验（tests & docs 是「完成」的一部分）
 
-- **纯逻辑单测**（`tests/`，vitest，无 GPU/DOM）：
-  - `vfs.test.ts` —— 路径规范化、`InMemoryFileSystem` 读写/列举；
-  - `compile.test.ts` —— 去类型、ESM→CJS、JSON 模块、诊断；
-  - `module-runtime.test.ts` —— 相对/index/`..` 解析、externals、单例缓存、循环 import、
-    解析错误类型、执行错误定位；
-  - `composition.test.ts` —— `defineComposition` 校验与 tag 辨识；
-  - `runtime.test.ts` —— 多文件程序端到端跑成 spec、裸 spec/工厂函数默认导出、入口解析、
-    宿主 externals、**注入的（鸭子类型）真实文件系统**、`runComposition` 便捷函数。
-- **端到端**（`pnpm verify:runtime`，Puppeteer + Chrome-for-Testing）：编译+运行一段**两文件
-  TS 程序** → `Composer`，然后 ①预览渲一帧读回像素（非黑、颜色对）②导出成真视频 Blob 解回
-  断言帧数/颜色 ③`toSpec()` 序列化。studio 代码模式页在浏览器里的整链路（3 文件 → Composer →
-  画布出内容 → 导出/JSON 按钮就绪）手动验证通过。
+- **纯逻辑单测**（`tests/`，vitest，无 GPU/DOM）：`vfs`（路径规范化、读写）、`compile`
+  （去类型、ESM→CJS、JSON、诊断）、`module-runtime`（相对/index/`..` 解析、externals、单例缓存、
+  循环 import、错误类型/定位）、`composition`（`defineComposition` 打标记、`deriveDuration`）、
+  `runtime`（多文件命令式程序跑成 Composition、**真实 engine 命名空间注入**并 `new Timebase`、
+  裸 builder 默认导出、duration 推导、入口解析、host externals、注入的真实文件系统、
+  `toBundle` 快照）、`node-fs`（从磁盘读并运行）。
+- **端到端**（`pnpm verify:runtime`，Puppeteer + Chrome-for-Testing）：编译+运行一段**两文件命令式
+  TS 程序**（`new Compositor` / `new ShapeClip` / `track.add`）→ `Composer`，然后 ①预览渲一帧读回
+  像素（非黑、颜色对）②导出成真视频解回断言帧数/颜色 ③`toBundle()`。**服务端**：`pnpm verify:ssr`
+  在无头 Chrome 里加载导入了 runtime 的 SSR 页并渲染样例；`pnpm ssr:render -- --bundle` 把一段命令式
+  代码 bundle 在服务端重新运行、产出合法 MP4（本会话手验通过）。studio 代码模式整链路浏览器手验通过。

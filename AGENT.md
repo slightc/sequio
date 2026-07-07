@@ -36,14 +36,14 @@ These are the invariants the whole design rests on. Any change must preserve the
 ## Monorepo layout
 
 This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into four packages,
-in a clean dependency DAG — `engine ← server ← runtime ← studio`, and
-`engine ← {runtime, studio}`:
+in a clean dependency DAG — `engine ← runtime ← server ← studio`, and
+`engine ← {server, studio}`:
 
 ```
 packages/
   engine/   @video-editor-canvas/engine    the SDK runtime (the published library)
-  server/   @video-editor-canvas/server    server-side rendering (depends on engine)
-  runtime/  @video-editor-canvas/runtime   compile+run TS/JS → a Composer (depends on engine + server)
+  runtime/  @video-editor-canvas/runtime   compile+run TS/JS → a Composer (depends on engine)
+  server/   @video-editor-canvas/server    server-side rendering (depends on engine + runtime)
   studio/   @video-editor-canvas/studio    reference multi-track editor (depends on engine + server + runtime)
 docs/       architecture & design (workspace-level)
 todo/       milestone task tracking (start here for "what's next")
@@ -78,7 +78,8 @@ example/       demos + browser e2e verify pages (verify:* harness)
 
 ```
 src/            TimelineSpec protocol + buildTimeline (the serializable JSON contract; barrel = src/index.ts)
-route-a/        Route A: headless Chrome (ssr-render.html/.ts + ssr-render.cjs worker)
+route-a/        Route A: headless Chrome — renders a TimelineSpec *or* a runtime code bundle
+                (ssr-render.html/.ts exposes render(spec)/renderBundle(bundle) + ssr-render.cjs worker)
 route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, export-node.ts, fonts-node.ts + verify-*)
 tests/          headless spec→graph unit tests
 ```
@@ -91,8 +92,8 @@ src/
   node-fs.ts         NodeFileSystem — inject a real filesystem (out of barrel)  ✅ implemented
   compile.ts         per-file TS/JS → CommonJS via `typescript` transpileModule ✅ implemented
   module-runtime.ts  tiny CJS linker: resolve relative imports + externals      ✅ implemented
-  composition.ts     defineComposition() authoring API (tags a TimelineSpec)    ✅ implemented
-  composer.ts        Composer: preview / export (client) + toSpec (server)      ✅ implemented
+  composition.ts     defineComposition(builder) authoring API (imperative)      ✅ implemented
+  composer.ts        Composer: preview / export (client) + toBundle (server)    ✅ implemented
   runtime.ts         Runtime.run() → compile+link+run the entry → Composer      ✅ implemented
   index.ts           public barrel (browser-safe; node-fs is a subpath export)
 tests/               vitest unit tests (VFS, compile, linker, composition, run)
@@ -101,13 +102,17 @@ example/             runtime-test.html/.ts (verify:runtime e2e)
 
 Takes a set of TS/JS source files (an in-memory {@link InMemoryFileSystem} or an
 injected real one), transpiles + links them, and runs the entry. The program
-describes a video by default-exporting `defineComposition(spec)`; the result is a
-**`Composer`** that (1) previews and (2) exports in the browser — reusing the
-server's `buildTimeline` (spec → live `Compositor`) — and whose (3) `toSpec()`
-feeds the SSR routes. One object, three destinations (client preview / client
-export / server render). Browser-safe (only `typescript`, `engine`, `server`
-barrels); the `node:fs` adapter is the `@video-editor-canvas/runtime/node-fs`
-subpath, kept out of the browser barrel. See [`docs/runtime.md`](docs/runtime.md).
+builds its video **imperatively with the engine's own classes** (`new Compositor()`,
+`new VisualTrack()`, `track.add(new TextClip(...))` — same style as `example/`, so
+a user can bring their own `Clip`/`Effect` subclasses) inside
+`defineComposition(builder)`; the runtime injects the real `@video-editor-canvas/engine`
+namespace as a sandbox module so the code can `new` it. The result is a **`Composer`**
+that (1) previews and (2) exports in the browser and whose (3) `toBundle()` returns
+the **source files themselves** — the SSR routes re-run that code on the server
+(no spec to serialize/keep in sync). One object, three destinations (client preview /
+client export / server render). Browser-safe (only `typescript` + `engine` barrels);
+the `node:fs` adapter is the `@video-editor-canvas/runtime/node-fs` subpath, kept out
+of the browser barrel. See [`docs/runtime.md`](docs/runtime.md).
 
 ### `packages/studio` — reference editor
 

@@ -13,12 +13,15 @@ describe('NodeFileSystem (real filesystem injection)', () => {
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'vec-runtime-'));
     mkdirSync(join(root, 'lib'), { recursive: true });
-    writeFileSync(join(root, 'lib', 'scene.ts'), `export const W = 512; export const H = 288;`);
+    writeFileSync(
+      join(root, 'lib', 'scene.ts'),
+      `export const scene = () => ({ getTracks: () => [{ clips: [{ end: 6 }] }], dispose() {} });`,
+    );
     writeFileSync(
       join(root, 'index.ts'),
       `import { defineComposition } from '@video-editor-canvas/runtime';\n` +
-        `import { W, H } from './lib/scene';\n` +
-        `export default defineComposition({ width: W, height: H, fps: 24, tracks: [] });`,
+        `import { scene } from './lib/scene';\n` +
+        `export default defineComposition(() => ({ compositor: scene(), duration: 6 }));`,
     );
   });
 
@@ -31,12 +34,14 @@ describe('NodeFileSystem (real filesystem injection)', () => {
     expect(fs.exists('/index.ts')).toBe(true);
     expect(fs.exists('/lib/scene.ts')).toBe(true);
     expect(fs.exists('/missing.ts')).toBe(false);
-    expect(fs.readFile('/lib/scene.ts')).toContain('W = 512');
+    expect(fs.readFile('/lib/scene.ts')).toContain('end: 6');
     expect(fs.listFiles()).toEqual(['/index.ts', '/lib/scene.ts']);
   });
 
   it('runs a program straight from the injected real filesystem', async () => {
-    const spec = await new Runtime({ files: new NodeFileSystem(root) }).runToSpec();
-    expect(spec).toMatchObject({ width: 512, height: 288, fps: 24 });
+    const composer = await new Runtime({ files: new NodeFileSystem(root) }).run();
+    const built = await composer.build();
+    expect(built.duration).toBe(6);
+    expect(composer.entry).toBe('/index.ts');
   });
 });
