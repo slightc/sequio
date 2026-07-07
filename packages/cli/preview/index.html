@@ -51,6 +51,13 @@
         max-width: 100%;
       }
       #stage canvas {
+        /* Pixi (autoDensity) sets explicit inline width/height on the canvas,
+           which makes max-width/max-height clamp each axis independently and
+           breaks the aspect ratio when only one binds. Force width/height back
+           to auto so the intrinsic buffer ratio is used and the max-* limits
+           scale it proportionally. */
+        width: auto !important;
+        height: auto !important;
         max-width: 100%;
         max-height: 78vh;
         background: #000;
