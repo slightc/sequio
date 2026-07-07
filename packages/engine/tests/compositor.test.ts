@@ -689,6 +689,28 @@ describe('Compositor', () => {
     expect(hi.resolution).toBe(3);
   });
 
+  it('defaults antialias on (MSAA for rotated shape/text edges) and honors an override', async () => {
+    expect(makeCompositor().antialias).toBe(true);
+    const off = new Compositor({ width: 10, height: 10, timebase: new Timebase(30), antialias: false });
+    expect(off.antialias).toBe(false);
+
+    // The flag is threaded into the renderer factory options so preview matches export.
+    let received: unknown;
+    const c = new Compositor({
+      width: 10,
+      height: 10,
+      timebase: new Timebase(30),
+      antialias: false,
+      createRenderer: async (opts) => {
+        received = opts.antialias;
+        return { render: () => {}, destroy: () => {} } as unknown as Renderer;
+      },
+    });
+    await c.init();
+    expect(received).toBe(false);
+    c.dispose();
+  });
+
   it('exposes a shared texture pool with the configured budget', () => {
     const c = new Compositor({
       width: 320,

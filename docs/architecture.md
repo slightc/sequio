@@ -93,6 +93,12 @@ clock.play();
 内部按 `width*resolution` 绘制、CSS 仍是 `width` px，所以高分屏上文字/矢量边缘清晰不糊。
 `renderToTexture` 的离屏纹理也用同一 `resolution`。可用 `CompositorOptions.resolution` 覆盖。
 
+**抗锯齿（`antialias`，默认开）**：`CompositorOptions.antialias`（默认 `true`）开启 MSAA，
+消除旋转 / 非轴对齐的 Shape、矢量、文字边缘的锯齿。PixiJS v8 里离屏渲染目标的 MSAA 是**目标本身**
+的属性而非渲染器的，所以这个开关同时作用于屏上渲染器、`renderToTexture` 的导出/预合成离屏纹理，以及
+转场的离屏缓冲——预览与导出因此一致（契约 #3）。Route B 的 Node WebGPU 渲染器也透传该值（导出实际靠
+带 MSAA 的 RenderTexture 平滑读回的像素）。超大分辨率下若要用填充率换边缘质量可设 `false`。
+
 ### 多轨叠层与 Reconciler
 
 - **每条 `VisualTrack` 映射一个 PixiJS `Container`**，按 `zIndex` 在 stage 里排序；该轨道

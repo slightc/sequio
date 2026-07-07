@@ -274,7 +274,10 @@ export async function createNodeWebGPURenderer(options: Partial<AutoDetectOption
     height: options.height,
     background: options.background,
     backgroundAlpha: 1,
-    antialias: false,
+    // MSAA for shape/text edges. Export renders into antialiased RenderTextures
+    // (RT-level MSAA is what actually smooths the pixels read back), but honor the
+    // compositor's choice here too so the renderer and its targets agree.
+    antialias: options.antialias ?? true,
     // Honor the compositor's resolution. Text and other Canvas-rasterized content
     // (PIXI.Text glyph atlases) are generated at the *renderer's* resolution, so
     // dropping it here rasterizes glyphs at 1× and upscales them into a higher-res
