@@ -6,8 +6,11 @@
  *  2. `preview` → boots the dev server, points Chrome-for-Testing at the page and
  *     asserts the composition ran in-browser (`window.__PREVIEW_TEST__.ok`).
  *
- * Needs a WebCodecs-capable browser (Puppeteer's Chrome-for-Testing):
- *   pnpm exec puppeteer browsers install chrome
+ * Needs:
+ *  - a WebGPU host for `render` (Route B): a GPU, or Mesa lavapipe
+ *    (`apt install mesa-vulkan-drivers`; export VK_ICD_FILENAMES=…/lvp_icd.json);
+ *  - a WebCodecs-capable browser for `preview` (Puppeteer's Chrome-for-Testing):
+ *    `pnpm exec puppeteer browsers install chrome`.
  */
 import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -23,7 +26,7 @@ async function verifyRender(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'sequio-verify-'));
   const out = join(dir, 'out.mp4');
   try {
-    const code = await runRender(EXAMPLE, { out, verify: true, port: 6183 });
+    const code = await runRender(EXAMPLE, { out, verify: true });
     if (code !== 0) throw new Error(`render exited ${code}`);
     const size = statSync(out).size;
     if (size < 500) throw new Error(`render output too small (${size} bytes)`);

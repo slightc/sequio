@@ -4,13 +4,15 @@
  * {@link CliCommand} (or a help/version/error sentinel). `cli.ts` does the I/O.
  */
 
-/** `sequio render <file> [-o out] [--verify]`. */
+/** `sequio render <file> [-o out] [--scale N] [--verify]`. */
 export interface RenderCommand {
   kind: 'render';
   /** Path to the entry composition file (its `defineComposition` default export). */
   file: string;
-  /** Output video path. `undefined` → the render worker picks `out.<container>`. */
+  /** Output video path. `undefined` → `out.mp4`. */
   out?: string;
+  /** Output resolution multiplier (N× the composition size). @default 1 */
+  scale: number;
   /** Assert a valid video container came out (non-zero exit otherwise). */
   verify: boolean;
 }
@@ -45,8 +47,9 @@ Usage:
   sequio render <file> [options]     Encode a composition to a video file
   sequio preview <file> [options]    Serve a live in-browser preview
 
-Render options:
-  -o, --out <path>     Output path (default: out.<container>)
+Render options (pure Node, PixiJS WebGPU — needs a GPU or Mesa lavapipe):
+  -o, --out <path>     Output path (default: out.mp4)
+  -s, --scale <n>      Render at n× the composition resolution (default: 1)
       --verify         Assert a valid video container came out
 
 Preview options:
@@ -83,6 +86,7 @@ export function parseArgs(argv: string[]): CliCommand {
 function parseRender(rest: string[]): CliCommand {
   let file: string | undefined;
   let out: string | undefined;
+  let scale = 1;
   let verify = false;
 
   for (let i = 0; i < rest.length; i++) {
@@ -91,6 +95,11 @@ function parseRender(rest: string[]): CliCommand {
     else if (a === '-o' || a === '--out') {
       out = rest[++i];
       if (out === undefined) return { kind: 'error', message: `${a} needs a path` };
+    } else if (a === '-s' || a === '--scale') {
+      const raw = rest[++i];
+      const n = Number(raw);
+      if (!(n >= 1) || !Number.isFinite(n)) return { kind: 'error', message: `${a} needs a number ≥ 1, got: ${raw}` };
+      scale = n;
     } else if (a === '--verify') verify = true;
     else if (a.startsWith('-')) return { kind: 'error', message: `Unknown option: ${a}` };
     else if (file === undefined) file = a;
@@ -98,7 +107,7 @@ function parseRender(rest: string[]): CliCommand {
   }
 
   if (file === undefined) return { kind: 'error', message: 'render needs a <file>' };
-  return { kind: 'render', file, out, verify };
+  return { kind: 'render', file, out, scale, verify };
 }
 
 function parsePreview(rest: string[]): CliCommand {

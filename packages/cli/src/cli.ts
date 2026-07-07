@@ -26,7 +26,7 @@ async function main(argv: string[]): Promise<number> {
       return 2;
 
     case 'render':
-      return runRender(command.file, { out: command.out, verify: command.verify });
+      return runRender(command.file, { out: command.out, scale: command.scale, verify: command.verify });
 
     case 'preview': {
       const server = await startPreviewServer(command.file, {

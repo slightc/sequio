@@ -21,7 +21,7 @@ export {
   type MetaCommand,
 } from './args';
 export { readBundle } from './bundle';
-export { runRender, resolveServerRoot, type RenderOptions } from './render';
+export { runRender, type RenderOptions } from './render';
 export {
   startPreviewServer,
   type PreviewServer,

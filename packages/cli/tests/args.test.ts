@@ -29,6 +29,7 @@ describe('parseArgs', () => {
         kind: 'render',
         file: 'a.ts',
         out: undefined,
+        scale: 1,
         verify: false,
       });
     });
@@ -38,11 +39,22 @@ describe('parseArgs', () => {
         kind: 'render',
         file: 'a.ts',
         out: 'x.mp4',
+        scale: 1,
         verify: true,
       });
       expect(parseArgs(['render', 'a.ts', '--out', 'y.webm'])).toMatchObject({
         out: 'y.webm',
       });
+    });
+
+    it('--scale / -s', () => {
+      expect(parseArgs(['render', 'a.ts', '--scale', '2'])).toMatchObject({ scale: 2 });
+      expect(parseArgs(['render', 'a.ts', '-s', '1.5'])).toMatchObject({ scale: 1.5 });
+    });
+
+    it('invalid scale → error', () => {
+      expect(parseArgs(['render', 'a.ts', '--scale', '0'])).toMatchObject({ kind: 'error' });
+      expect(parseArgs(['render', 'a.ts', '--scale', 'abc'])).toMatchObject({ kind: 'error' });
     });
 
     it('missing file → error', () => {
