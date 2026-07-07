@@ -2,6 +2,10 @@
 
 未排期的想法、小任务、技术债。攒够一组、依赖清晰后升级成里程碑文件。
 
+- [x] runtime/cli 支持在组合里引用 gsap：runtime 的 `externals` 接缝（已有）+ CLI 把 gsap 作为
+      依赖并在 `render`（Node）与 `preview`（浏览器）两处注入（`cliExternals()`），server Route B
+      `renderBundleToFile` 开通用 `externals` 透传口；引擎仍不依赖 gsap。`example/index.ts` 标题用
+      gsap 入场，`pnpm verify:cli` 覆盖。见 [runtime.md](../docs/runtime.md) / [cli.md](../docs/cli.md)。
 - [x] `example/` playground 页面（`pnpm dev` 起 vite，单路 clip play/pause/seek）。✅ 里程碑 01
 - [x] 服务端渲染（路线 A：Headless Chrome）。时间线 JSON 协议 + `buildTimeline()` +
       `scripts/ssr-render.cjs` worker（时间线 JSON → 视频文件）。见

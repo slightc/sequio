@@ -7,6 +7,7 @@
  * so this module simply re-runs from scratch on load.
  */
 import { Runtime, type PreviewHandle, type RuntimeBundle } from '@sequio/runtime';
+import { cliExternals } from '../src/externals';
 
 function $<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
@@ -61,7 +62,7 @@ async function boot(): Promise<void> {
 
     fileEl.textContent = bundle.entry;
 
-    const composer = await new Runtime(bundle).run();
+    const composer = await new Runtime({ ...bundle, externals: cliExternals() }).run();
     stageEl.replaceChildren();
     preview = await composer.preview(stageEl);
 

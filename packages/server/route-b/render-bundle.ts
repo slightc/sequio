@@ -13,7 +13,7 @@
  * lavapipe). {@link setupNodeEnvironment} throws a clear message if none is found.
  */
 import type { Renderer } from '@sequio/engine';
-import { Runtime, type RuntimeBundle } from '@sequio/runtime';
+import { Runtime, type Externals, type RuntimeBundle } from '@sequio/runtime';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';
 import { bridgeFontManagerToNode } from './fonts-node';
@@ -28,6 +28,14 @@ export interface RenderBundleNodeOptions {
   videoCodec?: string;
   bitrate?: number;
   onProgress?: (p: number) => void;
+  /**
+   * Extra bare modules the composition may `import` (merged over the built-in
+   * `@sequio/engine` / `@sequio/runtime`). This is the seam a host uses to make a
+   * third-party library — e.g. `gsap` — resolvable to user code in the Node
+   * render, exactly as it is in the browser preview. The server itself pulls in
+   * nothing: the caller (`sequio render`) owns the library and passes it here.
+   */
+  externals?: Externals;
 }
 
 export interface RenderBundleNodeResult {
@@ -56,7 +64,7 @@ export async function renderBundleToFile(
   const scale = Math.max(1, opts.scale ?? 1);
   let renderer: Renderer | null = null;
 
-  const composer = await new Runtime(bundle).run();
+  const composer = await new Runtime({ ...bundle, externals: opts.externals }).run();
   // The environment's renderer + scale are injected implicitly into the user's
   // `new Compositor(...)` (runtime engineForEnv folds compositorOptions in).
   const built = await composer.build({

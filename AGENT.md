@@ -109,7 +109,10 @@ builds its video **imperatively with the engine's own classes** (`new Compositor
 `new VisualTrack()`, `track.add(new TextClip(...))` — same style as `example/`, so
 a user can bring their own `Clip`/`Effect` subclasses) inside
 `defineComposition(builder)`; the runtime injects the real `@sequio/engine`
-namespace as a sandbox module so the code can `new` it. Environment options a host
+namespace as a sandbox module so the code can `new` it. Third-party libraries a
+composition imports (e.g. `gsap`) are reachable the same way via
+`RuntimeOptions.externals` (bare-specifier → module value); the `sequio` CLI ships
+gsap and injects it in both `render` and `preview`. Environment options a host
 needs (a Node renderer, an output scale) are folded into `new Compositor(...)`
 **implicitly** (`engineForEnv` subclasses `Compositor` per build), so the code reads
 exactly like a demo — no `env` plumbing. The result is a **`Composer`**
