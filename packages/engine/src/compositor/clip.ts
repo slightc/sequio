@@ -1,6 +1,7 @@
 import type { BLEND_MODES, Container } from 'pixi.js';
 import { AnimatableProperty } from '../animation/animatable-property';
 import { Transform2D } from '../animation/transform2d';
+import type { AnimationSample, ClipAnimator } from '../animation/clip-animator';
 import type { Effect } from '../effects/effect';
 
 /**
@@ -33,6 +34,13 @@ export abstract class VisualClip extends Clip {
   opacity = new AnimatableProperty<number>(1);
   blendMode: BLEND_MODES = 'normal';
   effects: Effect[] = [];
+  /**
+   * Optional whole-clip animator, sampled at the clip's local time
+   * (`t - start`) and composed over the base transform/opacity. Assign a
+   * built-in {@link TweenAnimator} or bind GSAP via `gsapClipAnimator`. `null`
+   * (default) leaves the clip driven by its keyframes alone.
+   */
+  animator: ClipAnimator | null = null;
   private readonly attachedEffects = new Set<Effect>();
   private lastObj: Container | null = null;
 
@@ -45,10 +53,17 @@ export abstract class VisualClip extends Clip {
 
   /** Apply transform, opacity, blend mode and effects onto `obj` at time `t`. */
   protected applyCommon(obj: Container, t: number): void {
-    this.transform.applyTo(obj, t);
-    obj.alpha = this.opacity.valueAt(t);
+    const sample = this.sampleAnimator(t);
+    this.transform.applyTo(obj, t, sample);
+    const alpha = this.opacity.valueAt(t);
+    obj.alpha = sample?.alpha != null ? alpha * sample.alpha : alpha;
     obj.blendMode = this.blendMode;
     this.syncEffects(obj, t);
+  }
+
+  /** Sample the whole-clip {@link animator} at local time (`undefined` if none). */
+  protected sampleAnimator(t: number): AnimationSample | undefined {
+    return this.animator ? this.animator.sampleAt(t - this.start) : undefined;
   }
 
   /** Attach newly-added effects to `obj`, update all, detach removed ones. */

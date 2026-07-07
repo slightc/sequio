@@ -27,6 +27,7 @@
     "verify:decode": "node scripts/verify-page.cjs example/decode-test.html __DECODE_TEST__ \"VideoSource decode\"",
     "verify:render": "node scripts/verify-page.cjs example/multitrack-test.html __RENDER_TEST__ \"multi-track render\"",
     "verify:clips": "node scripts/verify-page.cjs example/clips-test.html __CLIPS_TEST__ \"image/text/shape clips\"",
+    "verify:text-anim": "node scripts/verify-page.cjs example/text-anim-test.html __TEXT_ANIM_TEST__ \"text motion effects\"",
     "verify:font": "node scripts/verify-page.cjs example/font-test.html __FONT_TEST__ \"google font\"",
     "verify:audio": "node scripts/verify-page.cjs example/audio-test.html __AUDIO_TEST__ \"audio engine\"",
     "verify:effects": "node scripts/verify-page.cjs example/effects-test.html __EFFECTS_TEST__ \"effects & transitions\"",

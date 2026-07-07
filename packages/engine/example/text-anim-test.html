@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>text animation check</title>
+    <style>
+      body { margin: 0; padding: 24px; background: #0b0b0e; font-family: system-ui, sans-serif; color: #e6e6ea; }
+      h1 { font-size: 15px; opacity: 0.85; }
+      #stage canvas { border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
+    </style>
+  </head>
+  <body>
+    <h1>Text motion effect — per-character drop-in (StaggerTextAnimator)</h1>
+    <p style="opacity: 0.55; font-size: 13px; max-width: 560px;">
+      A split <code>TextClip</code> (<code>split: 'char'</code>) whose glyphs drop in from above,
+      faded and staggered. Sampled at start (hidden), midway (first landed, last not) and settled
+      (all visible). Result on <code>window.__TEXT_ANIM_TEST__</code>.
+    </p>
+    <div id="stage"></div>
+    <script type="module" src="/example/text-anim-test.ts"></script>
+  </body>
+</html>

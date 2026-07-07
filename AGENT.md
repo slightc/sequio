@@ -62,11 +62,11 @@ packages import the engine as `@sequio/engine` and resolve it
 src/
   core/        Disposable / Subscription primitives
   time/        Timebase, Clock (Realtime / FixedStep)        ✅ implemented
-  animation/   Easing, AnimatableProperty, Transform2D       ✅ implemented
+  animation/   Easing, AnimatableProperty, Transform2D + ClipAnimator/TextAnimator seam  ✅ implemented (keyframes + Stagger/Tween animators + GSAP binding, engine has no gsap dep)
   media/       MediaSource + Video/Image/Audio, FrameCache   🚧 video (Mediabunny) + image decode done, audio TODO
   texture/     TextureManager (GPU budget + LRU)             ✅ implemented
-  text/        FontManager (web-font loading)                ✅ implemented
-  compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips + overlap-driven transitions done
+  text/        FontManager (web-font loading) + text-layout (split into line/word/char parts)  ✅ implemented
+  compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips + overlap-driven transitions + clip animators + TextClip.split motion done
   effects/     Effect, EffectRegistry, Transition            🚧 color/blur + warp (bulge/perspective/displacement) + crossfade done, chroma/LUT/wipe TODO
   audio/       AudioEngine + scheduling                      ✅ implemented (Web Audio + OfflineAudioContext)
   export/      Exporter (FixedStep loop + Mediabunny mux)     ✅ implemented (MP4/WebM, video + audio; golden-frame diff is a follow-up)
