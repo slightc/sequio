@@ -129,6 +129,28 @@ describe('Compositor origin', () => {
   });
 });
 
+describe('Compositor timebase / fps', () => {
+  it('defaults to 30fps when neither timebase nor fps is given', () => {
+    const c = new Compositor({ width: 200, height: 100 });
+    expect(c.timebase.fps).toBe(30);
+    c.dispose();
+  });
+
+  it('derives the timebase from the fps shortcut', () => {
+    const c = new Compositor({ width: 200, height: 100, fps: 24 });
+    expect(c.timebase.fps).toBe(24);
+    c.dispose();
+  });
+
+  it('uses an explicit timebase, and it wins over fps', () => {
+    const tb = new Timebase(50);
+    const c = new Compositor({ width: 200, height: 100, timebase: tb, fps: 24 });
+    expect(c.timebase).toBe(tb);
+    expect(c.timebase.fps).toBe(50);
+    c.dispose();
+  });
+});
+
 describe('Compositor renderer seam', () => {
   it('uses a custom createRenderer factory instead of autoDetectRenderer', async () => {
     const calls: unknown[] = [];

@@ -9,9 +9,11 @@
  * harness — the same render core the browser preview uses (contract #3).
  *
  * Usage:
- *   node scripts/ssr-render.cjs [--timeline <spec.json>] [--out <file>] [--verify]
+ *   node scripts/ssr-render.cjs [--timeline <spec.json>] [--bundle <bundle.json>] [--out <file>] [--verify]
  *
  *   --timeline <file>  timeline spec JSON; omit to render the built-in demo
+ *   --bundle <file>    code bundle JSON ({ files, entry }) from Code Mode; the
+ *                      runtime re-runs the code here (mutually exclusive with --timeline)
  *   --out <file>       output path (default: out.mp4 / out.webm by container)
  *   --verify           assert a valid container came out (exit non-zero if not)
  *
@@ -22,10 +24,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 function parseArgs(argv) {
-  const args = { timeline: null, out: null, verify: false };
+  const args = { timeline: null, bundle: null, out: null, verify: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--timeline') args.timeline = argv[++i];
+    else if (a === '--bundle') args.bundle = argv[++i];
     else if (a === '--out') args.out = argv[++i];
     else if (a === '--verify') args.verify = true;
     else if (a === '-h' || a === '--help') args.help = true;
@@ -66,11 +69,13 @@ function detectContainer(buf) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    console.log('usage: ssr-render.cjs [--timeline <spec.json>] [--out <file>] [--verify]');
+    console.log('usage: ssr-render.cjs [--timeline <spec.json>] [--bundle <bundle.json>] [--out <file>] [--verify]');
     return;
   }
+  if (args.timeline && args.bundle) throw new Error('pass only one of --timeline / --bundle');
 
   const spec = args.timeline ? JSON.parse(fs.readFileSync(path.resolve(args.timeline), 'utf8')) : null;
+  const bundle = args.bundle ? JSON.parse(fs.readFileSync(path.resolve(args.bundle), 'utf8')) : null;
 
   const puppeteer = require('puppeteer');
   const vite = spawn(
@@ -103,12 +108,18 @@ async function main() {
     await page.goto(`http://localhost:${PORT}/route-a/ssr-render.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction('window.__SSR__ !== undefined', { timeout: 30000 });
 
-    // Demo mode: pull the built-in sample from the page so the whole Node→browser
-    // round trip is exercised even without a spec file.
-    const timeline = spec ?? (await page.evaluate('window.__SSR__.sample()'));
-
-    console.log(`Rendering ${args.timeline ? path.resolve(args.timeline) : 'built-in demo'} …`);
-    const result = await page.evaluate((s) => window.__SSR__.render(s), timeline);
+    let result;
+    if (bundle) {
+      // Code path: re-run the Code Mode bundle on the server.
+      console.log(`Rendering code bundle ${path.resolve(args.bundle)} …`);
+      result = await page.evaluate((b) => window.__SSR__.renderBundle(b), bundle);
+    } else {
+      // Spec / demo path: pull the built-in sample when no spec file is given so
+      // the whole Node→browser round trip is exercised.
+      const timeline = spec ?? (await page.evaluate('window.__SSR__.sample()'));
+      console.log(`Rendering ${args.timeline ? path.resolve(args.timeline) : 'built-in demo'} …`);
+      result = await page.evaluate((s) => window.__SSR__.render(s), timeline);
+    }
 
     if (!result || !result.ok) {
       if (errors.length) console.log('page errors:', errors.filter((e) => !/favicon/.test(e)));

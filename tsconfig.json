@@ -6,6 +6,7 @@
   "references": [
     { "path": "packages/engine" },
     { "path": "packages/server" },
+    { "path": "packages/runtime" },
     { "path": "packages/studio" }
   ]
 }

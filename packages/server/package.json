@@ -30,6 +30,7 @@
   ],
   "dependencies": {
     "@video-editor-canvas/engine": "workspace:*",
+    "@video-editor-canvas/runtime": "workspace:*",
     "mediabunny": "^1.49.0",
     "pixi.js": "^8.6.0"
   },

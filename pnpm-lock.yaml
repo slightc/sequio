@@ -43,11 +43,23 @@ importers:
         specifier: ^8.6.0
         version: 8.19.0
 
+  packages/runtime:
+    dependencies:
+      '@video-editor-canvas/engine':
+        specifier: workspace:*
+        version: link:../engine
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+
   packages/server:
     dependencies:
       '@video-editor-canvas/engine':
         specifier: workspace:*
         version: link:../engine
+      '@video-editor-canvas/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       mediabunny:
         specifier: ^1.49.0
         version: 1.50.6
@@ -76,6 +88,9 @@ importers:
       '@video-editor-canvas/engine':
         specifier: workspace:*
         version: link:../engine
+      '@video-editor-canvas/runtime':
+        specifier: workspace:*
+        version: link:../runtime
       '@video-editor-canvas/server':
         specifier: workspace:*
         version: link:../server

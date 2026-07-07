@@ -1,0 +1,30 @@
+{
+  "name": "@video-editor-canvas/runtime",
+  "version": "0.0.0",
+  "description": "Compile and run multi-file TS/JS (virtual or injected real filesystem) into a Composer that renders/exports in the client or feeds server-side rendering.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node-fs": "./src/node-fs.ts"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify:runtime": "node scripts/verify-page.cjs example/runtime-test.html __RUNTIME_TEST__ \"runtime compile+run\""
+  },
+  "keywords": [
+    "typescript",
+    "compile",
+    "virtual-filesystem",
+    "video-editor",
+    "composer"
+  ],
+  "dependencies": {
+    "@video-editor-canvas/engine": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}

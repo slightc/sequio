@@ -35,14 +35,16 @@ These are the invariants the whole design rests on. Any change must preserve the
 
 ## Monorepo layout
 
-This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into three packages,
-in a clean dependency DAG — `engine ← server ← studio`, `engine ← studio`:
+This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into four packages,
+in a clean dependency DAG — `engine ← runtime ← server ← studio`, and
+`engine ← {server, studio}`:
 
 ```
 packages/
-  engine/   @video-editor-canvas/engine   the SDK runtime (the published library)
-  server/   @video-editor-canvas/server   server-side rendering (depends on engine)
-  studio/   @video-editor-canvas/studio   reference multi-track editor (depends on engine + server)
+  engine/   @video-editor-canvas/engine    the SDK runtime (the published library)
+  runtime/  @video-editor-canvas/runtime   compile+run TS/JS → a Composer (depends on engine)
+  server/   @video-editor-canvas/server    server-side rendering (depends on engine + runtime)
+  studio/   @video-editor-canvas/studio    reference multi-track editor (depends on engine + server + runtime)
 docs/       architecture & design (workspace-level)
 todo/       milestone task tracking (start here for "what's next")
 ```
@@ -76,16 +78,52 @@ example/       demos + browser e2e verify pages (verify:* harness)
 
 ```
 src/            TimelineSpec protocol + buildTimeline (the serializable JSON contract; barrel = src/index.ts)
-route-a/        Route A: headless Chrome (ssr-render.html/.ts + ssr-render.cjs worker)
+route-a/        Route A: headless Chrome — renders a TimelineSpec *or* a runtime code bundle
+                (ssr-render.html/.ts exposes render(spec)/renderBundle(bundle) + ssr-render.cjs worker)
 route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, export-node.ts, fonts-node.ts + verify-*)
 tests/          headless spec→graph unit tests
 ```
+
+### `packages/runtime` — code runtime
+
+```
+src/
+  vfs.ts             FileSystem interface + InMemoryFileSystem (browser-safe)   ✅ implemented
+  node-fs.ts         NodeFileSystem — inject a real filesystem (out of barrel)  ✅ implemented
+  compile.ts         per-file TS/JS → CommonJS via `typescript` transpileModule ✅ implemented
+  module-runtime.ts  tiny CJS linker: resolve relative imports + externals      ✅ implemented
+  composition.ts     defineComposition(builder) authoring API (imperative)      ✅ implemented
+  composer.ts        Composer: preview / export (client) + toBundle (server)    ✅ implemented
+  runtime.ts         Runtime.run() → compile+link+run the entry → Composer      ✅ implemented
+  index.ts           public barrel (browser-safe; node-fs is a subpath export)
+tests/               vitest unit tests (VFS, compile, linker, composition, run)
+example/             runtime-test.html/.ts (verify:runtime e2e)
+```
+
+Takes a set of TS/JS source files (an in-memory {@link InMemoryFileSystem} or an
+injected real one), transpiles + links them, and runs the entry. The program
+builds its video **imperatively with the engine's own classes** (`new Compositor()`,
+`new VisualTrack()`, `track.add(new TextClip(...))` — same style as `example/`, so
+a user can bring their own `Clip`/`Effect` subclasses) inside
+`defineComposition(builder)`; the runtime injects the real `@video-editor-canvas/engine`
+namespace as a sandbox module so the code can `new` it. Environment options a host
+needs (a Node renderer, an output scale) are folded into `new Compositor(...)`
+**implicitly** (`engineForEnv` subclasses `Compositor` per build), so the code reads
+exactly like a demo — no `env` plumbing. The result is a **`Composer`**
+that (1) previews and (2) exports in the browser and whose (3) `toBundle()` returns
+the **source files themselves** — the SSR routes re-run that code on the server
+(no spec to serialize/keep in sync). One object, three destinations (client preview /
+client export / server render). Browser-safe (only `typescript` + `engine` barrels);
+the `node:fs` adapter is the `@video-editor-canvas/runtime/node-fs` subpath, kept out
+of the browser barrel. See [`docs/runtime.md`](docs/runtime.md).
 
 ### `packages/studio` — reference editor
 
 ```
 index.html      the editor page
-src/            main.ts (the editor app), editor-export.ts (forked offscreen export)
+code.html       "Code Mode" — author a composition as multi-file TS/JS code
+src/            main.ts (the editor app), editor-export.ts (forked offscreen export),
+                code-mode.ts (the Code Mode page: Runtime → Composer → preview/export/spec)
 example/        editor e2e verify pages + video-import test
 tests/          editor-export unit tests
 ```
@@ -101,7 +139,7 @@ so callers fail loudly rather than rendering silent black frames.
 - **`pixi.js` is a peer dependency** and stays external in the build. Never
   bundle it.
 - **Only `engine` imports `pixi.js` / `mediabunny` directly.** Upper packages
-  (`server`, `studio`) import from `@video-editor-canvas/engine` only: Pixi types
+  (`server`, `runtime`, `studio`) import from `@video-editor-canvas/engine` only: Pixi types
   that leak into the public surface (`Renderer`, `AutoDetectOptions`,
   `BLEND_MODES`) are re-exported type-only from `index.ts`, and the mediabunny
   module is reached via `loadMediabunny()`. The sole exception is
@@ -129,7 +167,8 @@ pnpm test           # run vitest once across every package (pnpm -r test)
 pnpm test:watch     # engine watch mode
 pnpm typecheck      # tsc --noEmit across every package (pnpm -r typecheck)
 pnpm build          # build the engine library (ESM + CJS + d.ts)
-pnpm dev            # studio: vite dev server for the editor (dev:engine / dev:server for the others)
+pnpm dev            # studio: vite dev server for the editor + Code Mode (dev:engine / dev:server / dev:runtime for the others)
+pnpm verify:runtime # Puppeteer e2e: compile+run multi-file TS → Composer → preview + export
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
 pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen

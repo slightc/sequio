@@ -14,6 +14,7 @@
     "dev": "pnpm -F @video-editor-canvas/studio dev",
     "dev:engine": "pnpm -F @video-editor-canvas/engine dev",
     "dev:server": "pnpm -F @video-editor-canvas/server dev",
+    "dev:runtime": "pnpm -F @video-editor-canvas/runtime dev",
     "lint": "pnpm -r lint",
     "format": "pnpm -r format",
     "verify:decode": "pnpm -F @video-editor-canvas/engine verify:decode",
@@ -33,7 +34,8 @@
     "verify:ssr-node-font": "pnpm -F @video-editor-canvas/server verify:ssr-node-font",
     "verify:ssr-node-media": "pnpm -F @video-editor-canvas/server verify:ssr-node-media",
     "ssr:render": "pnpm -F @video-editor-canvas/server ssr:render",
-    "ssr:render-node": "pnpm -F @video-editor-canvas/server ssr:render-node"
+    "ssr:render-node": "pnpm -F @video-editor-canvas/server ssr:render-node",
+    "verify:runtime": "pnpm -F @video-editor-canvas/runtime verify:runtime"
   },
   "keywords": [
     "pixijs",
