@@ -23,8 +23,8 @@ import { Runtime, type Composer, type PreviewHandle } from '@video-editor-canvas
 // ── Default multi-file sample program ──────────────────────────────────────
 // Three files that import each other, to show the virtual filesystem + linker.
 // scene.ts / title.ts build engine clips imperatively; index.ts assembles a
-// Compositor. Spread `env.compositorOptions` so the same code also runs on a
-// server renderer (Node injects its WebGPU renderer there).
+// Compositor. It reads exactly like an `example/` demo — the runtime injects any
+// server renderer into `new Compositor` implicitly, so there's no env plumbing.
 const DEFAULT_FILES: Record<string, string> = {
   '/index.ts': `import { Compositor, Timebase, VisualTrack } from '@video-editor-canvas/engine';
 import { defineComposition } from '@video-editor-canvas/runtime';
@@ -32,14 +32,13 @@ import { W, H, DURATION, background, ball } from './scene';
 import { title } from './title';
 
 // The builder's default export becomes the Composer. Edit any file and press Run.
-export default defineComposition(async (env) => {
+export default defineComposition(async () => {
   const compositor = new Compositor({
     width: W,
     height: H,
     timebase: new Timebase(30),
     background: 0x0b0b0e,
     preferWebGPU: true,
-    ...env.compositorOptions, // lets a server inject its own renderer
   });
   await compositor.init();
 

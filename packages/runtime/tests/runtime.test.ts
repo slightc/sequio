@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import * as engine from '@video-editor-canvas/engine';
 import { isComposition } from '../src/composition';
-import { Runtime, runComposition } from '../src/runtime';
+import { engineForEnv, Runtime, runComposition } from '../src/runtime';
 import type { FileSystem } from '../src/vfs';
 
 // A DOM-free fake compositor the sandboxed builders return, so these unit tests
@@ -105,6 +106,22 @@ describe('Runtime.runToComposition', () => {
       listFiles: () => Object.keys(backing),
     };
     expect(isComposition(new Runtime({ files: injected }).runToComposition())).toBe(true);
+  });
+});
+
+describe('engineForEnv (implicit compositorOptions injection)', () => {
+  it('returns the real engine namespace unchanged when there are no overrides', () => {
+    expect(engineForEnv({})).toBe(engine);
+  });
+
+  it('replaces Compositor with a subclass, preserving other exports', () => {
+    const ns = engineForEnv({ resolution: 2 }) as typeof engine;
+    expect(ns.Compositor).not.toBe(engine.Compositor);
+    // The replacement extends the real Compositor (so `instanceof` still holds).
+    expect(Object.getPrototypeOf(ns.Compositor)).toBe(engine.Compositor);
+    // Non-Compositor exports pass through untouched.
+    expect(ns.Timebase).toBe(engine.Timebase);
+    expect(ns.VisualTrack).toBe(engine.VisualTrack);
   });
 });
 

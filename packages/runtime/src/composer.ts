@@ -64,9 +64,18 @@ export interface PreviewHandle {
 
 const DEFAULT_ENV: CompositionEnv = { compositorOptions: {}, target: 'export' };
 
+/**
+ * Re-links + runs the program for a given environment and returns its
+ * {@link Composition}. The runtime supplies this so each build gets a fresh graph
+ * whose engine `Compositor` already has the environment's options folded in —
+ * which is why user code just writes `new Compositor({ width, height, timebase })`
+ * with no env plumbing.
+ */
+export type CompositionLinker = (env: CompositionEnv) => Composition;
+
 export class Composer {
   constructor(
-    private readonly composition: Composition,
+    private readonly link: CompositionLinker,
     private readonly bundle: RuntimeBundle,
   ) {}
 
@@ -100,7 +109,10 @@ export class Composer {
    * (Node) or an output scale; it defaults to the browser (`{}`).
    */
   async build(env: Partial<CompositionEnv> = {}): Promise<BuiltComposition> {
-    const result = await this.composition.build({ ...DEFAULT_ENV, ...env });
+    const fullEnv: CompositionEnv = { ...DEFAULT_ENV, ...env };
+    // Re-link per build so the graph is fresh AND its Compositor already carries
+    // this environment's options (see CompositionLinker).
+    const result = await this.link(fullEnv).build(fullEnv);
     const compositor = result.compositor;
     const duration = result.duration ?? deriveDuration(compositor);
     // Exporter needs an AudioEngine; synthesize an empty one when the composition

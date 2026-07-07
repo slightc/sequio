@@ -106,7 +106,10 @@ builds its video **imperatively with the engine's own classes** (`new Compositor
 `new VisualTrack()`, `track.add(new TextClip(...))` — same style as `example/`, so
 a user can bring their own `Clip`/`Effect` subclasses) inside
 `defineComposition(builder)`; the runtime injects the real `@video-editor-canvas/engine`
-namespace as a sandbox module so the code can `new` it. The result is a **`Composer`**
+namespace as a sandbox module so the code can `new` it. Environment options a host
+needs (a Node renderer, an output scale) are folded into `new Compositor(...)`
+**implicitly** (`engineForEnv` subclasses `Compositor` per build), so the code reads
+exactly like a demo — no `env` plumbing. The result is a **`Composer`**
 that (1) previews and (2) exports in the browser and whose (3) `toBundle()` returns
 the **source files themselves** — the SSR routes re-run that code on the server
 (no spec to serialize/keep in sync). One object, three destinations (client preview /

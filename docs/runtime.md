@@ -68,11 +68,8 @@ import { Compositor, VisualTrack, TextClip, Timebase } from '@video-editor-canva
 import { defineComposition } from '@video-editor-canvas/runtime';
 import { title } from './title';                 // 跨文件 import 在 VFS 里解析
 
-export default defineComposition(async (env) => {
-  const compositor = new Compositor({
-    width: 640, height: 360, timebase: new Timebase(30),
-    ...env.compositorOptions,                     // 让服务端注入它自己的 renderer
-  });
+export default defineComposition(async () => {
+  const compositor = new Compositor({ width: 640, height: 360, timebase: new Timebase(30) });
   await compositor.init();
   const track = new VisualTrack();
   track.add(title());                             // title() 里 new TextClip(...)
@@ -81,12 +78,31 @@ export default defineComposition(async (env) => {
 });
 ```
 
-`build(env)` 收到的 `env` 携带**环境差异**——同一个 builder 会在客户端预览、客户端导出、
-服务端渲染下各跑一次；`env.compositorOptions` 是宿主注入「有什么不同」的口子（Node 的
-WebGPU renderer、输出倍率），所以可移植代码把它 spread 进 `new Compositor({...})`（浏览器
-下是空对象、无害）。返回值 `{ compositor, audioEngine?, duration? }`：`duration` 省略时从各
-轨道 clip 的最大 `end` 推导（`deriveDuration`）。`defineComposition` 只给 builder 打个 tag，
-让 runtime 能区分「用户返回了一个 composition」和「返回了别的东西」，其余全靠 builder 本体。
+注意这段代码**和 `example/` 里的 demo 一字不差**——没有 `env`、没有 spread。环境差异
+（Node 的 WebGPU renderer、输出倍率）由 runtime **隐式注入**：见下节。返回值
+`{ compositor, audioEngine?, duration? }`，`duration` 省略时从各轨道 clip 的最大 `end` 推导
+（`deriveDuration`）。`defineComposition` 只给 builder 打个 tag，让 runtime 能区分「用户返回了
+一个 composition」和「返回了别的东西」，其余全靠 builder 本体。builder 仍可选地接收一个
+`env` 参数（`{ compositorOptions, target }`），需要按 preview/export/server 分支时才用。
+
+### 隐式注入环境选项（`env.compositorOptions`）
+
+同一个 builder 会在**客户端预览、客户端导出、服务端渲染**下各跑一次，唯一的差别是
+`Compositor` 的构造选项（服务端要注入自己的 `createRenderer`、可能放大 `resolution`）。为了
+让用户代码**读起来就是普通 demo**、不必写 `...env.compositorOptions`，runtime 每次 `build(env)`
+都**重新 link 一遍**，并注入一个「按环境定制的引擎命名空间」——其中 `Compositor` 是真实
+`Compositor` 的子类，构造时把该次环境的选项 fold 进去（`engineForEnv`）：
+
+```ts
+class RuntimeCompositor extends Compositor {
+  constructor(options) { super({ ...options, ...envOverrides }); } // env 覆盖优先
+}
+```
+
+于是用户写 `new Compositor({ width, height, timebase })`，服务端的 `createRenderer` /
+`resolution` 依然到位；浏览器下 overrides 为空，直接返回真实命名空间、零开销。每次 build
+重新 link 还带来一个好处：**每次 build 是独立的模块状态**（预览与导出互不串），转译结果按
+文件缓存，所以重复 link 只是重跑一遍很轻的模块体。
 
 ### `Composer`：一处产出、三处消费
 

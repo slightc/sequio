@@ -47,11 +47,10 @@ const FILES: Record<string, string> = {
     import { Compositor, Timebase } from '@video-editor-canvas/engine';
     import { defineComposition } from '@video-editor-canvas/runtime';
     import { W, H, buildTrack } from './scene';
-    export default defineComposition(async (env) => {
+    export default defineComposition(async () => {
       const compositor = new Compositor({
         width: W, height: H, timebase: new Timebase(${FPS}),
         background: 0x000000, preferWebGPU: false,
-        ...env.compositorOptions,
       });
       await compositor.init();
       compositor.addTrack(buildTrack());
@@ -94,6 +93,13 @@ async function run(): Promise<void> {
   const previewOk = isTeal(center[0]!, center[1]!, center[2]!);
   preview.dispose();
 
+  // Implicit injection: the program's `new Compositor({...})` sets no resolution,
+  // yet building with env.compositorOptions={resolution:2} must reach it — the
+  // backing store is then W*2 wide. Proves env is injected without user plumbing.
+  const scaled = await composer.build({ compositorOptions: { resolution: 2 }, target: 'export' });
+  const injectionOk = scaled.compositor.view.width === W * 2;
+  scaled.dispose();
+
   // 3. Export the same Composer to a video Blob, decode it back.
   const codec = await pickCodec();
   let exportOk = false;
@@ -134,11 +140,12 @@ async function run(): Promise<void> {
     exportOk = true; // can't encode here → don't fail the suite on codec support
   }
 
-  const ok = Boolean(bundleOk && previewOk && exportOk);
+  const ok = Boolean(bundleOk && previewOk && injectionOk && exportOk);
   (window as unknown as { __RUNTIME_TEST__: unknown }).__RUNTIME_TEST__ = {
     ok,
     bundleOk,
     previewOk,
+    injectionOk,
     exportOk,
     files: Object.keys(FILES),
     export: exportInfo,
