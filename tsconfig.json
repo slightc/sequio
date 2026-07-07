@@ -7,6 +7,7 @@
     { "path": "packages/engine" },
     { "path": "packages/server" },
     { "path": "packages/runtime" },
-    { "path": "packages/studio" }
+    { "path": "packages/studio" },
+    { "path": "packages/cli" }
   ]
 }

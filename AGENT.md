@@ -35,9 +35,9 @@ These are the invariants the whole design rests on. Any change must preserve the
 
 ## Monorepo layout
 
-This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into four packages,
+This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into five packages,
 in a clean dependency DAG — `engine ← runtime ← server ← studio`, and
-`engine ← {server, studio}`:
+`engine ← {server, studio, cli}`:
 
 ```
 packages/
@@ -45,6 +45,7 @@ packages/
   runtime/  @sequio/runtime   compile+run TS/JS → a Composer (depends on engine)
   server/   @sequio/server    server-side rendering (depends on engine + runtime)
   studio/   @sequio/studio    reference multi-track editor (depends on engine + server + runtime)
+  cli/      @sequio/cli       the `sequio` command line: render + preview (depends on engine + runtime + server)
 docs/       architecture & design (workspace-level)
 todo/       milestone task tracking (start here for "what's next")
 ```
@@ -131,6 +132,31 @@ tests/          editor-export unit tests
 Unimplemented methods `throw` with a pointer to the relevant `todo/*.md` file,
 so callers fail loudly rather than rendering silent black frames.
 
+### `packages/cli` — the `sequio` command line
+
+```
+bin/sequio.js   the `sequio` binary — launches src/cli.ts through tsx (no build step)
+src/
+  args.ts       pure argv → CliCommand parser (unit-tested)              ✅ implemented
+  bundle.ts     entry file on disk → RuntimeBundle (NodeFileSystem)      ✅ implemented
+  render.ts     `render <file>` → headless Chrome (server Route A page)  ✅ implemented
+  preview.ts    `preview <file> [--watch]` → Vite dev server             ✅ implemented
+  cli.ts        dispatch + process lifecycle;  index.ts = programmatic barrel
+preview/        the preview page (index.html + preview.ts: fetch /__bundle → Runtime → preview())
+scripts/        verify-cli.ts (e2e: render + preview against example/)
+example/        a sample composition (index.ts + scene.ts)
+tests/          args + bundle unit tests
+```
+
+Two commands, both thin front-ends over infrastructure the other packages own:
+`render` snapshots the composition into a {@link RuntimeBundle} and drives the
+server's **Route A** page (`window.__SSR__.renderBundle`) in headless Chrome to
+encode a video; `preview` boots a Vite dev server whose page runs the same
+`Runtime` → `Composer` → `preview()` path in-browser, with `--watch` reloading on
+any project-file change. Both boot Vite **programmatically** (`createServer`), so
+they don't depend on how the `vite` binary is exposed. See
+[`docs/cli.md`](docs/cli.md).
+
 ## Conventions
 
 - **TypeScript, strict.** `noUnusedLocals/Parameters` are temporarily relaxed
@@ -168,6 +194,9 @@ pnpm test:watch     # engine watch mode
 pnpm typecheck      # tsc --noEmit across every package (pnpm -r typecheck)
 pnpm build          # build the engine library (ESM + CJS + d.ts)
 pnpm dev            # studio: vite dev server for the editor + Code Mode (dev:engine / dev:server / dev:runtime for the others)
+pnpm sequio render <file> [--out out.mp4] [--verify]   # CLI: encode a composition file to video (headless Chrome)
+pnpm sequio preview <file> [--watch] [--port 6180]     # CLI: serve a live in-browser preview (re-runs on change)
+pnpm verify:cli     # Puppeteer e2e: `sequio render` → valid MP4 + `sequio preview` runs in-browser
 pnpm verify:runtime # Puppeteer e2e: compile+run multi-file TS → Composer → preview + export
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode

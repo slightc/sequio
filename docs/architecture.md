@@ -27,12 +27,14 @@
 
 ## 模块与源码位置
 
-> **Monorepo**：本仓库是 pnpm workspace，分四个包——`packages/engine`
+> **Monorepo**：本仓库是 pnpm workspace，分五个包——`packages/engine`
 > （`@sequio/engine`，即本 SDK）、`packages/runtime`
 > （`@sequio/runtime`，编译并运行 TS/JS 代码得到一个 `Composer`，仅依赖
 > engine）、`packages/server`（`@sequio/server`，服务端渲染，依赖
-> engine + runtime）、`packages/studio`（`@sequio/studio`，参考编辑器）。
-> DAG：`engine ← runtime ← server ← studio`，`engine ← {server, studio}`。除非另有
+> engine + runtime）、`packages/studio`（`@sequio/studio`，参考编辑器）、
+> `packages/cli`（`@sequio/cli`，`sequio` 命令行：render + preview，依赖
+> engine + runtime + server，见 [`cli.md`](cli.md)）。
+> DAG：`engine ← runtime ← server ← studio`，`engine ← {server, studio, cli}`。除非另有
 > `packages/…` 前缀，本文提到的 `src/`、`tests/`、`example/` 路径均相对
 > **`packages/engine/`**；消费包以 `@sequio/engine` 从源码直接引用引擎。
 > 代码运行时（虚拟文件系统 + 编译 + 命令式 Composer）见 [`runtime.md`](runtime.md)。
