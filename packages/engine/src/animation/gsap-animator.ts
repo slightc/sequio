@@ -54,6 +54,21 @@ function readSample(target: GsapTarget): AnimationSample {
 }
 
 /**
+ * Force a freshly-built paused timeline to render its `t=0` state onto the
+ * target(s). A new paused timeline sits at playhead 0 having rendered nothing, so
+ * its targets still hold their post-construction (identity) values; the first
+ * `time(0)` seek would then be a no-op (the playhead is already 0, so GSAP
+ * short-circuits) and leak that identity for one frame — the clip flashes in
+ * fully-formed before its entrance. Nudging the playhead to the end and back to 0
+ * makes GSAP actually render, so `time(0)` reflects the real `t=0` pose (e.g. a
+ * `.from()`/`set()` start state) from the very first frame.
+ */
+function primeTimeline(timeline: GsapTimelineLike): void {
+  timeline.time(timeline.duration(), true);
+  timeline.time(0, true);
+}
+
+/**
  * Bind a clip's animation to a **paused, seek-driven** GSAP timeline — the only
  * way to use GSAP without breaking `render(t)` reproducibility (contract #2): the
  * timeline never *plays* (no wall-clock, no ticker), it is *seeked* to the clip's
@@ -77,6 +92,7 @@ export function gsapClipAnimator(
   const target = identityTarget();
   const timeline = gsap.timeline({ paused: true });
   build(timeline, target);
+  primeTimeline(timeline); // render the t=0 pose now, so frame 0 doesn't flash identity
   return {
     sampleAt(localT: number): AnimationSample {
       timeline.time(localT > 0 ? localT : 0, true); // seek (suppress events) → pure
@@ -110,6 +126,7 @@ export function gsapTextAnimator(
   const targets = Array.from({ length: count }, identityTarget);
   const timeline = gsap.timeline({ paused: true });
   build(timeline, targets);
+  primeTimeline(timeline); // render the t=0 pose now, so frame 0 doesn't flash identity
   let seekedTo = Number.NaN;
   return {
     sampleForPart(part: TextPart, localT: number): AnimationSample {

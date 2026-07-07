@@ -33,6 +33,13 @@ src/
 preview/        预览页（index.html + preview.ts：fetch /__bundle → Runtime → preview() + 播放条）
 scripts/        verify-cli.ts（端到端：render + preview 都跑一遍 example/）
 example/        一段样例作曲（index.ts + scene.ts + font.ts=内嵌 data: URL 字体，跨文件 import）
+  yc-spot/      独立 showcase：仿 Y Combinator 编辑风格的 15s 动态海报（1920×1080/30fps）——
+                index.ts（入口）+ theme.ts（配色/字号/四幕时间轴）+ kit.ts（卡片/徽章/统计条/
+                连线等可复用 builder）+ scenes.ts（四幕分镜）。全部用引擎自身的
+                ShapeClip/TextClip/GroupClip 搭出、无位图；**动效全部由 gsap 驱动**——入场/退场
+                用 `gsapClipAnimator` 绑 paused 时间轴（`back.out`/`power` 缓动 + 轻微 overshoot），
+                首屏标题用 `gsapTextAnimator` + `split:'line'` 做逐行 stagger。它是独立目录、自成
+                一个 bundle，不与上面的 index.ts demo 相互影响
 tests/          args + bundle 单测
 ```
 
@@ -126,6 +133,10 @@ pnpm sequio preview example/index.ts --watch
 
 # 直接用 bin（等价）
 node packages/cli/bin/sequio.js preview example/index.ts --watch
+
+# 独立 showcase（仿 YC 编辑风格、gsap 驱动的 15s 动态海报）
+pnpm sequio render  packages/cli/example/yc-spot/index.ts --out yc.mp4 --scale 2 --verify
+pnpm sequio preview packages/cli/example/yc-spot/index.ts --watch
 ```
 
 作为库调用（`@sequio/cli` barrel）：`parseArgs`、`readBundle`、`runRender`、`startPreviewServer`。
