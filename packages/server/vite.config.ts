@@ -10,8 +10,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@video-editor-canvas/engine': resolve(__dirname, '../engine/src/index.ts'),
-      '@video-editor-canvas/runtime': resolve(__dirname, '../runtime/src/index.ts'),
+      '@sequio/engine': resolve(__dirname, '../engine/src/index.ts'),
+      '@sequio/runtime': resolve(__dirname, '../runtime/src/index.ts'),
     },
   },
   test: {

@@ -1,7 +1,7 @@
 {
-  "name": "@video-editor-canvas/studio",
+  "name": "@sequio/studio",
   "version": "0.0.0",
-  "description": "A reference multi-track video editor built on @video-editor-canvas/engine — timeline, canvas manipulation, forked export and Server Render.",
+  "description": "A reference multi-track video editor built on @sequio/engine — timeline, canvas manipulation, forked export and Server Render.",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -21,9 +21,9 @@
     "editor"
   ],
   "dependencies": {
-    "@video-editor-canvas/engine": "workspace:*",
-    "@video-editor-canvas/runtime": "workspace:*",
-    "@video-editor-canvas/server": "workspace:*",
+    "@sequio/engine": "workspace:*",
+    "@sequio/runtime": "workspace:*",
+    "@sequio/server": "workspace:*",
     "mediabunny": "^1.49.0",
     "pixi.js": "^8.6.0"
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import * as engine from '@video-editor-canvas/engine';
+import * as engine from '@sequio/engine';
 import { isComposition } from '../src/composition';
 import { engineForEnv, Runtime, runComposition } from '../src/runtime';
 import type { FileSystem } from '../src/vfs';
@@ -13,7 +13,7 @@ describe('Runtime.runToComposition', () => {
   it('compiles + runs a multi-file imperative program into a Composition', () => {
     const files = {
       '/index.ts': `
-        import { defineComposition } from '@video-editor-canvas/runtime';
+        import { defineComposition } from '@sequio/runtime';
         import { scene } from './scene';
         export default defineComposition((env) => {
           const compositor = scene(env);
@@ -30,8 +30,8 @@ describe('Runtime.runToComposition', () => {
     // Timebase is a pure (DOM-free) engine class — proves the real module is wired.
     const composer = await runComposition({
       '/index.ts': `
-        import { defineComposition } from '@video-editor-canvas/runtime';
-        import { Timebase } from '@video-editor-canvas/engine';
+        import { defineComposition } from '@sequio/runtime';
+        import { Timebase } from '@sequio/engine';
         export default defineComposition(() => {
           const tb = new Timebase(30);
           return { compositor: ${FAKE_COMPOSITOR}, duration: tb.toSeconds(120) };
@@ -53,7 +53,7 @@ describe('Runtime.runToComposition', () => {
   it('derives duration from clip ends when the builder omits it', async () => {
     const composer = await runComposition({
       '/index.ts': `
-        import { defineComposition } from '@video-editor-canvas/runtime';
+        import { defineComposition } from '@sequio/runtime';
         export default defineComposition(() => ({
           compositor: { getTracks: () => [{ clips: [{ end: 1 }, { end: 5 }] }], dispose() {} },
         }));
@@ -86,7 +86,7 @@ describe('Runtime.runToComposition', () => {
     const composition = new Runtime({
       files: {
         '/index.ts': `
-          import { defineComposition } from '@video-editor-canvas/runtime';
+          import { defineComposition } from '@sequio/runtime';
           import { BRAND } from 'host-config';
           export default defineComposition(() => ({ compositor: BRAND.compositor, duration: 1 }));
         `,

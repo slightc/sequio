@@ -5,7 +5,7 @@
  * scheduled directly (mirroring the browser `export-test.ts`), so it exercises
  * the offline-mix → mux path without a fetchable audio URL.
  */
-import { AudioClip, AudioEngine, type AudioSource, type Renderer, Timebase } from '@video-editor-canvas/engine';
+import { AudioClip, AudioEngine, type AudioSource, type Renderer, Timebase } from '@sequio/engine';
 import { buildTimeline, type TimelineSpec } from '../src/timeline';
 import { createNodeWebGPURenderer, getMediabunny, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';

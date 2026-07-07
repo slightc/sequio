@@ -37,9 +37,9 @@ packages/server/route-a/ssr-render.cjs         Node worker：起 Vite + 无头 C
 packages/server/tests/ssr-timeline.test.ts     builder 的 headless 单测（spec→对象图映射）
 ```
 
-**为什么时间线协议放在 `packages/server` 而不是引擎包**：引擎（`@video-editor-canvas/engine`）
+**为什么时间线协议放在 `packages/server` 而不是引擎包**：引擎（`@sequio/engine`）
 刻意把持久化 / schema 交给上层（见 `AGENT.md`）。`TimelineSpec` 是一种消费者层的序列化格式，
-因此它属于 server 包（`@video-editor-canvas/server`，也被 studio 的“Server Render”复用），
+因此它属于 server 包（`@sequio/server`，也被 studio 的“Server Render”复用），
 引擎的公开面保持不变。
 
 ### 数据流

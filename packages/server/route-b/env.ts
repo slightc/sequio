@@ -23,7 +23,7 @@
  * set up for Route B. See `docs/server-side-rendering.md`.
  */
 import { createRequire } from 'node:module';
-import type { AutoDetectOptions, MediabunnyModule, Renderer } from '@video-editor-canvas/engine';
+import type { AutoDetectOptions, MediabunnyModule, Renderer } from '@sequio/engine';
 
 // NOTE: This file is Route B's *environment adapter* — it bootstraps the Node
 // runtime PixiJS/Mediabunny expect (WebGPU, canvas, WebCodecs polyfills) and is
@@ -231,7 +231,7 @@ export async function setupNodeEnvironment(): Promise<void> {
   // Make the SDK's own decode/encode (VideoSource/AudioSource/export sink) use
   // this exact instance too — otherwise its `import('mediabunny')` gets the other
   // (ESM) instance without the node-av codecs (dual-package hazard).
-  const { setMediabunnyModule, setFrameImageExtractor } = await import('@video-editor-canvas/engine');
+  const { setMediabunnyModule, setFrameImageExtractor } = await import('@sequio/engine');
   setMediabunnyModule(registeredMediabunny);
 
   // Decoded video frames become textures via `sample.toCanvasImageSource()` in the

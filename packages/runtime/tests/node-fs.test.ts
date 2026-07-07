@@ -19,7 +19,7 @@ describe('NodeFileSystem (real filesystem injection)', () => {
     );
     writeFileSync(
       join(root, 'index.ts'),
-      `import { defineComposition } from '@video-editor-canvas/runtime';\n` +
+      `import { defineComposition } from '@sequio/runtime';\n` +
         `import { scene } from './lib/scene';\n` +
         `export default defineComposition(() => ({ compositor: scene(), duration: 6 }));`,
     );

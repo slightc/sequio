@@ -11,7 +11,7 @@
  * (Mesa lavapipe — `apt install mesa-vulkan-drivers`). Without one the worker
  * exits with a clear "Route B unavailable" message.
  */
-import type { Renderer } from '@video-editor-canvas/engine';
+import type { Renderer } from '@sequio/engine';
 import { sampleTimeline } from '../src/sample-timeline';
 import { buildTimeline, type TimelineSpec } from '../src/timeline';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';

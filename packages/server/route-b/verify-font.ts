@@ -5,7 +5,7 @@
  * makes the font available to PixiJS's text measurement/rendering. Needs network
  * to fonts.googleapis.com / fonts.gstatic.com.
  */
-import type { Renderer } from '@video-editor-canvas/engine';
+import type { Renderer } from '@sequio/engine';
 import { buildTimeline, type TimelineSpec } from '../src/timeline';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { loadFontsNode } from './fonts-node';

@@ -6,8 +6,8 @@
  * imports it explicitly:
  *
  * ```ts
- * import { NodeFileSystem } from '@video-editor-canvas/runtime/node-fs';
- * import { Runtime } from '@video-editor-canvas/runtime';
+ * import { NodeFileSystem } from '@sequio/runtime/node-fs';
+ * import { Runtime } from '@sequio/runtime';
  * const composer = await new Runtime({ files: new NodeFileSystem('/abs/project') }).run();
  * ```
  *

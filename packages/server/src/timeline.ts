@@ -46,7 +46,7 @@ import {
   VideoSource,
   type VisualClip,
   VisualTrack,
-} from '@video-editor-canvas/engine';
+} from '@sequio/engine';
 
 // ── Serializable spec ───────────────────────────────────────────────────────
 

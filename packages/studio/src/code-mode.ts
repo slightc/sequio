@@ -1,7 +1,7 @@
 /**
  * Studio "Code Mode" — author a composition **as imperative code** and run it.
  *
- * This is the reference consumer of `@video-editor-canvas/runtime`. The user
+ * This is the reference consumer of `@sequio/runtime`. The user
  * edits a small multi-file TS program in the browser that builds the object graph
  * with the engine's own classes — `new Compositor()`, `new VisualTrack()`,
  * `track.add(new ShapeClip(...))` — exactly like the `example/` demos (so a user
@@ -18,7 +18,7 @@
  * Everything runs in the tab against an in-memory virtual filesystem — no build
  * step, no server round-trip to see a change.
  */
-import { Runtime, type Composer, type PreviewHandle } from '@video-editor-canvas/runtime';
+import { Runtime, type Composer, type PreviewHandle } from '@sequio/runtime';
 
 // ── Default multi-file sample program ──────────────────────────────────────
 // Three files that import each other, to show the virtual filesystem + linker.
@@ -26,8 +26,8 @@ import { Runtime, type Composer, type PreviewHandle } from '@video-editor-canvas
 // Compositor. It reads exactly like an `example/` demo — the runtime injects any
 // server renderer into `new Compositor` implicitly, so there's no env plumbing.
 const DEFAULT_FILES: Record<string, string> = {
-  '/index.ts': `import { Compositor, VisualTrack } from '@video-editor-canvas/engine';
-import { defineComposition } from '@video-editor-canvas/runtime';
+  '/index.ts': `import { Compositor, VisualTrack } from '@sequio/engine';
+import { defineComposition } from '@sequio/runtime';
 import { W, H, DURATION, background, ball } from './scene';
 import { title } from './title';
 
@@ -60,7 +60,7 @@ export default defineComposition(async () => {
   return { compositor, duration: DURATION };
 });
 `,
-  '/scene.ts': `import { ShapeClip, easeInOutCubic } from '@video-editor-canvas/engine';
+  '/scene.ts': `import { ShapeClip, easeInOutCubic } from '@sequio/engine';
 
 export const W = 640;
 export const H = 360;
@@ -89,7 +89,7 @@ export function ball(fill: number, y: number): ShapeClip {
   return c;
 }
 `,
-  '/title.ts': `import { TextClip, easeOutQuad } from '@video-editor-canvas/engine';
+  '/title.ts': `import { TextClip, easeOutQuad } from '@sequio/engine';
 import { W, DURATION } from './scene';
 
 // A title that fades in over the first second.
