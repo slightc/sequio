@@ -172,7 +172,14 @@ packages/server/route-b/export-node.ts  GPU 读帧导出：renderToTexture → c
                                  → VideoSample → VideoSampleSource → Output + FilePathTarget（写盘）
                                  + 音频轨（AudioEngine.renderOffline → AudioBufferSource）
 packages/server/route-b/fonts-node.ts   Node 字体加载：自托管 URL + Google 字体（css2→文件→GlobalFonts.register）
-packages/server/route-b/render.ts       worker 主程序：读 TimelineSpec，建图（复用 buildTimeline），渲成文件
+                                 + bridgeFontManagerToNode（把引擎 FontManager 的 load 钩子改接 loadFontsNode，
+                                 让代码/bundle 路线里作曲的 fonts.load(...) 在 Node 也注册进 GlobalFonts）
+packages/server/route-b/render-bundle.ts renderBundleToFile：读 RuntimeBundle（命令式代码）→ Runtime→Composer→build
+                                 →renderTimelineToFile（`sequio render` 与 worker `--bundle` 都走它）
+packages/server/route-b/index.ts        @sequio/server/route-b 子路径 barrel（Node-only：renderTimelineToFile /
+                                 renderBundleToFile / setupNodeEnvironment / createNodeWebGPURenderer）
+packages/server/route-b/render.ts       worker 主程序：--timeline 读 TimelineSpec（复用 buildTimeline）或
+                                 --bundle 读代码 bundle（复用 renderBundleToFile），渲成文件
 packages/server/route-b/verify-audio.ts 自包含校验：合成正弦 → 视频+音频 MP4，解回断言两轨都在
 packages/server/route-b/verify-font.ts  自包含校验：从 Google 加载 Roboto 渲染文字，断言字形像素渲出
 packages/server/route-b/verify-media.ts 自包含校验：渲一段视频→作为 VideoSource 解回 + data-URL 图片，合成断言像素

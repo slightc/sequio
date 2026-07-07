@@ -35,9 +35,9 @@ These are the invariants the whole design rests on. Any change must preserve the
 
 ## Monorepo layout
 
-This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into four packages,
+This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into five packages,
 in a clean dependency DAG — `engine ← runtime ← server ← studio`, and
-`engine ← {server, studio}`:
+`engine ← {server, studio, cli}`:
 
 ```
 packages/
@@ -45,6 +45,7 @@ packages/
   runtime/  @sequio/runtime   compile+run TS/JS → a Composer (depends on engine)
   server/   @sequio/server    server-side rendering (depends on engine + runtime)
   studio/   @sequio/studio    reference multi-track editor (depends on engine + server + runtime)
+  cli/      @sequio/cli       the `sequio` command line: render + preview (depends on engine + runtime + server)
 docs/       architecture & design (workspace-level)
 todo/       milestone task tracking (start here for "what's next")
 ```
@@ -80,7 +81,9 @@ example/       demos + browser e2e verify pages (verify:* harness)
 src/            TimelineSpec protocol + buildTimeline (the serializable JSON contract; barrel = src/index.ts)
 route-a/        Route A: headless Chrome — renders a TimelineSpec *or* a runtime code bundle
                 (ssr-render.html/.ts exposes render(spec)/renderBundle(bundle) + ssr-render.cjs worker)
-route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, export-node.ts, fonts-node.ts + verify-*)
+route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, export-node.ts, fonts-node.ts,
+                render-bundle.ts + verify-*); index.ts = @sequio/server/route-b node-only barrel
+                (renderTimelineToFile / renderBundleToFile — the latter powers `sequio render`)
 tests/          headless spec→graph unit tests
 ```
 
@@ -131,6 +134,30 @@ tests/          editor-export unit tests
 Unimplemented methods `throw` with a pointer to the relevant `todo/*.md` file,
 so callers fail loudly rather than rendering silent black frames.
 
+### `packages/cli` — the `sequio` command line
+
+```
+bin/sequio.js   the `sequio` binary — launches src/cli.ts through tsx (no build step)
+src/
+  args.ts       pure argv → CliCommand parser (unit-tested)              ✅ implemented
+  bundle.ts     entry file on disk → RuntimeBundle (NodeFileSystem)      ✅ implemented
+  render.ts     `render <file>` → pure Node WebGPU (server Route B)       ✅ implemented
+  preview.ts    `preview <file> [--watch]` → Vite dev server             ✅ implemented
+  cli.ts        dispatch + process lifecycle;  index.ts = programmatic barrel
+preview/        the preview page (index.html + preview.ts: fetch /__bundle → Runtime → preview())
+scripts/        verify-cli.ts (e2e: render + preview against example/)
+example/        a sample composition (index.ts + scene.ts + font.ts: embedded data: URL font)
+tests/          args + bundle unit tests
+```
+
+Two commands, both thin front-ends over infrastructure the other packages own:
+`render` snapshots the composition into a {@link RuntimeBundle} and hands it to
+the server's **Route B** `renderBundleToFile` (`@sequio/server/route-b`) — pure
+Node, PixiJS WebGPU, no browser (needs a GPU or Mesa lavapipe); `preview` boots a
+Vite dev server (programmatic `createServer`) whose page runs the same
+`Runtime` → `Composer` → `preview()` path in-browser, with `--watch` reloading on
+any project-file change. See [`docs/cli.md`](docs/cli.md).
+
 ## Conventions
 
 - **TypeScript, strict.** `noUnusedLocals/Parameters` are temporarily relaxed
@@ -168,6 +195,9 @@ pnpm test:watch     # engine watch mode
 pnpm typecheck      # tsc --noEmit across every package (pnpm -r typecheck)
 pnpm build          # build the engine library (ESM + CJS + d.ts)
 pnpm dev            # studio: vite dev server for the editor + Code Mode (dev:engine / dev:server / dev:runtime for the others)
+pnpm sequio render <file> [--out out.mp4] [--scale 2] [--verify]   # CLI: encode a composition to video (pure Node WebGPU; needs a GPU or Mesa lavapipe)
+pnpm sequio preview <file> [--watch] [--port 6180]     # CLI: serve a live in-browser preview (re-runs on change)
+pnpm verify:cli     # Puppeteer e2e: `sequio render` → valid MP4 + `sequio preview` runs in-browser
 pnpm verify:runtime # Puppeteer e2e: compile+run multi-file TS → Composer → preview + export
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
@@ -187,6 +217,7 @@ pnpm verify:ssr-node-audio# Route B audio: synth tone + shape → MP4, decoded b
 pnpm verify:ssr-node-font # Route B fonts: load a Google font (Roboto) in Node and assert glyphs rendered
 pnpm verify:ssr-node-media# Route B media: decode a video + a data-URL image in pure Node and composite them
 pnpm ssr:render-node -- --timeline <spec.json> [--scale 2] --out out.mp4  # SSR worker B (Node WebGPU): --scale N = N× resolution; needs a GPU or Mesa lavapipe
+pnpm ssr:render-node -- --bundle <bundle.json> [--scale 2] --out out.mp4  # SSR worker B, code path: re-run a RuntimeBundle in pure Node (same renderBundleToFile `sequio render` uses)
 ```
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's

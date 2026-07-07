@@ -29,8 +29,10 @@
     "paths": {
       "@sequio/engine": ["packages/engine/src/index.ts"],
       "@sequio/server": ["packages/server/src/index.ts"],
+      "@sequio/server/route-b": ["packages/server/route-b/index.ts"],
       "@sequio/runtime": ["packages/runtime/src/index.ts"],
-      "@sequio/runtime/node-fs": ["packages/runtime/src/node-fs.ts"]
+      "@sequio/runtime/node-fs": ["packages/runtime/src/node-fs.ts"],
+      "@sequio/cli": ["packages/cli/src/index.ts"]
     }
   }
 }

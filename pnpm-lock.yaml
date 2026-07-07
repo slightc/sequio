@@ -33,6 +33,18 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@26.1.0)(jsdom@29.1.1(@noble/hashes@1.8.0))
 
+  packages/cli:
+    dependencies:
+      '@sequio/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@sequio/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@sequio/server':
+        specifier: workspace:*
+        version: link:../server
+
   packages/engine:
     dependencies:
       mediabunny:

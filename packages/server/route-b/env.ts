@@ -275,6 +275,11 @@ export async function createNodeWebGPURenderer(options: Partial<AutoDetectOption
     background: options.background,
     backgroundAlpha: 1,
     antialias: false,
+    // Honor the compositor's resolution. Text and other Canvas-rasterized content
+    // (PIXI.Text glyph atlases) are generated at the *renderer's* resolution, so
+    // dropping it here rasterizes glyphs at 1× and upscales them into a higher-res
+    // frame — blurry text at `--scale 2`. Match the render-texture resolution.
+    resolution: options.resolution ?? 1,
     // No canvas presentation — we render to RenderTextures and read them back.
   });
   return renderer as unknown as Renderer;
