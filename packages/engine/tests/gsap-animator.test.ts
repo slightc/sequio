@@ -134,3 +134,84 @@ describe('gsapTextAnimator', () => {
     expect(anim.sampleForPart(part(9, 2), 0.5)).toEqual({});
   });
 });
+
+/**
+ * A fake that reproduces real GSAP's short-circuit: seeking to the playhead's
+ * current time is a no-op (no re-render). A fresh paused timeline sits at time 0
+ * having rendered nothing, so without priming the first `time(0)` seek leaks the
+ * targets' identity values for one frame. The binding must prime past this.
+ */
+function makeShortCircuitGsap(): GsapLike {
+  return {
+    timeline() {
+      const tweens: Tween[] = [];
+      let end = 0;
+      let playhead = 0; // starts at 0, unrendered (targets still hold identity)
+      const add = (targets: Record<string, number> | Record<string, number>[], vars: Vars, kind: 'to' | 'from') => {
+        const list = Array.isArray(targets) ? targets : [targets];
+        const { duration = 0.5, stagger = 0, ...props } = vars;
+        list.forEach((target, i) => {
+          const start = end + i * stagger;
+          const from: Record<string, number> = {};
+          const to: Record<string, number> = {};
+          for (const [k, v] of Object.entries(props)) {
+            if (kind === 'to') {
+              from[k] = target[k] ?? 0;
+              to[k] = v;
+            } else {
+              from[k] = v;
+              to[k] = target[k] ?? 0;
+            }
+          }
+          tweens.push({ target, from, to, start, duration });
+        });
+        end += duration + (list.length - 1) * stagger;
+      };
+      const tl = {
+        to(targets: unknown, vars?: unknown) {
+          add(targets as Record<string, number> | Record<string, number>[], (vars ?? {}) as Vars, 'to');
+          return tl;
+        },
+        from(targets: unknown, vars?: unknown) {
+          add(targets as Record<string, number> | Record<string, number>[], (vars ?? {}) as Vars, 'from');
+          return tl;
+        },
+        fromTo() {
+          return tl;
+        },
+        set() {
+          return tl;
+        },
+        duration: () => end,
+        time(sec: number) {
+          if (sec === playhead) return tl; // real-GSAP short-circuit: unchanged time → no re-render
+          playhead = sec;
+          for (const tw of tweens) {
+            const raw = tw.duration <= 0 ? 1 : (sec - tw.start) / tw.duration;
+            const k = raw <= 0 ? 0 : raw >= 1 ? 1 : raw;
+            for (const key of Object.keys(tw.to)) {
+              tw.target[key] = tw.from[key]! + (tw.to[key]! - tw.from[key]!) * k;
+            }
+          }
+          return tl;
+        },
+      };
+      return tl;
+    },
+  };
+}
+
+describe('gsap binding primes the t=0 pose (no first-frame flash)', () => {
+  it('gsapClipAnimator sampleAt(0) shows the from-state, not identity', () => {
+    const gsap = makeShortCircuitGsap();
+    const anim = gsapClipAnimator(gsap, (tl, o) => tl.from(o, { y: -40, alpha: 0, duration: 1 }));
+    // Without priming, the first (and only) time(0) seek is a no-op → identity leaks.
+    expect(anim.sampleAt(0)).toMatchObject({ y: -40, alpha: 0 });
+  });
+
+  it('gsapTextAnimator sampleForPart at t=0 shows the from-state, not identity', () => {
+    const gsap = makeShortCircuitGsap();
+    const anim = gsapTextAnimator(gsap, 2, (tl, targets) => tl.from(targets, { y: -40, alpha: 0, duration: 1 }));
+    expect(anim.sampleForPart(part(0, 2), 0)).toMatchObject({ y: -40, alpha: 0 });
+  });
+});
