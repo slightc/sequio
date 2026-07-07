@@ -55,6 +55,16 @@ export interface CompositorOptions {
    */
   resolution?: number;
   /**
+   * Multisample anti-aliasing (MSAA) for shape/graphics/text edges (default
+   * `true`). Rotated or otherwise non-axis-aligned geometry shows stair-step
+   * ("jaggy") edges without it. Applied to the on-screen renderer **and** to the
+   * offscreen `RenderTexture`s used by export/pre-composition and transitions —
+   * in PixiJS v8 MSAA on a render target is a property of that target, not the
+   * renderer, so both must opt in for preview and export to match (contract #3).
+   * Set `false` to trade edge quality for fill-rate on very large frames.
+   */
+  antialias?: boolean;
+  /**
    * Look-ahead window (seconds) for cross-clip pre-warming: `prepare(t)` also
    * decodes the first frame of clips that become active within `t + this`, so a
    * clip transition doesn't miss on its first frame in preview. `0` disables it.
@@ -129,6 +139,8 @@ export class Compositor implements Disposable {
   private readonly ownsTextures: boolean;
   /** Backing-store scale (HiDPI). */
   readonly resolution: number;
+  /** MSAA for shape/text edges, on the renderer and every offscreen target. */
+  readonly antialias: boolean;
   /** Cross-clip pre-warm look-ahead in seconds (mutable at runtime; `0` = off). */
   prewarmSeconds: number;
   /** Freeze the final frame at the timeline end instead of showing black. */
@@ -156,6 +168,7 @@ export class Compositor implements Disposable {
     // else 30fps — so `new Compositor({ width, height })` works with no time setup.
     this.timebase = options.timebase ?? new Timebase(options.fps ?? 30);
     this.resolution = options.resolution ?? (globalThis.devicePixelRatio || 1);
+    this.antialias = options.antialias ?? true;
     this.prewarmSeconds = options.prewarmSeconds ?? 0.5;
     this.holdLastFrameAtEnd = options.holdLastFrameAtEnd ?? true;
     this.ownsTextures = options.textures === undefined;
@@ -189,6 +202,7 @@ export class Compositor implements Disposable {
       height: this.options.height,
       background: this.options.background ?? 0x000000,
       resolution: this.resolution,
+      antialias: this.antialias,
       autoDensity: true,
     };
     // A custom factory (e.g. server-side WebGPU in Node) can replace autoDetect.
@@ -341,6 +355,7 @@ export class Compositor implements Disposable {
       width: this.options.width,
       height: this.options.height,
       resolution: this.resolution,
+      antialias: this.antialias,
     };
   }
 
@@ -360,6 +375,7 @@ export class Compositor implements Disposable {
       width: this.options.width,
       height: this.options.height,
       resolution: this.resolution,
+      antialias: this.antialias,
     });
     // Clear to the compositor's background (opaque), matching what `renderSync`
     // draws to the on-screen canvas — otherwise the offscreen frame keeps the

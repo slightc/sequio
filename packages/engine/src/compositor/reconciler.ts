@@ -11,6 +11,8 @@ export interface RenderContext {
   width: number;
   height: number;
   resolution: number;
+  /** MSAA for the offscreen transition buffers, matching the compositor. */
+  antialias?: boolean;
 }
 
 /** A transition's live scene-graph state: the blended sprite + its two input RTs. */
@@ -293,7 +295,12 @@ function renderIsolated(container: Container, keep: Container, rt: RenderTexture
 function ensureRT(rt: RenderTexture | null, ctx: RenderContext): RenderTexture {
   if (rt && rt.width === ctx.width && rt.height === ctx.height) return rt;
   rt?.destroy(true);
-  return RenderTexture.create({ width: ctx.width, height: ctx.height, resolution: ctx.resolution });
+  return RenderTexture.create({
+    width: ctx.width,
+    height: ctx.height,
+    resolution: ctx.resolution,
+    antialias: ctx.antialias ?? true,
+  });
 }
 
 function disposeTransitionNode(container: Container, node: TransitionNode): void {
