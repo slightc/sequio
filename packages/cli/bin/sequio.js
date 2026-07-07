@@ -20,8 +20,16 @@ const tsxPkgPath = require.resolve('tsx/package.json');
 const tsxPkg = require('tsx/package.json');
 const tsxBin = resolve(dirname(tsxPkgPath), typeof tsxPkg.bin === 'string' ? tsxPkg.bin : tsxPkg.bin.tsx);
 
+// Pin the tsconfig tsx uses to this package's own — it carries the `paths` that
+// resolve @sequio/engine, @sequio/runtime and @sequio/server/route-b straight
+// from source. Without this, tsx would pick up whatever tsconfig sits at the
+// cwd (e.g. the workspace-root solution config, which has no `paths`), and the
+// bare imports would fall back to the engine's unbuilt `dist/` and fail.
+const tsconfig = resolve(here, '../tsconfig.json');
+
 const child = spawn(process.execPath, [tsxBin, entry, ...process.argv.slice(2)], {
   stdio: 'inherit',
+  env: { ...process.env, TSX_TSCONFIG_PATH: tsconfig },
 });
 child.on('close', (code) => process.exit(code ?? 1));
 child.on('error', (err) => {
