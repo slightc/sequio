@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>GSAP-driven clips demo</title>
+    <style>
+      body { margin: 0; padding: 24px; background: #0b0b0e; font-family: system-ui, sans-serif; color: #e6e6ea; }
+      h1 { font-size: 15px; opacity: 0.85; }
+      p { opacity: 0.55; font-size: 13px; max-width: 620px; }
+      code { background: #1a1a22; padding: 1px 5px; border-radius: 4px; }
+      #stage canvas { border-radius: 10px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55); }
+    </style>
+  </head>
+  <body>
+    <h1>Clips driven by a real GSAP timeline (paused + seeked)</h1>
+    <p>
+      A card enters via a GSAP <code>back.out</code> drop-and-settle, and the text staggers in with
+      GSAP's <code>stagger</code> — both bound through <code>gsapClipAnimator</code> /
+      <code>gsapTextAnimator</code>. The engine never depends on gsap; this page injects it. Loops
+      forever; also self-checks on <code>window.__GSAP_TEST__</code>.
+    </p>
+    <div id="stage"></div>
+    <script type="module" src="/example/gsap-demo.ts"></script>
+  </body>
+</html>

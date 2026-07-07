@@ -28,6 +28,7 @@
     "verify:export": "pnpm -F @sequio/engine verify:export",
     "verify:origin": "pnpm -F @sequio/engine verify:origin",
     "verify:text-anim": "pnpm -F @sequio/engine verify:text-anim",
+    "verify:gsap": "pnpm -F @sequio/engine verify:gsap",
     "verify:video-import": "pnpm -F @sequio/studio verify:video-import",
     "verify:editor-export": "pnpm -F @sequio/studio verify:editor-export",
     "verify:editor-audio": "pnpm -F @sequio/studio verify:editor-audio",

@@ -33,6 +33,8 @@
 - [x] `computeTextParts` 逐行/逐词/逐字几何 + 空白处理 + index/count（单测）。
 - [x] GSAP 绑定：seek→读回纯性、`.from`/stagger、越界 part 恒等不抛错（fake gsap 单测）。
 - [x] 上屏渲染：逐字掉落起始隐藏 / 中途交错 / 结束到位（`pnpm verify:text-anim`）。
+- [x] **真实 GSAP** demo 上屏：卡片 `back.out` 掉落 + 文字 `stagger` 逐字入场，
+      循环播放且断言（`example/gsap-demo.*`，`pnpm verify:gsap`；gsap 仅 devDependency）。
 - [x] 文档：[`docs/text-animation.md`](../docs/text-animation.md) + 架构表 + 本文件。
 
 ## 备注

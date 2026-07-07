@@ -202,6 +202,8 @@ pnpm verify:runtime # Puppeteer e2e: compile+run multi-file TS → Composer → 
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode
 pnpm verify:clips   # Puppeteer e2e: Image / Text / Shape clips on screen
+pnpm verify:text-anim # Puppeteer e2e: per-character drop-in (TextClip.split + StaggerTextAnimator)
+pnpm verify:gsap    # Puppeteer e2e: clips driven by a real (paused, seeked) GSAP timeline via the binding
 pnpm verify:font    # Puppeteer e2e: custom/Google web-font renders in a TextClip
 pnpm verify:audio   # Puppeteer e2e: AudioEngine offline mix + AudioSource decode
 pnpm verify:effects # Puppeteer e2e: color/blur effect on a clip + crossfade blend

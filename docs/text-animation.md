@@ -177,6 +177,11 @@ clip.animator = gsapClipAnimator(gsap, (tl, o) => {
 引擎侧接口是**结构化声明**的（`GsapLike` / `GsapTimelineLike`），**不 import
 `gsap`**；真实 `gsap` 满足这些接口即可传入。
 
+> **可运行 demo**：`packages/engine/example/gsap-demo.{html,ts}`——一张卡片用 GSAP
+> `back.out` 掉落归位、文字用 GSAP `stagger` 逐字入场，循环播放。gsap 只是 engine 的
+> **devDependency**（发布产物不含它），demo 扮演「自带 gsap 的消费方」注入进来。
+> `pnpm verify:gsap` 会真跑一遍并断言。
+
 ---
 
 ## 5. 确定性 & 测试
