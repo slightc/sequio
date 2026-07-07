@@ -54,7 +54,9 @@ WebCodecs；再 `new Runtime(bundle).run()` → `composer.build({ target:'server
 和浏览器预览同一套 builder）。帧由 `renderTimelineToFile` 从 GPU 读回、Mediabunny 编码写到 `--out`
 （默认 `out.mp4`；容器/编码器按 node-av 能力协商，通常 `mp4/avc`）。`--verify` 按魔数校验产物。
 
-- `--scale N`：以 N× 分辨率渲染（Route B 的 `resolution` 倍率）。
+- `--scale N`：以 N× 分辨率渲染（Route B 的 `resolution` 倍率）。渲染器会按这个 `resolution`
+  生成文字等 Canvas 光栅内容(`PIXI.Text` 字形图集),所以 `--scale 2` 得到的是**真正 2× 清晰**的
+  文字/边缘,而非把 1× 内容放大 —— 想和 HiDPI/retina 预览一样锐利就用 `--scale 2`。
 - **需要 WebGPU 宿主**：真实 GPU，或软件 Vulkan 驱动（Mesa **lavapipe**，`apt install mesa-vulkan-drivers`）。
   没有时 `setupNodeEnvironment()` 抛出清晰的 “Route B needs a GPU or a software Vulkan driver”。
 
