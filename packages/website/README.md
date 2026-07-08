@@ -29,3 +29,38 @@ It needs the one-time browser fetch `pnpm exec puppeteer browsers install chrome
 
 This package is **not part of the engine's published surface** — it's the docs/
 marketing site, a consumer of the SDK like `studio`.
+
+## Deploy to Vercel
+
+The repo root ships a [`vercel.json`](../../vercel.json) that builds only this
+package inside the pnpm workspace, so deploying is turnkey:
+
+1. Import the repo at [vercel.com/new](https://vercel.com/new) — keep **Root
+   Directory** at the repo root (the default). `vercel.json` drives everything:
+
+   ```jsonc
+   {
+     "installCommand": "pnpm install --frozen-lockfile",
+     "buildCommand": "pnpm -F @sequio/website build",   // builds just the website
+     "outputDirectory": "packages/website/dist",
+     "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+   }
+   ```
+
+2. Deploy. Vercel picks up the pnpm version from the root `packageManager` field
+   (via corepack) and runs the workspace install, so the website resolves
+   `@sequio/engine` / `@sequio/runtime` from source at build time — no prior
+   `pnpm build` of the other packages is needed.
+
+It's a fully static SPA: navigation is **hash-based** (`/#/demos`), so the server
+only ever serves `index.html`. The catch-all rewrite just makes a directly-typed
+path (e.g. `/api`) fall back to the app too; static assets under `/assets/*` are
+served from the filesystem first, so the rewrite never shadows them.
+
+CLI alternative (from the repo root):
+
+```bash
+pnpm dlx vercel        # preview deploy
+pnpm dlx vercel --prod # production deploy
+```
+
