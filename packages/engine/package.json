@@ -5,7 +5,7 @@
   "type": "module",
   "license": "MIT",
   "author": "slightc",
-  "homepage": "https://github.com/slightc/sequio/tree/main/packages/engine#readme",
+  "homepage": "https://sequio-demo.vercel.app/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/slightc/sequio.git",
