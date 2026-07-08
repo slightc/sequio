@@ -1,0 +1,29 @@
+{
+  "name": "@sequio/website",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The sequio project website — home, live sequio-rendered demo gallery with an in-browser Code Mode, the engine API reference, and the studio showcase.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "verify:site": "node scripts/smoke.cjs"
+  },
+  "keywords": [
+    "sequio",
+    "website",
+    "docs",
+    "pixijs",
+    "video-editor"
+  ],
+  "dependencies": {
+    "@sequio/engine": "workspace:*",
+    "@sequio/runtime": "workspace:*",
+    "gsap": "^3.12.0",
+    "mediabunny": "^1.49.0",
+    "pixi.js": "^8.6.0"
+  }
+}

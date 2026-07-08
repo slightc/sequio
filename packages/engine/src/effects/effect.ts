@@ -23,7 +23,19 @@ export abstract class Effect implements Disposable {
 
   /** Ensure the filter exists and return it. */
   protected ensureFilter(): Filter {
-    return (this.filter ??= this.createFilter());
+    if (this.filter == null) {
+      const filter = this.createFilter();
+      // PixiJS v8 filters default to `antialias: 'off'`, and the FilterSystem
+      // disables MSAA for the entire filter pass if *any* filter opts out — so a
+      // clip with an effect renders its intermediate texture without MSAA and its
+      // edges alias (a rotated ColorEffect'd rect shows jaggies). Inherit the
+      // render target's antialias instead, so a filtered clip is as smooth as an
+      // unfiltered one (the compositor's `antialias`, default on). Contract #3:
+      // preview and export share the same filter pipeline, so both benefit.
+      filter.antialias = 'inherit';
+      this.filter = filter;
+    }
+    return this.filter;
   }
 
   /** Attach the filter to a display object's filter chain. */

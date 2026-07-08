@@ -119,6 +119,24 @@ importers:
         specifier: ^8.6.0
         version: 8.19.0
 
+  packages/website:
+    dependencies:
+      '@sequio/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@sequio/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      gsap:
+        specifier: ^3.12.0
+        version: 3.15.0
+      mediabunny:
+        specifier: ^1.49.0
+        version: 1.50.6
+      pixi.js:
+        specifier: ^8.6.0
+        version: 8.19.0
+
 packages:
 
   '@asamuzakjp/css-color@5.1.11':

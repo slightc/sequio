@@ -96,8 +96,12 @@ clock.play();
 **抗锯齿（`antialias`，默认开）**：`CompositorOptions.antialias`（默认 `true`）开启 MSAA，
 消除旋转 / 非轴对齐的 Shape、矢量、文字边缘的锯齿。PixiJS v8 里离屏渲染目标的 MSAA 是**目标本身**
 的属性而非渲染器的，所以这个开关同时作用于屏上渲染器、`renderToTexture` 的导出/预合成离屏纹理，以及
-转场的离屏缓冲——预览与导出因此一致（契约 #3）。Route B 的 Node WebGPU 渲染器也透传该值（导出实际靠
-带 MSAA 的 RenderTexture 平滑读回的像素）。超大分辨率下若要用填充率换边缘质量可设 `false`。
+转场的离屏缓冲——预览与导出因此一致（契约 #3）。**Clip 级 Effect 的滤镜通道也一并抗锯齿**：PixiJS v8
+的 `Filter` 默认 `antialias: 'off'`，且 `FilterSystem` 只要有一个滤镜关掉 MSAA 就会让整条滤镜通道失去
+MSAA——于是带 Effect 的 Clip（如旋转的 `ColorEffect` 矩形）边缘会出现锯齿。`Effect` 基类统一把滤镜设为
+`antialias: 'inherit'`，让滤镜通道跟随渲染目标的抗锯齿设置，带滤镜的 Clip 与不带滤镜的一样平滑。Route B
+的 Node WebGPU 渲染器也透传该值（导出实际靠带 MSAA 的 RenderTexture 平滑读回的像素）。超大分辨率下若要用
+填充率换边缘质量可设 `false`。
 
 ### 多轨叠层与 Reconciler
 
