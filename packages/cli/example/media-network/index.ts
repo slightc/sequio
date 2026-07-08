@@ -28,7 +28,7 @@ const H = 720;
 
 // Small, public, CORS-enabled sample assets — swap in your own URLs.
 const IMAGE_URL = 'https://picsum.photos/id/1015/1280/720';
-const VIDEO_URL = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+const VIDEO_URL = 'https://cdn.jsdelivr.net/gh/mediaelement/mediaelement-files/big_buck_bunny.mp4';
 
 /** Lay a clip out like CSS `object-fit: cover` — fill the frame, keep aspect. */
 function cover(clip: VisualClip, srcW: number, srcH: number): void {
