@@ -46,11 +46,24 @@ describe('ColorEffect', () => {
     const e = new TestColor();
     e.attach(fakeTarget());
     e.brightness.setStatic(1.4);
+    e.contrast.setStatic(1.3);
     e.saturation.setStatic(1.5);
     e.updateAt(0);
     expect(e.fake.reset).toHaveBeenCalled();
     expect(e.fake.brightness).toHaveBeenCalledWith(1.4, true);
+    expect(e.fake.contrast).toHaveBeenCalledWith(expect.closeTo(0.3), true); // 1.3 - 1
     expect(e.fake.saturate).toHaveBeenCalledWith(0.5, true); // 1.5 - 1
+  });
+
+  it('applies the defaults (1/1/1) as an identity color grade', () => {
+    // The "1 = no change" convention: every channel must map to Pixi's no-op
+    // argument, so attaching a default ColorEffect leaves pixels untouched.
+    const e = new TestColor();
+    e.attach(fakeTarget());
+    e.updateAt(0);
+    expect(e.fake.brightness).toHaveBeenCalledWith(1, true); // brightness(1) = identity
+    expect(e.fake.contrast).toHaveBeenCalledWith(0, true); // contrast(0) = identity
+    expect(e.fake.saturate).toHaveBeenCalledWith(0, true); // saturate(0) = identity
   });
 });
 

@@ -642,15 +642,20 @@ pre.code .n {
   overflow: auto;
 }
 #stage {
-  display: inline-block;
   line-height: 0;
-  align-self: flex-start;
+  align-self: stretch; /* fill the preview column so the canvas can shrink to it */
 }
 #stage canvas {
+  display: block;
   border-radius: 12px;
   box-shadow: 0 12px 44px rgba(0, 0, 0, 0.6);
   background: #000;
-  max-width: 100%;
+  /* Shrink to fit the available width when space is tight while keeping the
+     aspect ratio locked. PixiJS writes an inline `width`/`height` in px on the
+     canvas, so `max-width` alone would just squash it — we override the inline
+     height with `!important` so it scales proportionally with the capped width. */
+  max-width: 100% !important;
+  height: auto !important;
 }
 .stage-empty {
   display: grid;
@@ -670,6 +675,14 @@ pre.code .n {
 .transport #scrub {
   flex: 1;
   accent-color: var(--accent);
+}
+.transport-play {
+  flex: none;
+  width: 34px;
+  justify-content: center;
+  padding: 7px 0;
+  font-size: 12px;
+  line-height: 1;
 }
 #time {
   font-variant-numeric: tabular-nums;

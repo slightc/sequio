@@ -36,7 +36,7 @@ export class ColorEffect extends Effect {
     const v = this.valuesAt(t);
     cm.reset();
     cm.brightness(v.brightness, true);
-    cm.contrast(v.contrast, true);
+    cm.contrast(v.contrast - 1, true); // Pixi's contrast(0) = no change
     cm.saturate(v.saturation - 1, true); // saturate(0) = no change
   }
 }

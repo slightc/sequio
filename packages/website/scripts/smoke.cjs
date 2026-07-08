@@ -49,9 +49,11 @@ async function main() {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
     // ── 1. Demos gallery ─────────────────────────────────────────────────
-    await page.goto(`http://localhost:${PORT}/#/demos`, { waitUntil: 'networkidle0' });
+    // Not `networkidle0`: two covers stream a real network image + video, so the
+    // network never fully idles. Wait on the DOM, then the covers explicitly.
+    await page.goto(`http://localhost:${PORT}/#/demos`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.demo-cover canvas', { timeout: 30000 });
-    await sleep(3000); // sequential cover boot queue + a few animation frames
+    await sleep(4000); // sequential cover boot queue (now incl. media decode) + a few frames
     const covers = await page.$$eval('.demo-cover canvas', (l) => l.length);
 
     // Screenshot the first cover element; a rendered, multi-color frame yields a
@@ -79,7 +81,13 @@ async function main() {
       await page.waitForSelector('#view *', { timeout: 15000 });
     }
 
-    const realErrors = errors.filter((e) => !/favicon|Download the React|autoplay/i.test(e));
+    // Ignore environmental network-load failures: two covers fetch a real image +
+    // video from external hosts, which a sandboxed CI box may not reach (the cover
+    // degrades gracefully to its fallback). Functional breakage is still caught by
+    // the render/run checks below.
+    const realErrors = errors.filter(
+      (e) => !/favicon|Download the React|autoplay|net::ERR_|Failed to load resource/i.test(e),
+    );
     if (realErrors.length) console.log('\npage errors:\n', realErrors.join('\n'));
 
     const checks = {

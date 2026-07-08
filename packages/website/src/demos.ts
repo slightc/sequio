@@ -1,8 +1,14 @@
 /**
- * The demo gallery's data. Each demo is a small, **self-contained** multi-file
- * program in the exact `defineComposition(builder)` style Code Mode and the CLI
- * run — no external media, so its cover renders reliably with sequio itself and
- * the same source drops straight into Code Mode when the card is clicked.
+ * The demo gallery's data. Each demo is a small multi-file program in the exact
+ * `defineComposition(builder)` style Code Mode and the CLI run — its cover
+ * renders with sequio itself and the same source drops straight into Code Mode
+ * when the card is clicked.
+ *
+ * Most demos are **self-contained** (shapes / text / effects / GSAP — no
+ * external media) so their covers render reliably offline. The last two show the
+ * other half of the engine: pulling a still **image** and a **video** straight
+ * off the network into an `ImageSource` / `VideoSource` and compositing them —
+ * their covers fetch + decode real media (CORS-enabled hosts) in your browser.
  *
  * `gsap` is available to these programs because the website injects it as a
  * runtime external (see code-mode.ts), mirroring how the `sequio` CLI ships it.
@@ -403,7 +409,148 @@ export default defineComposition(async () => {
   },
 };
 
-export const DEMOS: Demo[] = [hello, easing, type, effects, gsapBuild, layers];
+// ── 7. Network image — a photo off the wire, Ken Burns + caption ───────────
+const netImage: Demo = {
+  id: 'net-image',
+  title: 'Network image',
+  description: 'A still photo fetched straight off the network into an ImageSource, laid out object-fit: cover and given a slow Ken Burns push while a caption fades in.',
+  tags: ['image', 'network', 'media'],
+  entry: '/index.ts',
+  poster: 2.0,
+  files: {
+    '/index.ts': `import { Compositor, ImageClip, ImageSource, ShapeClip, TextClip, VisualTrack, easeInOutQuad, easeOutCubic } from '@sequio/engine';
+import { defineComposition } from '@sequio/runtime';
+
+const W = 640, H = 360, DURATION = 5;
+
+// A CORS-enabled still image — swap in any URL your host allows.
+const PHOTO = 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1280&q=70';
+
+export default defineComposition(async () => {
+  const compositor = new Compositor({ width: W, height: H, fps: 30, background: 0x000000 });
+  await compositor.init();
+
+  // Fetch + decode the image off the network into a single texture. load()
+  // resolves the intrinsic size, which we use to lay it out object-fit: cover.
+  const source = new ImageSource({ src: PHOTO });
+  const meta = await source.load();
+  const cover = Math.max(W / meta.width, H / meta.height);
+
+  const photo = new ImageClip(source);
+  photo.start = 0;
+  photo.end = DURATION;
+  photo.transform.anchor.setStatic([0.5, 0.5]);
+  photo.transform.position.setStatic([W / 2, H / 2]);
+  // Ken Burns: a gentle zoom-in over the whole clip. render(t) stays pure, so
+  // the push is identical in preview and export.
+  photo.transform.scale.setKeyframes([
+    { time: 0, value: [cover, cover] },
+    { time: DURATION, value: [cover * 1.14, cover * 1.14], easing: easeInOutQuad },
+  ]);
+  const media = new VisualTrack();
+  media.add(photo);
+  compositor.addTrack(media);
+
+  // A translucent lower bar so the caption stays legible over any photo.
+  const scrim = new ShapeClip({ kind: 'rect', width: W, height: 96, fill: 0x000000 });
+  scrim.start = 0;
+  scrim.end = DURATION;
+  scrim.opacity.setStatic(0.42);
+  scrim.transform.anchor.setStatic([0, 1]);
+  scrim.transform.position.setStatic([0, H]);
+  const overlay = new VisualTrack();
+  overlay.zIndex = 1;
+  overlay.add(scrim);
+
+  const caption = new TextClip({ text: 'shot off the network', fontFamily: 'sans-serif', fontSize: 30, fill: 0xffffff });
+  caption.start = 0;
+  caption.end = DURATION;
+  caption.transform.anchor.setStatic([0, 1]);
+  caption.transform.position.setStatic([28, H - 34]);
+  caption.opacity.setKeyframes([
+    { time: 0.2, value: 0 },
+    { time: 1.1, value: 1, easing: easeOutCubic },
+  ]);
+  overlay.add(caption);
+  compositor.addTrack(overlay);
+
+  return { compositor, duration: DURATION };
+});
+`,
+  },
+};
+
+// ── 8. Network video — a clip decoded off the wire, graded + framed ────────
+const netVideo: Demo = {
+  id: 'net-video',
+  title: 'Network video',
+  description: 'A video decoded straight off the network via VideoSource (WebCodecs + Mediabunny), composited object-fit: cover under a title lower-third.',
+  tags: ['video', 'network', 'media'],
+  entry: '/index.ts',
+  poster: 2.5,
+  files: {
+    '/index.ts': `import { Compositor, VideoClip, VideoSource, ShapeClip, TextClip, VisualTrack, easeOutCubic } from '@sequio/engine';
+import { defineComposition } from '@sequio/runtime';
+
+const W = 640, H = 360;
+
+// A CORS-enabled MP4. VideoSource takes a URL, buffer, or Blob/File — the URL
+// path streams it with range requests, so only the frames we touch get fetched.
+const VIDEO = 'https://mdn.github.io/shared-assets/videos/flower.mp4';
+
+export default defineComposition(async () => {
+  const compositor = new Compositor({ width: W, height: H, fps: 30, background: 0x000000 });
+  await compositor.init();
+
+  // load() opens the container and reports duration + intrinsic size. Decoding
+  // itself stays lazy: prepare(t) pulls the frame at t (contract #1).
+  const source = new VideoSource({ src: VIDEO });
+  const meta = await source.load();
+  const DURATION = Math.min(meta.duration, 6);
+
+  const clip = new VideoClip(source);
+  clip.start = 0;
+  clip.end = DURATION;
+  // object-fit: cover — fill the frame, keep aspect, centre the overflow.
+  const scale = Math.max(W / meta.width, H / meta.height);
+  clip.transform.anchor.setStatic([0.5, 0.5]);
+  clip.transform.scale.setStatic([scale, scale]);
+  clip.transform.position.setStatic([W / 2, H / 2]);
+  const media = new VisualTrack();
+  media.add(clip);
+  compositor.addTrack(media);
+
+  // Lower-third: a bar that slides in, carrying the title.
+  const bar = new ShapeClip({ kind: 'rect', width: 300, height: 56, fill: 0x0b0b0e });
+  bar.start = 0;
+  bar.end = DURATION;
+  bar.opacity.setStatic(0.72);
+  bar.transform.anchor.setStatic([0, 0.5]);
+  bar.transform.position.setKeyframes([
+    { time: 0, value: [-300, H - 56] },
+    { time: 0.8, value: [28, H - 56], easing: easeOutCubic },
+  ]);
+  const title = new TextClip({ text: 'streamed & decoded', fontFamily: 'sans-serif', fontSize: 24, fill: 0xffffff });
+  title.start = 0;
+  title.end = DURATION;
+  title.transform.anchor.setStatic([0, 0.5]);
+  title.transform.position.setKeyframes([
+    { time: 0, value: [-260, H - 56] },
+    { time: 0.9, value: [48, H - 56], easing: easeOutCubic },
+  ]);
+  const overlay = new VisualTrack();
+  overlay.zIndex = 1;
+  overlay.add(bar);
+  overlay.add(title);
+  compositor.addTrack(overlay);
+
+  return { compositor, duration: DURATION };
+});
+`,
+  },
+};
+
+export const DEMOS: Demo[] = [hello, easing, type, effects, gsapBuild, layers, netImage, netVideo];
 
 export function getDemo(id: string | null | undefined): Demo | undefined {
   return DEMOS.find((d) => d.id === id);
