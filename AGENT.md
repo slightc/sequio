@@ -35,9 +35,9 @@ These are the invariants the whole design rests on. Any change must preserve the
 
 ## Monorepo layout
 
-This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into five packages,
-in a clean dependency DAG — `engine ← runtime ← server ← studio`, and
-`engine ← {server, studio, cli}`:
+This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into five core
+packages, in a clean dependency DAG — `engine ← runtime ← server ← studio`, and
+`engine ← {server, studio, cli}` — plus the project website:
 
 ```
 packages/
@@ -46,6 +46,7 @@ packages/
   server/   @sequio/server    server-side rendering (depends on engine + runtime)
   studio/   @sequio/studio    reference multi-track editor (depends on engine + server + runtime)
   cli/      @sequio/cli       the `sequio` command line: render + preview (depends on engine + runtime + server)
+  website/  @sequio/website   the project website: home · demo gallery (sequio-rendered covers) + Code Mode · engine API reference · studio showcase (depends on engine + runtime)
 docs/       architecture & design (workspace-level)
 todo/       milestone task tracking (start here for "what's next")
 ```

@@ -3,8 +3,8 @@
 **Programmable timelines for web video and AI.**
 
 A **pnpm monorepo** for a PixiJS-based video-editor runtime, split into five
-packages in a clean dependency DAG — `engine ← runtime ← server ← studio` and
-`engine ← {server, studio, cli}`:
+core packages in a clean dependency DAG — `engine ← runtime ← server ← studio`
+and `engine ← {server, studio, cli}` — plus the project website:
 
 | Package | Name | What it is |
 |---|---|---|
@@ -13,6 +13,7 @@ packages in a clean dependency DAG — `engine ← runtime ← server ← studio
 | [`packages/server`](packages/server) | `@sequio/server` | **Server-side rendering** — a serializable `TimelineSpec` protocol plus two render routes (headless Chrome / pure-Node WebGPU). Depends on engine + runtime. |
 | [`packages/studio`](packages/studio) | `@sequio/studio` | A reference **multi-track editor** app (timeline, canvas manipulation, forked export, Code Mode, Server Render). Depends on engine + server + runtime. |
 | [`packages/cli`](packages/cli) | `@sequio/cli` | The `sequio` command line: `render` a composition to video (pure-Node WebGPU) and `preview` it live in-browser. Depends on engine + runtime + server. |
+| [`packages/website`](packages/website) | `@sequio/website` | The project **website**: home, a demo gallery whose covers are live sequio renders, an in-browser Code Mode, the engine API reference, and the studio showcase. Depends on engine + runtime. |
 
 The **engine** is a command-style object-graph engine on top of
 [PixiJS v8](https://pixijs.com/): you build a tree of `Track / Clip / Effect`
@@ -67,6 +68,7 @@ pnpm test        # vitest across every package (pnpm -r test)
 pnpm typecheck   # tsc --noEmit across every package
 pnpm build       # build the engine library (ESM + CJS + d.ts)
 pnpm dev         # run the studio editor (dev:engine / dev:server / dev:runtime for the others)
+pnpm dev:website # run the project website (home · demos + Code Mode · API · studio showcase)
 ```
 
 Build a timeline imperatively with the engine's own classes and drive it with a clock:

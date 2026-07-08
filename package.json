@@ -15,6 +15,8 @@
     "dev:engine": "pnpm -F @sequio/engine dev",
     "dev:server": "pnpm -F @sequio/server dev",
     "dev:runtime": "pnpm -F @sequio/runtime dev",
+    "dev:website": "pnpm -F @sequio/website dev",
+    "verify:website": "pnpm -F @sequio/website verify:site",
     "sequio": "node packages/cli/bin/sequio.js",
     "verify:cli": "pnpm -F @sequio/cli verify:cli",
     "lint": "pnpm -r lint",
