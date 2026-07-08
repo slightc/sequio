@@ -1,9 +1,19 @@
 {
   "name": "@sequio/engine",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A command-style object-graph engine for building video editors on top of PixiJS. Provides the runtime (decode / composite / audio / export); persistence, schema, undo, collaboration and UI are left to the consumer.",
   "type": "module",
   "license": "MIT",
+  "author": "slightc",
+  "homepage": "https://github.com/slightc/sequio/tree/main/packages/engine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slightc/sequio.git",
+    "directory": "packages/engine"
+  },
+  "bugs": {
+    "url": "https://github.com/slightc/sequio/issues"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,9 +28,16 @@
     "dist"
   ],
   "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "prepublishOnly": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

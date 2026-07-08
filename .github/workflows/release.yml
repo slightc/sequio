@@ -1,0 +1,71 @@
+name: Release
+
+# Publish @sequio/engine to npm.
+#
+# Two ways to trigger:
+#   1. Push a tag `engine-v<version>` (e.g. `engine-v0.1.0`). The tag's version
+#      must match packages/engine/package.json — the workflow asserts this.
+#   2. Run manually (workflow_dispatch) with `dry_run: true` to build + pack
+#      without publishing, or `dry_run: false` to publish the current version.
+#
+# Requires a repository secret `NPM_TOKEN` — an npm automation token with
+# publish rights to the `@sequio` scope.
+
+on:
+  push:
+    tags:
+      - 'engine-v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build + pack only (do not publish to npm)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve version
+        id: version
+        run: |
+          PKG_VERSION=$(node -p "require('./packages/engine/package.json').version")
+          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Package version: $PKG_VERSION"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG_VERSION="${GITHUB_REF_NAME#engine-v}"
+            echo "Tag version:     $TAG_VERSION"
+            if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match packages/engine/package.json version $PKG_VERSION"
+              exit 1
+            fi
+          fi
+
+      - name: Build engine
+        run: pnpm -F @sequio/engine build
+
+      - name: Pack (dry run)
+        run: pnpm -F @sequio/engine pack
+
+      - name: Publish to npm
+        if: github.event_name == 'push' || github.event.inputs.dry_run == 'false'
+        run: pnpm -F @sequio/engine publish --no-git-checks --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'

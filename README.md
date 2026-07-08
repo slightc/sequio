@@ -47,6 +47,16 @@ milestone that fills them.
 
 See the milestone-by-milestone progress table in [`todo/README.md`](todo/README.md).
 
+## Install
+
+The engine is published to npm as [`@sequio/engine`](https://www.npmjs.com/package/@sequio/engine):
+
+```bash
+npm install @sequio/engine pixi.js
+```
+
+`pixi.js` is a **peer dependency** — install it in the consuming app.
+
 ## Quick start
 
 Commands run from the workspace root and fan out to the packages:
@@ -91,6 +101,16 @@ pnpm sequio preview composition.ts --watch        # live in-browser preview, rel
 - [Text animation](docs/text-animation.md) — clip/text animators, split motion, GSAP binding
 - [Contributor / agent guide](AGENT.md) (`CLAUDE.md` symlinks to it)
 - [Roadmap & tasks](todo/)
+
+## Releasing
+
+`@sequio/engine` is published by the [`Release`](.github/workflows/release.yml)
+GitHub Actions workflow. Bump `packages/engine/package.json`, then either push a
+matching `engine-v<version>` tag or run the workflow manually
+(`workflow_dispatch`). The workflow builds, packs, and runs `pnpm publish`; it
+needs a repository secret `NPM_TOKEN` (an npm automation token with publish
+rights to the `@sequio` scope). Trigger it with `dry_run: true` to build + pack
+without publishing.
 
 ## License
 
