@@ -46,6 +46,7 @@ export const codePage: Page = ({ view, params, navigate }) => {
   );
   const logEl = h('div', { class: 'log', id: 'log' }, 'Compiling…');
   const scrub = h('input', { id: 'scrub', type: 'range', min: '0', max: '1', step: '0.001', value: '0', disabled: true }) as HTMLInputElement;
+  const scrubPlay = h('button', { class: 'btn sm ghost transport-play', disabled: true, title: 'Play / pause', 'aria-label': 'Play' }, '▶') as HTMLButtonElement;
   const timeLabel = h('span', { id: 'time' }, '0.00 / 0.00s');
   const runBtn = h('button', { class: 'btn sm', title: 'Compile + run the files into a Composer, then preview' }, '▶ Run') as HTMLButtonElement;
   const playBtn = h('button', { class: 'btn sm ghost', disabled: true }, '▶ Play') as HTMLButtonElement;
@@ -86,7 +87,7 @@ export const codePage: Page = ({ view, params, navigate }) => {
     'div',
     { class: 'code-preview' },
     stageEl,
-    h('div', { class: 'transport' }, scrub, timeLabel),
+    h('div', { class: 'transport' }, scrubPlay, scrub, timeLabel),
     logEl,
     h(
       'div',
@@ -178,6 +179,8 @@ export const codePage: Page = ({ view, params, navigate }) => {
     scrub.value = String(t);
     timeLabel.textContent = `${fmt(t)} / ${fmt(preview.duration)}s`;
     playBtn.textContent = preview.playing ? '⏸ Pause' : '▶ Play';
+    scrubPlay.textContent = preview.playing ? '⏸' : '▶';
+    scrubPlay.setAttribute('aria-label', preview.playing ? 'Pause' : 'Play');
   }
   scrub.addEventListener('input', () => {
     if (!preview) return;
@@ -185,12 +188,14 @@ export const codePage: Page = ({ view, params, navigate }) => {
     preview.seek(parseFloat(scrub.value));
     updateTransport(parseFloat(scrub.value));
   });
-  playBtn.addEventListener('click', () => {
+  function togglePlay(): void {
     if (!preview) return;
     if (preview.playing) preview.pause();
     else preview.play();
     updateTransport(preview.clock.currentTime);
-  });
+  }
+  playBtn.addEventListener('click', togglePlay);
+  scrubPlay.addEventListener('click', togglePlay);
 
   // ── run ───────────────────────────────────────────────────────────────
   async function run(): Promise<void> {
@@ -205,6 +210,7 @@ export const codePage: Page = ({ view, params, navigate }) => {
     preview?.dispose();
     preview = null;
     playBtn.disabled = true;
+    scrubPlay.disabled = true;
     exportBtn.disabled = true;
     bundleBtn.disabled = true;
 
@@ -223,6 +229,7 @@ export const codePage: Page = ({ view, params, navigate }) => {
       scrub.max = String(preview.duration);
       scrub.disabled = false;
       playBtn.disabled = false;
+      scrubPlay.disabled = false;
       exportBtn.disabled = false;
       bundleBtn.disabled = false;
 
