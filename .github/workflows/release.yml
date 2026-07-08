@@ -24,7 +24,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write # npm provenance
 
 jobs:
   release:
@@ -65,7 +64,8 @@ jobs:
 
       - name: Publish to npm
         if: github.event_name == 'push' || github.event.inputs.dry_run == 'false'
+        # Provenance is intentionally not enabled: npm only accepts provenance
+        # from public source repositories, and this repo is private.
         run: pnpm -F @sequio/engine publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: 'true'
