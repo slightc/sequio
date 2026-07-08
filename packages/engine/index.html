@@ -15,14 +15,19 @@
   </head>
   <body>
     <h1>@sequio/engine — demos &amp; verify pages</h1>
-    <p>The SDK runtime. Run <code>pnpm dev:engine</code> and open a page below. The
-      <code>*-test</code> pages are the browser e2e checks driven by
-      <code>pnpm verify:*</code>.</p>
+    <p>The SDK runtime. Run <code>pnpm dev:engine</code> (from the workspace root)
+      or <code>pnpm dev</code> (from <code>packages/engine</code>), then open a
+      page below — the dev server runs on <code>http://localhost:6173</code>.
+      Video decode/export needs a WebCodecs-capable browser (a current
+      Chrome/Edge). The <code>*-test</code> pages are the browser e2e checks
+      driven by <code>pnpm verify:*</code>.</p>
     <h2>Demos</h2>
     <ul>
+      <li><a href="/example/render-to-canvas.html">Render to a canvas (README quick start)</a></li>
       <li><a href="/example/av-player.html">AV player</a></li>
       <li><a href="/example/multitrack-demo.html">Multi-track demo</a></li>
       <li><a href="/example/effects-demo.html">Effects demo</a></li>
+      <li><a href="/example/gsap-demo.html">GSAP-driven timeline</a></li>
       <li><a href="/example/export-demo.html">Export demo</a></li>
     </ul>
     <h2>Verify pages</h2>
@@ -30,12 +35,12 @@
       <li><a href="/example/decode-test.html">decode</a></li>
       <li><a href="/example/multitrack-test.html">multi-track render</a></li>
       <li><a href="/example/clips-test.html">image / text / shape clips</a></li>
+      <li><a href="/example/text-anim-test.html">text motion (split + stagger)</a></li>
       <li><a href="/example/font-test.html">web fonts</a></li>
       <li><a href="/example/audio-test.html">audio engine</a></li>
       <li><a href="/example/effects-test.html">effects &amp; transitions</a></li>
       <li><a href="/example/export-test.html">exporter</a></li>
       <li><a href="/example/origin-test.html">compositor origin</a></li>
-      <li><a href="/example/video-import-test.html">video import (bounded fps scan)</a></li>
     </ul>
   </body>
 </html>

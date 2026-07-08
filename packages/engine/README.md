@@ -124,6 +124,38 @@ demos for the full surface (video/image/audio sources, effects, transitions,
 text animation, and the `Exporter`). A runnable version of the example above
 lives at [`example/render-to-canvas.html`](https://github.com/slightc/sequio/blob/main/packages/engine/example/render-to-canvas.ts).
 
+## Running the demos locally
+
+The `example/` folder is a set of runnable pages — full demos (an AV player,
+multi-track compositing, effects, export, a GSAP-driven timeline) and the
+`*-test` pages that back the `pnpm verify:*` browser e2e checks. Start the Vite
+dev server and open any page in a WebCodecs-capable browser:
+
+```bash
+pnpm install          # from the workspace root, once
+pnpm dev:engine       # serves this package on http://localhost:6173
+
+# or from inside packages/engine:
+pnpm dev
+```
+
+Then open <http://localhost:6173> — `index.html` is a directory of every demo
+and verify page. WebCodecs (used for video decode/export) is required, so use a
+current Chrome/Edge; Safari and Firefox coverage varies.
+
+To run the automated browser checks headlessly instead of clicking through the
+pages, use the `verify:*` scripts (they drive the same `*-test` pages with
+Puppeteer's Chrome-for-Testing — fetch it once with
+`pnpm exec puppeteer browsers install chrome`):
+
+```bash
+pnpm verify:render    # multi-track stacking / opacity / blend mode
+pnpm verify:clips     # image / text / shape clips on screen
+pnpm verify:effects   # color/blur effect + crossfade
+pnpm verify:export    # Exporter → MP4/WebM, decoded back and checked
+# …see package.json for the full verify:* list
+```
+
 ## The five contracts
 
 1. **Async `prepare` / sync `render` split** — preview does best-effort
