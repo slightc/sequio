@@ -40,6 +40,13 @@ export {
   type ModuleRuntimeOptions,
 } from './module-runtime';
 
+// ── Local media assets ──────────────────────────────────────────────────────
+export {
+  type AssetLoader,
+  resolveAssetPath,
+  NO_ASSET_LOADER,
+} from './assets';
+
 // ── Authoring API ───────────────────────────────────────────────────────────
 export {
   defineComposition,

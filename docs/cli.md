@@ -33,6 +33,8 @@ src/
 preview/        预览页（index.html + preview.ts：fetch /__bundle → Runtime → preview() + 播放条）
 scripts/        verify-cli.ts（端到端：render + preview 都跑一遍 example/）
 example/        一段样例作曲（index.ts + scene.ts + font.ts=内嵌 data: URL 字体，跨文件 import）
+  media-network/  引用**网络** image + video 的 demo（ImageSource/VideoSource 直接吃 URL，零本地文件）
+  media-local/    引用**本地** image + video 的 demo（loadAsset('./video.mp4')；媒体 .gitignore、不进仓库）
   yc-spot/      独立 showcase：仿 Y Combinator 编辑风格的 15s 动态海报（1920×1080/30fps）——
                 index.ts（入口）+ theme.ts（配色/字号/四幕时间轴）+ kit.ts（卡片/徽章/统计条/
                 连线等可复用 builder）+ scenes.ts（四幕分镜）。全部用引擎自身的
@@ -119,6 +121,36 @@ Route B 的 `renderBundleToFile` 开了通用 `externals` 透传口（server 自
 `render` 命令把 `cliExternals()` 交给它——于是 Node 渲染与浏览器预览对 gsap 的解析完全一致
 （契约 #3）。`example/index.ts` 的标题入场就是用 gsap 驱动的，`pnpm verify:cli` 会真跑一遍。
 
+### 组合里引用 image / video
+
+两个 demo 覆盖两种引用方式，都**不把媒体文件提交进仓库**：
+
+- **网络资源**（`example/media-network/`）：`ImageSource` / `VideoSource` 直接吃 URL，
+  浏览器预览 `fetch`、Node 渲染走 Mediabunny 的 `UrlSource`——同一份 builder（契约 #3）。
+  素材留在源站，仓库里一个字节都不多（两条命令都需要联网）：
+
+  ```ts
+  new ImageSource({ src: 'https://picsum.photos/id/1015/1280/720' });
+  new VideoSource({ src: 'https://…/sample.mp4' });
+  ```
+
+- **本地资源**（`example/media-local/`）：用 runtime 的 `loadAsset` 钩子按相对路径拿本地
+  文件的 `Blob`（见 [runtime.md](runtime.md#引用本地媒体资源loadasset)）。CLI 在两处各注入
+  一个 loader——`preview` 让 dev server 通过 `/__asset/…` 静态路由把项目目录下的文件发给
+  浏览器，`render` 用 `src/assets-node.ts` 从磁盘直读——所以本地图片/视频**预览与渲染完全
+  一致**（契约 #3）：
+
+  ```ts
+  import { defineComposition, loadAsset } from '@sequio/runtime';
+  new VideoSource({ src: await loadAsset('./video.mp4') });
+  new ImageSource({ src: await loadAsset('./image.jpg') });
+  ```
+
+  媒体文件不进仓库有两道保障：① `example/media-local/.gitignore` 忽略常见图/视频后缀；
+  ② `src/bundle.ts` 快照项目时**跳过二进制媒体/字体**（`isBinaryAssetPath`），绝不把一个
+  几十 MB 的 `.mp4` 当 UTF-8 读进 JSON bundle。demo 在你放文件**之前**也能跑：每个
+  `loadAsset` 都兜底成占位块，提示该往哪放什么。
+
 ## 用法
 
 ```bash
@@ -137,6 +169,14 @@ node packages/cli/bin/sequio.js preview example/index.ts --watch
 # 独立 showcase（仿 YC 编辑风格、gsap 驱动的 15s 动态海报）
 pnpm sequio render  packages/cli/example/yc-spot/index.ts --out yc.mp4 --scale 2 --verify
 pnpm sequio preview packages/cli/example/yc-spot/index.ts --watch
+
+# 引用网络 image + video（需联网）
+pnpm sequio preview packages/cli/example/media-network/index.ts --watch
+pnpm sequio render  packages/cli/example/media-network/index.ts --out network.mp4
+
+# 引用本地 image + video（把 video.mp4 / image.jpg 放进 media-local/ 后再跑；文件不入库）
+pnpm sequio preview packages/cli/example/media-local/index.ts --watch
+pnpm sequio render  packages/cli/example/media-local/index.ts --out local.mp4
 ```
 
 作为库调用（`@sequio/cli` barrel）：`parseArgs`、`readBundle`、`runRender`、`startPreviewServer`。

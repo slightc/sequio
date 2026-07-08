@@ -37,4 +37,17 @@ describe('readBundle', () => {
   it('throws a clear error when the entry file is missing', () => {
     expect(() => readBundle(join(dir, 'nope.ts'))).toThrowError(/not found/i);
   });
+
+  it('excludes binary media assets so a local image/video never bloats the bundle', () => {
+    writeFileSync(join(dir, 'index.ts'), 'export default 1;\n');
+    // A local video/image referenced via loadAsset('./clip.mp4') at runtime — must
+    // NOT be read as UTF-8 into the bundle (served via /__asset/ + disk instead).
+    writeFileSync(join(dir, 'clip.mp4'), Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]));
+    writeFileSync(join(dir, 'photo.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+
+    const bundle = readBundle(join(dir, 'index.ts'));
+    expect(Object.keys(bundle.files)).toEqual(['/index.ts']);
+    expect(bundle.files['/clip.mp4']).toBeUndefined();
+    expect(bundle.files['/photo.jpg']).toBeUndefined();
+  });
 });

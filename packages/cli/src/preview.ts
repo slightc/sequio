@@ -14,8 +14,11 @@
  */
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import type { ServerResponse } from 'node:http';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { resolveAssetPath } from '@sequio/runtime';
 import { readBundle } from './bundle';
+import { mimeForAsset } from './assets';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PREVIEW_ROOT = resolve(HERE, '../preview');
@@ -82,6 +85,34 @@ export async function startPreviewServer(
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+            }
+          });
+
+          // Serve the composition's own local media files (referenced from code
+          // via `loadAsset('./clip.mp4')` — the runtime's asset hook). These never
+          // enter the JSON bundle (readBundle skips binary assets), so the browser
+          // fetches them straight from the project directory here. The render side
+          // reads the same files off disk (see assets-node.ts), so a local
+          // `image`/`video` looks identical in preview and render (contract #3).
+          vite.middlewares.use('/__asset', (req: IncomingMessage, res: ServerResponse) => {
+            try {
+              const rawPath = (req.url ?? '').split('?')[0];
+              const rel = resolveAssetPath(decodeURIComponent(rawPath));
+              const full = resolve(projectDir, rel);
+              if (full !== projectDir && !full.startsWith(projectDir + '/')) {
+                res.statusCode = 403;
+                return res.end('forbidden');
+              }
+              if (!existsSync(full) || !statSync(full).isFile()) {
+                res.statusCode = 404;
+                return res.end(`asset not found: ${rel}`);
+              }
+              res.setHeader('Content-Type', mimeForAsset(rel));
+              res.setHeader('Cache-Control', 'no-store');
+              createReadStream(full).pipe(res);
+            } catch (err) {
+              res.statusCode = 400;
+              res.end(err instanceof Error ? err.message : String(err));
             }
           });
 

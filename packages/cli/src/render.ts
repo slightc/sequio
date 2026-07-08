@@ -12,7 +12,9 @@
  * (Mesa lavapipe — `apt install mesa-vulkan-drivers`). Without one the render
  * fails with a clear "Route B needs a GPU or a software Vulkan driver" message.
  */
+import { dirname, resolve } from 'node:path';
 import { readBundle } from './bundle';
+import { nodeAssetLoader } from './assets-node';
 import { cliExternals } from './externals';
 
 export interface RenderOptions {
@@ -34,6 +36,9 @@ function detectContainer(buf: Uint8Array): 'mp4' | 'webm' | null {
  */
 export async function runRender(entryFile: string, options: RenderOptions = {}): Promise<number> {
   const bundle = readBundle(entryFile);
+  // The entry's directory is the project root — where `loadAsset('./clip.mp4')`
+  // reads a composition's local media files from on disk.
+  const projectRoot = dirname(resolve(entryFile));
 
   // Import Route B lazily: it pulls Node-only deps (WebGPU, canvas, codecs), only
   // needed when actually rendering.
@@ -50,6 +55,9 @@ export async function runRender(entryFile: string, options: RenderOptions = {}):
       // Make gsap (and any other CLI-provided lib) resolvable to the composition
       // in the Node render, same as the browser preview does.
       externals: cliExternals(),
+      // Resolve `loadAsset('./clip.mp4')` against the project directory on disk,
+      // so a local image/video renders the same as it previews (contract #3).
+      loadAsset: nodeAssetLoader(projectRoot),
       onProgress: (p) => {
         const pct = Math.round(p * 100);
         if (pct !== lastPct && pct % 10 === 0) {

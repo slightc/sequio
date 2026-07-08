@@ -13,7 +13,7 @@
  * lavapipe). {@link setupNodeEnvironment} throws a clear message if none is found.
  */
 import type { Renderer } from '@sequio/engine';
-import { Runtime, type Externals, type RuntimeBundle } from '@sequio/runtime';
+import { type AssetLoader, Runtime, type Externals, type RuntimeBundle } from '@sequio/runtime';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';
 import { bridgeFontManagerToNode } from './fonts-node';
@@ -36,6 +36,13 @@ export interface RenderBundleNodeOptions {
    * nothing: the caller (`sequio render`) owns the library and passes it here.
    */
   externals?: Externals;
+  /**
+   * Resolver for a composition's **local media assets** (`loadAsset('./clip.mp4')`).
+   * Passed straight to the {@link Runtime}; `sequio render` supplies a loader that
+   * reads the files off disk next to the entry, so a local `image`/`video` renders
+   * the same as it previews (contract #3). Assets are never part of the bundle.
+   */
+  loadAsset?: AssetLoader;
 }
 
 export interface RenderBundleNodeResult {
@@ -64,7 +71,7 @@ export async function renderBundleToFile(
   const scale = Math.max(1, opts.scale ?? 1);
   let renderer: Renderer | null = null;
 
-  const composer = await new Runtime({ ...bundle, externals: opts.externals }).run();
+  const composer = await new Runtime({ ...bundle, externals: opts.externals, loadAsset: opts.loadAsset }).run();
   // The environment's renderer + scale are injected implicitly into the user's
   // `new Compositor(...)` (runtime engineForEnv folds compositorOptions in).
   const built = await composer.build({
