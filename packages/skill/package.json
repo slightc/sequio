@@ -1,0 +1,43 @@
+{
+  "name": "@sequio/skill",
+  "version": "0.0.0",
+  "description": "An installable AI Agent Skill (SKILL.md) + llms.txt that teach an AI assistant how to use sequio — build a Track/Clip/Effect object graph, preview, and export/render video.",
+  "type": "module",
+  "license": "MIT",
+  "author": "slightc",
+  "homepage": "https://sequio-demo.vercel.app/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slightc/sequio.git",
+    "directory": "packages/skill"
+  },
+  "bugs": {
+    "url": "https://github.com/slightc/sequio/issues"
+  },
+  "files": [
+    "skills",
+    "llms.txt",
+    "README.md"
+  ],
+  "exports": {
+    "./llms.txt": "./llms.txt",
+    "./skill": "./skills/sequio/SKILL.md"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "sequio",
+    "agent-skill",
+    "claude",
+    "llms-txt",
+    "ai",
+    "video-editor",
+    "pixijs"
+  ]
+}

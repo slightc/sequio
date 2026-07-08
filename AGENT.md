@@ -47,6 +47,7 @@ packages/
   studio/   @sequio/studio    reference multi-track editor (depends on engine + server + runtime)
   cli/      @sequio/cli       the `sequio` command line: render + preview (depends on engine + runtime + server)
   website/  @sequio/website   the project website: home · demo gallery (sequio-rendered covers) + Code Mode · engine API reference · studio showcase (depends on engine + runtime)
+  skill/    @sequio/skill     an installable AI Agent Skill (SKILL.md) + llms.txt teaching how to use sequio (docs only; no runtime code, no deps)
 docs/       architecture & design (workspace-level)
 todo/       milestone task tracking (start here for "what's next")
 ```
@@ -167,6 +168,26 @@ Node, PixiJS WebGPU, no browser (needs a GPU or Mesa lavapipe); `preview` boots 
 Vite dev server (programmatic `createServer`) whose page runs the same
 `Runtime` → `Composer` → `preview()` path in-browser, with `--watch` reloading on
 any project-file change. See [`docs/cli.md`](docs/cli.md).
+
+### `packages/skill` — the AI Agent Skill
+
+```
+skills/sequio/
+  SKILL.md              the skill (YAML frontmatter: name + description) — how to use sequio
+  references/api.md     the full public surface, grouped by module
+  references/recipes.md copy-paste composition patterns
+llms.txt                the llms.txt (llmstxt.org) index — links to the canonical docs
+tests/                  validates the frontmatter + that every on-disk link resolves
+```
+
+**Docs only — no runtime code and no engine dependency.** An installable
+[Agent Skill](https://docs.claude.com/en/docs/claude-code/skills) plus an
+`llms.txt`: another project drops `skills/sequio/` into its `.claude/skills/` and
+the AI working there knows the API and the five contracts. The skill's source of
+truth is the engine barrel (`packages/engine/src/index.ts`) — keep
+`references/api.md` in sync when the public surface changes; the package's vitest
+tests assert the frontmatter is well-formed and no link dangles. See its
+[`README.md`](packages/skill/README.md).
 
 ## Conventions
 
