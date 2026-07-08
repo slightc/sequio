@@ -71,7 +71,7 @@ export const homePage: Page = ({ view }) => {
     h(
       'div',
       { class: 'wrap' },
-      h('div', { class: 'badge' }, h('span', { class: 'dot' }), 'Engine functional end-to-end · built on PixiJS v8'),
+      h('div', { class: 'badge' }, h('span', { class: 'dot' }), 'Engine functional end-to-end · built on PixiJS v8 + Mediabunny'),
       h(
         'h1',
         {},
@@ -81,7 +81,7 @@ export const homePage: Page = ({ view }) => {
       h(
         'p',
         { class: 'lead' },
-        'sequio is a command-style object-graph engine for building video editors on the web. You construct a tree of Track / Clip / Effect objects and drive a clock — it owns the low-level runtime: decode, composite, audio, export.',
+        'Sequio is a command-style object-graph engine for building video editors on the web. You construct a tree of Track / Clip / Effect objects and drive a clock — it owns the low-level runtime: decode, composite, audio, export.',
       ),
       h(
         'div',
@@ -94,7 +94,7 @@ export const homePage: Page = ({ view }) => {
         'div',
         { class: 'hero-install' },
         h('span', { class: 'pfx' }, '$'),
-        h('span', {}, 'npm install @sequio/engine pixi.js'),
+        h('span', {}, 'npm install @sequio/engine'),
       ),
     ),
   );
@@ -174,7 +174,7 @@ export const homePage: Page = ({ view }) => {
       'div',
       { class: 'card', style: 'text-align:center; padding: 48px 24px; background: linear-gradient(180deg, var(--panel), var(--bg-2));' },
       h('h2', { style: 'font-size: 30px; margin-bottom: 12px' }, 'See it render'),
-      h('p', { class: 'lead', style: 'margin: 0 auto 26px' }, 'Every demo cover on the next page is drawn by sequio itself. Click one to edit and re-run it live.'),
+      h('p', { class: 'lead', style: 'margin: 0 auto 26px' }, 'Every demo cover on the next page is drawn by Sequio itself. Click one to edit and re-run it live.'),
       h(
         'div',
         { style: 'display:flex; gap:12px; justify-content:center; flex-wrap:wrap' },

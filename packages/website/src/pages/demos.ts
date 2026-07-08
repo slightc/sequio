@@ -10,7 +10,7 @@ export const demosPage: Page = ({ view, navigate }) => {
     const cover = h(
       'div',
       { class: 'demo-cover' },
-      h('span', { class: 'cover-badge' }, 'rendered by sequio'),
+      h('span', { class: 'cover-badge' }, 'rendered by Sequio'),
       h('div', { class: 'cover-fallback' }, 'rendering…'),
     );
     // Mount a live, looping sequio preview as the card's cover.

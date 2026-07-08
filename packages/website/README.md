@@ -1,10 +1,10 @@
 # @sequio/website
 
-The **sequio project website** — a single-page marketing + docs site:
+The **Sequio project website** — a single-page marketing + docs site:
 
-- **Home** — what sequio is, the five contracts, the package DAG, quick start.
+- **Home** — what Sequio is, the five contracts, the package DAG, quick start.
 - **Demos** — a gallery whose card covers are **live `Composer` previews drawn by
-  sequio itself** (no video files — shapes, text, effects, GSAP). Click a card to
+  Sequio itself** (no video files — shapes, text, effects, GSAP). Click a card to
   open its source in **Code Mode**.
 - **Code Mode** — the same `@sequio/runtime` → `Composer` → preview / export /
   bundle loop the studio ships, embedded in the site; edit the multi-file program

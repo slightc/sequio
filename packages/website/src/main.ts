@@ -38,7 +38,7 @@ function mountChrome(): (path: string) => void {
         'a',
         { class: 'brand', href: '#/' },
         h('span', { class: 'logo' }),
-        h('span', { class: 'full' }, 'sequio'),
+        h('span', { class: 'full' }, 'Sequio'),
       ),
       h('span', { class: 'spacer' }),
       h('nav', {}, ...links),
@@ -54,7 +54,7 @@ function mountChrome(): (path: string) => void {
       h(
         'div',
         { class: 'bar' },
-        h('span', {}, 'sequio · programmable timelines for web video and AI'),
+        h('span', {}, 'Sequio · programmable timelines for web video and AI'),
         h('span', { class: 'spacer' }),
         h('a', { href: `${REPO}#readme`, target: '_blank', rel: 'noopener' }, 'README'),
         h('a', { href: `${REPO}/tree/main/docs`, target: '_blank', rel: 'noopener' }, 'Docs'),

@@ -53,10 +53,11 @@ See the milestone-by-milestone progress table in [`todo/README.md`](todo/README.
 The engine is published to npm as [`@sequio/engine`](https://www.npmjs.com/package/@sequio/engine):
 
 ```bash
-npm install @sequio/engine pixi.js
+npm install @sequio/engine
 ```
 
-`pixi.js` is a **peer dependency** — install it in the consuming app.
+`pixi.js` ships as a direct dependency, so it is installed automatically — no
+separate install needed.
 
 ## Quick start
 
@@ -91,8 +92,6 @@ Or author a composition as a file and render / preview it with the CLI:
 pnpm sequio render composition.ts --out out.mp4   # encode to video (pure-Node WebGPU; needs a GPU or Mesa lavapipe)
 pnpm sequio preview composition.ts --watch        # live in-browser preview, reloads on change
 ```
-
-`pixi.js` is a **peer dependency** — install it in the consuming app.
 
 ## Docs
 

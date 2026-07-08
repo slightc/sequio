@@ -57,7 +57,7 @@ function editorMock(): HTMLElement {
       h('span', { class: 'd' }),
       h('span', { class: 'd' }),
       h('span', { class: 'd' }),
-      h('span', { class: 'title' }, 'sequio · mini multi-track editor'),
+      h('span', { class: 'title' }, 'Sequio · mini multi-track editor'),
     ),
     h(
       'div',

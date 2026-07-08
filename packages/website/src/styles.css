@@ -273,10 +273,12 @@ kbd {
   margin-top: 22px;
   font-size: clamp(16px, 2vw, 20px);
 }
-.hero .cta {
+.cta {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+.hero .cta {
   margin-top: 32px;
 }
 .hero-install {

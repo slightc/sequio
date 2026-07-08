@@ -21,7 +21,7 @@ export interface Demo {
 // ── 1. Hello, sequio — sliding shapes + a GSAP-driven title ────────────────
 const hello: Demo = {
   id: 'hello',
-  title: 'Hello, sequio',
+  title: 'Hello, Sequio',
   description: 'Two shapes cross the frame while a GSAP timeline drops the title in — the canonical first composition.',
   tags: ['shapes', 'gsap', 'keyframes'],
   entry: '/index.ts',
@@ -54,7 +54,7 @@ export default defineComposition(async () => {
 
   const text = new VisualTrack();
   text.zIndex = 2;
-  const title = new TextClip({ text: 'sequio', fontFamily: 'sans-serif', fontSize: 64, fill: 0xffffff });
+  const title = new TextClip({ text: 'Sequio', fontFamily: 'sans-serif', fontSize: 64, fill: 0xffffff });
   title.start = 0;
   title.end = DURATION;
   title.transform.anchor.setStatic([0.5, 0.5]);
