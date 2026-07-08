@@ -1,11 +1,11 @@
 {
   "name": "@sequio/engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A command-style object-graph engine for building video editors on top of PixiJS. Provides the runtime (decode / composite / audio / export); persistence, schema, undo, collaboration and UI are left to the consumer.",
   "type": "module",
   "license": "MIT",
   "author": "slightc",
-  "homepage": "https://github.com/slightc/sequio/tree/main/packages/engine#readme",
+  "homepage": "https://sequio-demo.vercel.app/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/slightc/sequio.git",
