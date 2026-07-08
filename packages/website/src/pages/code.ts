@@ -33,6 +33,7 @@ export const codePage: Page = ({ view, params, navigate }) => {
   let composer: Composer | null = null;
   let preview: PreviewHandle | null = null;
   let tickSub: Subscription | null = null;
+  let endedSub: Subscription | null = null;
   let busy = false;
   let disposed = false;
 
@@ -207,6 +208,8 @@ export const codePage: Page = ({ view, params, navigate }) => {
 
     tickSub?.unsubscribe();
     tickSub = null;
+    endedSub?.unsubscribe();
+    endedSub = null;
     preview?.dispose();
     preview = null;
     playBtn.disabled = true;
@@ -234,6 +237,9 @@ export const codePage: Page = ({ view, params, navigate }) => {
       bundleBtn.disabled = false;
 
       tickSub = preview.clock.onTick((t) => updateTransport(t));
+      // Auto-stop at the end pauses internally without a tick — refresh so both
+      // play buttons (toolbar + transport) fall back to ▶.
+      endedSub = preview.clock.onEnded(() => updateTransport(preview?.clock.currentTime ?? 0));
       updateTransport(0);
       preview.play();
 
@@ -286,6 +292,7 @@ export const codePage: Page = ({ view, params, navigate }) => {
   return () => {
     disposed = true;
     tickSub?.unsubscribe();
+    endedSub?.unsubscribe();
     preview?.dispose();
     preview = null;
     composer = null;
