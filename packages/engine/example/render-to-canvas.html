@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>render to a canvas</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 28px;
+        font-family: system-ui, sans-serif;
+        background: #0b0b0e;
+        color: #e6e6ea;
+      }
+      h1 { font-size: 16px; font-weight: 600; opacity: 0.85; margin: 0 0 4px; }
+      p.hint { opacity: 0.55; font-size: 13px; margin: 0 0 18px; max-width: 640px; }
+      #stage canvas {
+        width: 640px;
+        height: 360px;
+        border-radius: 10px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+      }
+      .transport { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+      button {
+        background: #2b6cff;
+        color: #fff;
+        border: 0;
+        border-radius: 6px;
+        padding: 8px 14px;
+        font-size: 14px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Render to a canvas</h1>
+    <p class="hint">
+      The complete example from the engine README: a compositor, its GPU
+      renderer, a moving/rotating box and a title, driven by a RealtimeClock so
+      every tick renders one frame to <code>compositor.view</code>.
+    </p>
+    <div id="stage"></div>
+    <div class="transport">
+      <button id="play">▶ Play</button>
+    </div>
+    <script type="module" src="/example/render-to-canvas.ts"></script>
+  </body>
+</html>
