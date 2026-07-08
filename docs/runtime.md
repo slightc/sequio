@@ -28,6 +28,7 @@ vfs.ts             FileSystem 接口 + InMemoryFileSystem（浏览器安全）
 node-fs.ts         NodeFileSystem —— 注入真实文件系统（不进 barrel，含 node:fs）
 compile.ts         单文件 TS/JS → CommonJS（TypeScript transpileModule，纯 JS，浏览器可跑）
 module-runtime.ts  极小的 CommonJS 链接器：解析相对 import + 注入的 externals
+assets.ts          本地媒体资源契约：loadAsset 钩子 + resolveAssetPath 路径规则
 composition.ts     defineComposition(builder) 作者 API（给命令式 builder 打标记）
 composer.ts        Composer：preview / export（客户端）+ toBundle（服务端）
 runtime.ts         Runtime.run()：编译 + 链接 + 运行入口 → Composer
@@ -77,6 +78,32 @@ new Runtime({ files, externals: { gsap } });
 
 模块**惰性求值 + 缓存**（标准 CJS，循环 import 看到部分 `exports`）；解析失败以
 `ModuleResolutionError` 透传。全是对 VFS + 代码转换钩子的纯控制流，脱离 GPU/DOM 单测。
+
+### 引用本地媒体资源（`loadAsset`）
+
+作曲要引用**磁盘上就在自己旁边**的本地图片/视频，用 runtime 内建的 `loadAsset`
+钩子（从 `@sequio/runtime` import）——按项目相对路径要一个文件、拿回 `Blob`，
+`ImageSource` / `VideoSource` 都直接吃 `Blob`：
+
+```ts
+import { defineComposition, loadAsset } from '@sequio/runtime';
+export default defineComposition(async () => {
+  const video = new VideoSource({ src: await loadAsset('./clip.mp4') });
+  const image = new ImageSource({ src: await loadAsset('./assets/photo.jpg') });
+  // …
+});
+```
+
+runtime 只拥有**契约**（`@sequio/runtime` 上的 `loadAsset` 符号 + `src/assets.ts` 的
+路径规则：相对项目根 `/` 解析、拒绝 `..` 越界）；真正的字节由**宿主**通过
+`RuntimeOptions.loadAsset` 提供，所以同一句 `loadAsset('./clip.mp4')` 在哪跑都一致
+（契约 #3）：浏览器预览从 dev server 抓、Node 渲染从磁盘读、编辑器从上传库取。未配置
+loader 时 `loadAsset` **清晰报错**（不静默渲染黑帧）。
+
+关键一点：**资源永远不进源码 bundle**（bundle 只含文本源文件）——一个几十 MB 的本地
+`.mp4` 既不会撑大传输/提交体积，也不会被当 UTF-8 读坏。`sequio` CLI 在 `preview`
+（dev server 的 `/__asset/…` 静态路由）与 `render`（磁盘直读）两处都注入了 loader，
+服务端 Route B 的 `renderBundleToFile` 也开了 `loadAsset` 透传口（见 [cli.md](cli.md)）。
 
 ### 作者 API：`defineComposition(builder)`
 

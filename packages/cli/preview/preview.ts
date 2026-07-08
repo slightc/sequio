@@ -8,6 +8,7 @@
  */
 import { Runtime, type PreviewHandle, type RuntimeBundle } from '@sequio/runtime';
 import { cliExternals } from '../src/externals';
+import { browserAssetLoader } from './assets';
 
 function $<T extends HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
@@ -62,7 +63,13 @@ async function boot(): Promise<void> {
 
     fileEl.textContent = bundle.entry;
 
-    const composer = await new Runtime({ ...bundle, externals: cliExternals() }).run();
+    const composer = await new Runtime({
+      ...bundle,
+      externals: cliExternals(),
+      // Resolve `loadAsset('./clip.mp4')` by fetching the file the dev server
+      // serves under /__asset/ (readBundle keeps binary assets out of the bundle).
+      loadAsset: browserAssetLoader(),
+    }).run();
     stageEl.replaceChildren();
     preview = await composer.preview(stageEl);
 

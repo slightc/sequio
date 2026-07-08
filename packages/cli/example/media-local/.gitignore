@@ -1,0 +1,17 @@
+# The local media you drop in for this demo is intentionally NOT committed —
+# binary image/video files bloat the repo. Keep them local; the composition
+# reaches them at runtime via loadAsset('./video.mp4') (preview serves them, the
+# render reads them off disk). Only the source (index.ts, README) is tracked.
+*.mp4
+*.webm
+*.mov
+*.mkv
+*.m4v
+*.avi
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.avif
+*.bmp

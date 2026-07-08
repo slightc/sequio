@@ -96,6 +96,7 @@ src/
   node-fs.ts         NodeFileSystem — inject a real filesystem (out of barrel)  ✅ implemented
   compile.ts         per-file TS/JS → CommonJS via `typescript` transpileModule ✅ implemented
   module-runtime.ts  tiny CJS linker: resolve relative imports + externals      ✅ implemented
+  assets.ts          local-media contract: loadAsset hook + resolveAssetPath     ✅ implemented
   composition.ts     defineComposition(builder) authoring API (imperative)      ✅ implemented
   composer.ts        Composer: preview / export (client) + toBundle (server)    ✅ implemented
   runtime.ts         Runtime.run() → compile+link+run the entry → Composer      ✅ implemented
@@ -144,14 +145,19 @@ so callers fail loudly rather than rendering silent black frames.
 bin/sequio.js   the `sequio` binary — launches src/cli.ts through tsx (no build step)
 src/
   args.ts       pure argv → CliCommand parser (unit-tested)              ✅ implemented
-  bundle.ts     entry file on disk → RuntimeBundle (NodeFileSystem)      ✅ implemented
+  bundle.ts     entry file on disk → RuntimeBundle (skips binary assets) ✅ implemented
+  assets.ts     which files are binary assets + their MIME (bundle/serve) ✅ implemented
+  assets-node.ts nodeAssetLoader: read local media off disk → Blob        ✅ implemented
   render.ts     `render <file>` → pure Node WebGPU (server Route B)       ✅ implemented
   preview.ts    `preview <file> [--watch]` → Vite dev server             ✅ implemented
   cli.ts        dispatch + process lifecycle;  index.ts = programmatic barrel
-preview/        the preview page (index.html + preview.ts: fetch /__bundle → Runtime → preview())
+preview/        the preview page (index.html + preview.ts: fetch /__bundle → Runtime → preview();
+                assets.ts = browserAssetLoader fetching the dev server's /__asset/…)
 scripts/        verify-cli.ts (e2e: render + preview against example/)
-example/        a sample composition (index.ts + scene.ts + font.ts: embedded data: URL font)
-tests/          args + bundle unit tests
+example/        a sample composition (index.ts + scene.ts + font.ts: embedded data: URL font);
+                media-network/ (image+video from URLs) + media-local/ (loadAsset('./video.mp4'),
+                git-ignored media) demos — neither commits any media asset
+tests/          args + bundle + example-demos (link every demo) unit tests
 ```
 
 Two commands, both thin front-ends over infrastructure the other packages own:

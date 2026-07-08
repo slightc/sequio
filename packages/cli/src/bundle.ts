@@ -12,6 +12,7 @@
 import { basename, dirname, resolve } from 'node:path';
 import type { RuntimeBundle } from '@sequio/runtime';
 import { NodeFileSystem } from '@sequio/runtime/node-fs';
+import { isBinaryAssetPath } from './assets';
 
 /**
  * Snapshot the project around `entryFile` into a {@link RuntimeBundle}.
@@ -27,6 +28,11 @@ export function readBundle(entryFile: string): RuntimeBundle {
   const fs = new NodeFileSystem(projectDir);
   const files: Record<string, string> = {};
   for (const path of fs.listFiles()) {
+    // Binary media/font files (a local image/video referenced via
+    // `loadAsset('./clip.mp4')`) are NOT source — reading them as UTF-8 into the
+    // JSON bundle would bloat it (and mangle the bytes). They reach the browser
+    // via the preview server's /__asset/ route and Node via a direct disk read.
+    if (isBinaryAssetPath(path)) continue;
     const content = fs.readFile(path);
     if (content !== null) files[path] = content;
   }
