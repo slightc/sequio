@@ -484,19 +484,19 @@ export default defineComposition(async () => {
 const netVideo: Demo = {
   id: 'net-video',
   title: 'Network video',
-  description: 'A video decoded straight off the network via VideoSource (WebCodecs + Mediabunny), composited object-fit: cover with a ColorEffect grade and a title lower-third.',
+  description: 'A video decoded straight off the network via VideoSource (WebCodecs + Mediabunny), composited object-fit: cover under a title lower-third.',
   tags: ['video', 'network', 'media'],
   entry: '/index.ts',
-  poster: 1.5,
+  poster: 2.5,
   files: {
-    '/index.ts': `import { Compositor, VideoClip, VideoSource, ShapeClip, TextClip, VisualTrack, ColorEffect, easeOutCubic } from '@sequio/engine';
+    '/index.ts': `import { Compositor, VideoClip, VideoSource, ShapeClip, TextClip, VisualTrack, easeOutCubic } from '@sequio/engine';
 import { defineComposition } from '@sequio/runtime';
 
 const W = 640, H = 360;
 
 // A CORS-enabled MP4. VideoSource takes a URL, buffer, or Blob/File — the URL
 // path streams it with range requests, so only the frames we touch get fetched.
-const VIDEO = 'https://cdn.jsdelivr.net/gh/mediaelement/mediaelement-files/big_buck_bunny.mp4';
+const VIDEO = 'https://mdn.github.io/shared-assets/videos/flower.mp4';
 
 export default defineComposition(async () => {
   const compositor = new Compositor({ width: W, height: H, fps: 30, background: 0x000000 });
@@ -516,11 +516,6 @@ export default defineComposition(async () => {
   clip.transform.anchor.setStatic([0.5, 0.5]);
   clip.transform.scale.setStatic([scale, scale]);
   clip.transform.position.setStatic([W / 2, H / 2]);
-  // A subtle cinematic grade — the same filter core preview and export share.
-  const grade = new ColorEffect();
-  grade.saturation.setStatic(1.15);
-  grade.brightness.setStatic(1.05);
-  clip.effects.push(grade);
   const media = new VisualTrack();
   media.add(clip);
   compositor.addTrack(media);
