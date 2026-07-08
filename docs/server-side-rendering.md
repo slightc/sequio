@@ -171,13 +171,16 @@ packages/server/route-b/env.ts          Node 环境引导：jsdom + rAF/addEvent
 packages/server/route-b/export-node.ts  GPU 读帧导出：renderToTexture → copyTextureToBuffer → BGRA→RGBA
                                  → VideoSample → VideoSampleSource → Output + FilePathTarget（写盘）
                                  + 音频轨（AudioEngine.renderOffline → AudioBufferSource）
+                                 + renderFrameRGBA（单帧读回，供单帧导出复用）
 packages/server/route-b/fonts-node.ts   Node 字体加载：自托管 URL + Google 字体（css2→文件→GlobalFonts.register）
                                  + bridgeFontManagerToNode（把引擎 FontManager 的 load 钩子改接 loadFontsNode，
                                  让代码/bundle 路线里作曲的 fonts.load(...) 在 Node 也注册进 GlobalFonts）
 packages/server/route-b/render-bundle.ts renderBundleToFile：读 RuntimeBundle（命令式代码）→ Runtime→Composer→build
                                  →renderTimelineToFile（`sequio render` 与 worker `--bundle` 都走它）
+packages/server/route-b/frame-node.ts   renderBundleFrameToFile：读 RuntimeBundle → build → seek 一帧 → renderFrameRGBA
+                                 → @napi-rs/canvas 编码 PNG 写盘（`sequio frame` 走它；与 render 同一渲染核心）
 packages/server/route-b/index.ts        @sequio/server/route-b 子路径 barrel（Node-only：renderTimelineToFile /
-                                 renderBundleToFile / setupNodeEnvironment / createNodeWebGPURenderer）
+                                 renderBundleToFile / renderBundleFrameToFile / setupNodeEnvironment / createNodeWebGPURenderer）
 packages/server/route-b/render.ts       worker 主程序：--timeline 读 TimelineSpec（复用 buildTimeline）或
                                  --bundle 读代码 bundle（复用 renderBundleToFile），渲成文件
 packages/server/route-b/verify-audio.ts 自包含校验：合成正弦 → 视频+音频 MP4，解回断言两轨都在

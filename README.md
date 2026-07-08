@@ -14,6 +14,7 @@ and `engine ← {server, studio, cli}` — plus the project website:
 | [`packages/studio`](packages/studio) | `@sequio/studio` | A reference **multi-track editor** app (timeline, canvas manipulation, forked export, Code Mode, Server Render). Depends on engine + server + runtime. |
 | [`packages/cli`](packages/cli) | `@sequio/cli` | The `sequio` command line: `render` a composition to video (pure-Node WebGPU) and `preview` it live in-browser. Depends on engine + runtime + server. |
 | [`packages/website`](packages/website) | `@sequio/website` | The project **website**: home, a demo gallery whose covers are live sequio renders, an in-browser Code Mode, the engine API reference, and the studio showcase. Depends on engine + runtime. |
+| [`packages/skill`](packages/skill) | `@sequio/skill` | An installable **AI Agent Skill** (`SKILL.md`) + **`llms.txt`** that teach an AI assistant how to use sequio. Docs only — no runtime code, no engine dependency. |
 
 The **engine** is a command-style object-graph engine on top of
 [PixiJS v8](https://pixijs.com/): you build a tree of `Track / Clip / Effect`
@@ -89,8 +90,9 @@ clock.start();
 Or author a composition as a file and render / preview it with the CLI:
 
 ```bash
-pnpm sequio render composition.ts --out out.mp4   # encode to video (pure-Node WebGPU; needs a GPU or Mesa lavapipe)
-pnpm sequio preview composition.ts --watch        # live in-browser preview, reloads on change
+pnpm sequio render composition.ts --out out.mp4      # encode to video (pure-Node WebGPU; needs a GPU or Mesa lavapipe)
+pnpm sequio frame composition.ts --time 2 --out shot.png  # export one frame as a PNG for a quick visual check
+pnpm sequio preview composition.ts --watch           # live in-browser preview, reloads on change
 ```
 
 ## Docs
@@ -100,6 +102,7 @@ pnpm sequio preview composition.ts --watch        # live in-browser preview, rel
 - [Server-side rendering](docs/server-side-rendering.md) — the `TimelineSpec` protocol and both render routes
 - [CLI](docs/cli.md) — `sequio render` / `sequio preview`
 - [Text animation](docs/text-animation.md) — clip/text animators, split motion, GSAP binding
+- [AI Agent Skill + llms.txt](packages/skill) — an installable skill teaching an assistant how to use sequio
 - [Contributor / agent guide](AGENT.md) (`CLAUDE.md` symlinks to it)
 - [Roadmap & tasks](todo/)
 

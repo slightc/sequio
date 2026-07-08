@@ -1,10 +1,12 @@
 /**
  * `@sequio/cli` — the `sequio` command line.
  *
- * Two commands, both thin front-ends over infrastructure the other packages
+ * Three commands, all thin front-ends over infrastructure the other packages
  * already own:
  *  - `render <file>` → snapshot the composition into a {@link RuntimeBundle} and
- *    hand it to the server's Route A headless-Chrome worker to encode a video.
+ *    hand it to the server's Route B (pure Node, WebGPU) to encode a video.
+ *  - `frame <file>` → the same Route B path, but seek to one time and write a
+ *    single PNG — a fast visual check without a full render.
  *  - `preview <file>` → boot a Vite dev server whose page runs the same
  *    `Runtime` → `Composer` → `preview()` path in-browser; `--watch` live-reloads.
  *
@@ -17,11 +19,13 @@ export {
   DEFAULT_PREVIEW_PORT,
   type CliCommand,
   type RenderCommand,
+  type FrameCommand,
   type PreviewCommand,
   type MetaCommand,
 } from './args';
 export { readBundle } from './bundle';
 export { runRender, type RenderOptions } from './render';
+export { runFrame, type FrameOptions } from './frame';
 export {
   startPreviewServer,
   type PreviewServer,

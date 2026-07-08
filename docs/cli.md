@@ -1,7 +1,8 @@
 # 命令行（`@sequio/cli`）
 
-> **定位**：把「一个命令式的作曲文件」直接变成两件事——**渲染成视频**或**起一个实时预览**。
-> `sequio render <file>` 和 `sequio preview <file>`（后者支持 `--watch`）。
+> **定位**：把「一个命令式的作曲文件」直接变成三件事——**渲染成视频**、**导出单帧快照**或
+> **起一个实时预览**。`sequio render <file>`、`sequio frame <file>` 和
+> `sequio preview <file>`（后者支持 `--watch`）。
 
 `<file>` 就是 runtime 那套「命令式代码」的入口：一个 TS/JS 模块，默认导出一个
 `defineComposition(builder)`（或裸 builder）。它和 `example/` 里的 demo、studio 代码模式的
@@ -16,9 +17,10 @@
 - **预览**的重活（编译+链接+运行、挂时钟、`renderPreview`）已经存在于 `runtime` 的
   `Composer.preview()` 里，studio 的代码模式就是它的参考消费者。
 
-所以 CLI 不重造渲染核心，只做三件事：① 把入口文件所在目录快照成一个 `RuntimeBundle`；
-② `render` 把 bundle 交给 Route B 在**纯 Node（WebGPU）**里跑成视频、写盘；③ `preview` 起一个
-Vite 开发服务器，页面里 `Runtime → Composer → preview()` 实时上屏。
+所以 CLI 不重造渲染核心，只做这几件事：① 把入口文件所在目录快照成一个 `RuntimeBundle`；
+② `render` 把 bundle 交给 Route B 在**纯 Node（WebGPU）**里跑成视频、写盘；③ `frame` 走同一条
+Route B，只 seek 一帧导出 PNG（快速自检）；④ `preview` 起一个 Vite 开发服务器，页面里
+`Runtime → Composer → preview()` 实时上屏。
 
 ## 组成（`packages/cli`）
 
@@ -28,6 +30,7 @@ src/
   args.ts       纯函数 argv → CliCommand 解析（单测覆盖，不碰 I/O）
   bundle.ts     磁盘上的入口文件 → RuntimeBundle（NodeFileSystem 快照同目录所有文件）
   render.ts     `render <file>`：readBundle → @sequio/server/route-b 的 renderBundleToFile（纯 Node WebGPU）
+  frame.ts      `frame <file>`：readBundle → route-b 的 renderBundleFrameToFile（seek 一帧 → PNG，同一渲染核心）
   preview.ts    `preview <file>`：程序化起 Vite（根=preview/），serve /__bundle，--watch 全量刷新
   cli.ts        解析 + 分发 + 进程生命周期（退出码、Ctrl-C）；index.ts 是程序化 barrel
 preview/        预览页（index.html + preview.ts：fetch /__bundle → Runtime → preview() + 播放条）
@@ -87,6 +90,29 @@ WebCodecs；再 `new Runtime(bundle).run()` → `composer.build({ target:'server
 样例 `example/font.ts` 把 Poppins 的 Latin 子集（~8 KB）作为 **`data:` URL** 内嵌,`index.ts`
 `await fonts.load({ family:'Poppins', src: POPPINS_DATA_URL })` 加载它——浏览器 `FontFace` 与
 Node `fetch` 都吃 `data:` URL,所以样例**零网络依赖、可复现**,预览与渲染的标题字体完全一致。
+
+### `frame`（导出单帧 PNG，纯 Node / Route B）
+
+`sequio frame <file> --time <秒>` 只导出**某一时刻的一帧**成 PNG——不用等整段视频渲完，
+就能快速肉眼确认「t=2.5s 时画面上是什么」。这是给人和 **AI** 用的快速自检口子：改完一段
+作曲后渲一帧看看构图/位置/颜色对不对，比渲整段视频快得多。
+
+`runFrame()`：`readBundle` → `@sequio/server/route-b` 的
+`renderBundleFrameToFile(bundle,{ out, time, scale })`。它和 `render` 走**同一条 Route B 渲染
+核心**（契约 #3）——`setupNodeEnvironment()` 装好 WebGPU/DOM/字体，`new Runtime(bundle).run()`
+→ `composer.build({ target:'server', … })`，然后 seek 到 `time` 一帧：`await compositor.prepare(t)`
+（等解码完成、不丢帧，契约 #1）→ `renderToTexture(t)` → 从 GPU 读回 RGBA → 用 `@napi-rs/canvas`
+编码成 PNG 写盘。所以**导出的这一帧就是视频在该时刻的同一帧**，可拿来当渲染前的构图校验。
+
+- `--time / -t <秒>`：要采样的时间轴时刻（默认 `0`）。**越界会 clamp** 到 `[0, duration]`——
+  传 `--time 99` 而作曲只有 4s，就取末帧并在日志里提示 clamp。
+- `--out / -o <path>`：输出 PNG 路径（默认 `frame.png`；扩展名强制成 `.png`）。
+- `--scale / -s <n>`：以 N× 分辨率渲染（和 `render` 的 `--scale` 一致，字号/边缘真 N× 清晰）。
+- 和 `render` 一样：gsap 由 `cliExternals()` 注入、本地媒体走 `nodeAssetLoader`，所以带 gsap
+  动效或引用本地图片/视频的作曲也能正确取到那一帧；同样**需要 WebGPU 宿主**（GPU 或 Mesa lavapipe）。
+
+> 注：读回的是 Pixi 渲染的 RGBA（与 `render` 的编码输入同源）。作曲通常有不透明背景，
+> 所以 PNG 里 alpha 为满，肉眼校验无差异；这是「快速看一眼」的工具，不是带透明通道的成品出图。
 
 ### `preview`（`--watch`）
 
@@ -160,6 +186,9 @@ Route B 的 `renderBundleToFile` 开了通用 `externals` 透传口（server 自
 #   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json   # 用软件驱动时
 pnpm sequio render example/index.ts --out demo.mp4 --scale 2 --verify
 
+# 导出单帧 PNG 做快速校验（--time 采样时刻，越界自动 clamp；--out 省略则 frame.png）
+pnpm sequio frame example/index.ts --time 2 --out shot.png --scale 2
+
 # 实时预览（默认端口 6180；--watch 改文件即时重载；--host 暴露到局域网）
 pnpm sequio preview example/index.ts --watch
 
@@ -179,12 +208,15 @@ pnpm sequio preview packages/cli/example/media-local/index.ts --watch
 pnpm sequio render  packages/cli/example/media-local/index.ts --out local.mp4
 ```
 
-作为库调用（`@sequio/cli` barrel）：`parseArgs`、`readBundle`、`runRender`、`startPreviewServer`。
+作为库调用（`@sequio/cli` barrel）：`parseArgs`、`readBundle`、`runRender`、`runFrame`、
+`startPreviewServer`。
 
 ## 校验（tests & docs 是「完成」的一部分）
 
-- **纯逻辑单测**（`tests/`，vitest，无 GPU/DOM）：`args`（每个子命令的旗标、错误分支、端口校验）、
-  `bundle`（快照入口 + 同目录/子目录文件、缺文件报错）。
+- **纯逻辑单测**（`tests/`，vitest，无 GPU/DOM）：`args`（每个子命令的旗标、错误分支、端口校验，
+  含 `frame` 的 `--time`/越界/默认值）、`bundle`（快照入口 + 同目录/子目录文件、缺文件报错）。
 - **端到端**（`pnpm verify:cli`，需 WebGPU 宿主 + Puppeteer/Chrome-for-Testing）：对样例作曲跑一遍
-  `render`（Route B 纯 Node WebGPU，断言产出合法 MP4）与 `preview`（无头浏览器打开预览页，断言
-  `window.__PREVIEW_TEST__.ok`——作曲真的在浏览器里跑起来、有轨道有时长）。本会话用 lavapipe 手验通过。
+  `render`（Route B 纯 Node WebGPU，断言产出合法 MP4）、`frame`（导出 t=2s 的一帧，断言产出合法
+  PNG——魔数校验）与 `preview`（无头浏览器打开预览页，断言 `window.__PREVIEW_TEST__.ok`——作曲真的
+  在浏览器里跑起来、有轨道有时长）。本会话用 lavapipe 手验 `render`/`frame` 通过（`frame` 输出的
+  单帧肉眼确认为标题 + 两个小球的正确构图）。

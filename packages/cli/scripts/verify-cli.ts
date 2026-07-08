@@ -1,9 +1,10 @@
 /**
  * End-to-end verification for the `sequio` CLI (run: `pnpm verify:cli`).
  *
- * Exercises both commands against the bundled `example/` composition:
+ * Exercises all three commands against the bundled `example/` composition:
  *  1. `render` → drives the headless render and asserts a valid MP4/WebM came out;
- *  2. `preview` → boots the dev server, points Chrome-for-Testing at the page and
+ *  2. `frame`  → exports a single frame at a time and asserts a valid PNG came out;
+ *  3. `preview` → boots the dev server, points Chrome-for-Testing at the page and
  *     asserts the composition ran in-browser (`window.__PREVIEW_TEST__.ok`).
  *
  * Needs:
@@ -12,11 +13,12 @@
  *  - a WebCodecs-capable browser for `preview` (Puppeteer's Chrome-for-Testing):
  *    `pnpm exec puppeteer browsers install chrome`.
  */
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { runRender } from '../src/render';
+import { runFrame } from '../src/frame';
 import { startPreviewServer } from '../src/preview';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +33,24 @@ async function verifyRender(): Promise<void> {
     const size = statSync(out).size;
     if (size < 500) throw new Error(`render output too small (${size} bytes)`);
     console.log(`✅ render: wrote ${size} bytes`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+async function verifyFrame(): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), 'sequio-verify-'));
+  const out = join(dir, 'frame.png');
+  try {
+    const code = await runFrame(EXAMPLE, { out, time: 2 });
+    if (code !== 0) throw new Error(`frame exited ${code}`);
+    const buf = readFileSync(out);
+    if (buf.length < 100 || !buf.subarray(0, 8).equals(PNG_MAGIC)) {
+      throw new Error(`frame output is not a PNG (${buf.length} bytes)`);
+    }
+    console.log(`✅ frame: wrote a valid PNG (${buf.length} bytes)`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -65,6 +85,8 @@ async function verifyPreview(): Promise<void> {
 async function main(): Promise<void> {
   console.log('▸ verify:cli — render');
   await verifyRender();
+  console.log('▸ verify:cli — frame');
+  await verifyFrame();
   console.log('▸ verify:cli — preview');
   await verifyPreview();
   console.log('\n✅ verify:cli passed.');

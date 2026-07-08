@@ -1,10 +1,11 @@
 /**
- * `sequio` CLI entry: parse argv, dispatch to `render` / `preview`, own the
- * process lifecycle (exit codes, Ctrl-C). All the actual work lives in the
- * (independently testable) `args`, `render` and `preview` modules.
+ * `sequio` CLI entry: parse argv, dispatch to `render` / `frame` / `preview`, own
+ * the process lifecycle (exit codes, Ctrl-C). All the actual work lives in the
+ * (independently testable) `args`, `render`, `frame` and `preview` modules.
  */
 import { parseArgs, USAGE, type CliCommand } from './args';
 import { runRender } from './render';
+import { runFrame } from './frame';
 import { startPreviewServer } from './preview';
 import { version } from './version';
 
@@ -27,6 +28,9 @@ async function main(argv: string[]): Promise<number> {
 
     case 'render':
       return runRender(command.file, { out: command.out, scale: command.scale, verify: command.verify });
+
+    case 'frame':
+      return runFrame(command.file, { out: command.out, time: command.time, scale: command.scale });
 
     case 'preview': {
       const server = await startPreviewServer(command.file, {

@@ -30,6 +30,19 @@ export interface PreviewCommand {
   host: boolean;
 }
 
+/** `sequio frame <file> [-t sec] [-o out.png] [--scale N]`. */
+export interface FrameCommand {
+  kind: 'frame';
+  /** Path to the entry composition file. */
+  file: string;
+  /** Time (seconds) to sample. Clamped to `[0, duration]`. @default 0 */
+  time: number;
+  /** Output image path. `undefined` → `frame.png`. */
+  out?: string;
+  /** Output resolution multiplier (N× the composition size). @default 1 */
+  scale: number;
+}
+
 /** Show usage / version / a parse error and exit. */
 export interface MetaCommand {
   kind: 'help' | 'version' | 'error';
@@ -37,7 +50,7 @@ export interface MetaCommand {
   message?: string;
 }
 
-export type CliCommand = RenderCommand | PreviewCommand | MetaCommand;
+export type CliCommand = RenderCommand | PreviewCommand | FrameCommand | MetaCommand;
 
 export const DEFAULT_PREVIEW_PORT = 6180;
 
@@ -45,12 +58,18 @@ export const USAGE = `sequio — programmable-timeline CLI
 
 Usage:
   sequio render <file> [options]     Encode a composition to a video file
+  sequio frame <file> [options]      Export a single frame at a time as a PNG
   sequio preview <file> [options]    Serve a live in-browser preview
 
 Render options (pure Node, PixiJS WebGPU — needs a GPU or Mesa lavapipe):
   -o, --out <path>     Output path (default: out.mp4)
   -s, --scale <n>      Render at n× the composition resolution (default: 1)
       --verify         Assert a valid video container came out
+
+Frame options (pure Node, PixiJS WebGPU — needs a GPU or Mesa lavapipe):
+  -t, --time <sec>     Timeline time to sample, in seconds (default: 0)
+  -o, --out <path>     Output PNG path (default: frame.png)
+  -s, --scale <n>      Render at n× the composition resolution (default: 1)
 
 Preview options:
   -w, --watch          Re-run on any project-file change (live reload)
@@ -78,6 +97,7 @@ export function parseArgs(argv: string[]): CliCommand {
   if (first === '-v' || first === '--version') return { kind: 'version' };
 
   if (first === 'render') return parseRender(argv.slice(1));
+  if (first === 'frame') return parseFrame(argv.slice(1));
   if (first === 'preview') return parsePreview(argv.slice(1));
 
   return { kind: 'error', message: `Unknown command: ${first}` };
@@ -108,6 +128,37 @@ function parseRender(rest: string[]): CliCommand {
 
   if (file === undefined) return { kind: 'error', message: 'render needs a <file>' };
   return { kind: 'render', file, out, scale, verify };
+}
+
+function parseFrame(rest: string[]): CliCommand {
+  let file: string | undefined;
+  let out: string | undefined;
+  let time = 0;
+  let scale = 1;
+
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '-h' || a === '--help') return { kind: 'help' };
+    else if (a === '-o' || a === '--out') {
+      out = rest[++i];
+      if (out === undefined) return { kind: 'error', message: `${a} needs a path` };
+    } else if (a === '-t' || a === '--time') {
+      const raw = rest[++i];
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0) return { kind: 'error', message: `${a} needs a number ≥ 0, got: ${raw}` };
+      time = n;
+    } else if (a === '-s' || a === '--scale') {
+      const raw = rest[++i];
+      const n = Number(raw);
+      if (!(n >= 1) || !Number.isFinite(n)) return { kind: 'error', message: `${a} needs a number ≥ 1, got: ${raw}` };
+      scale = n;
+    } else if (a.startsWith('-')) return { kind: 'error', message: `Unknown option: ${a}` };
+    else if (file === undefined) file = a;
+    else return { kind: 'error', message: `Unexpected argument: ${a}` };
+  }
+
+  if (file === undefined) return { kind: 'error', message: 'frame needs a <file>' };
+  return { kind: 'frame', file, time, out, scale };
 }
 
 function parsePreview(rest: string[]): CliCommand {
