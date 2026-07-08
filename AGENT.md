@@ -63,7 +63,7 @@ src/
   core/        Disposable / Subscription primitives
   time/        Timebase, Clock (Realtime / FixedStep)        ✅ implemented
   animation/   Easing, AnimatableProperty, Transform2D + ClipAnimator/TextAnimator seam  ✅ implemented (keyframes + Stagger/Tween animators + GSAP binding, engine has no gsap dep)
-  media/       MediaSource + Video/Image/Audio, FrameCache   🚧 video (Mediabunny) + image decode done, audio TODO
+  media/       MediaSource + Video/Image/Audio, FrameCache   ✅ video (Mediabunny) + image + audio decode done
   texture/     TextureManager (GPU budget + LRU)             ✅ implemented
   text/        FontManager (web-font loading) + text-layout (split into line/word/char parts)  ✅ implemented
   compositor/  Compositor, Track, Clip(s), GroupClip, Reconciler  🚧 graph + render core + grouping + multitrack + clips + overlap-driven transitions + clip animators + TextClip.split motion done
