@@ -2,13 +2,17 @@
 
 **Programmable timelines for web video and AI.**
 
-A **pnpm monorepo** for a PixiJS-based video editor, split into three packages:
+A **pnpm monorepo** for a PixiJS-based video-editor runtime, split into five
+packages in a clean dependency DAG — `engine ← runtime ← server ← studio` and
+`engine ← {server, studio, cli}`:
 
 | Package | Name | What it is |
 |---|---|---|
 | [`packages/engine`](packages/engine) | `@sequio/engine` | The SDK: a command-style object-graph runtime — **decode, composite, audio, export**. The published library. |
-| [`packages/server`](packages/server) | `@sequio/server` | **Server-side rendering** — a serializable `TimelineSpec` protocol plus two render routes (headless Chrome / pure-Node WebGPU). Depends on engine. |
-| [`packages/studio`](packages/studio) | `@sequio/studio` | A reference **multi-track editor** app (timeline, canvas manipulation, forked export, Server Render). Depends on engine + server. |
+| [`packages/runtime`](packages/runtime) | `@sequio/runtime` | Compile + run multi-file TS/JS (virtual or real filesystem) → a `Composer` that previews, exports, or feeds server rendering. Depends on engine. |
+| [`packages/server`](packages/server) | `@sequio/server` | **Server-side rendering** — a serializable `TimelineSpec` protocol plus two render routes (headless Chrome / pure-Node WebGPU). Depends on engine + runtime. |
+| [`packages/studio`](packages/studio) | `@sequio/studio` | A reference **multi-track editor** app (timeline, canvas manipulation, forked export, Code Mode, Server Render). Depends on engine + server + runtime. |
+| [`packages/cli`](packages/cli) | `@sequio/cli` | The `sequio` command line: `render` a composition to video (pure-Node WebGPU) and `preview` it live in-browser. Depends on engine + runtime + server. |
 
 The **engine** is a command-style object-graph engine on top of
 [PixiJS v8](https://pixijs.com/): you build a tree of `Track / Clip / Effect`
@@ -22,19 +26,26 @@ a reference consumer, not part of the SDK surface.
 
 ## Status
 
-Early scaffold. The architecture, public API surface and pure-logic modules
-(time, animation, caches) are in place and tested; the heavy runtime pieces
-(WebCodecs decode, PixiJS render core, audio, export) are stubbed and tracked in
-[`todo/`](todo/). Stubs `throw` with a pointer to the milestone that fills them.
+The engine is functional end-to-end: real WebCodecs/Mediabunny decode, the
+PixiJS render core, multi-track compositing, audio, effects and MP4/WebM export
+all work, and the runtime + server + CLI are wired on top. A few pieces remain
+in progress (some transitions/effects, golden-frame full-file diffing); they're
+tracked in [`todo/`](todo/). Unimplemented paths `throw` with a pointer to the
+milestone that fills them.
 
 | Module | Status |
 |---|---|
-| `time/` — Timebase, Clock | ✅ implemented |
-| `animation/` — AnimatableProperty, Transform2D, Easing | ✅ implemented |
-| `media/` — FrameCache | ✅ implemented · decode 🚧 |
-| `texture/` — budget + LRU | 🚧 |
-| `compositor/` — graph + Reconciler | ✅ · render core 🚧 |
-| `effects/`, `audio/`, `export/` | 🚧 interfaces only |
+| `time/` — Timebase, Clock (Realtime / FixedStep) | ✅ implemented |
+| `animation/` — AnimatableProperty, Transform2D, Easing, Clip/Text animators + GSAP binding | ✅ implemented |
+| `media/` — VideoSource (Mediabunny), ImageSource, FrameCache | ✅ · audio decode ✅ |
+| `texture/` — GPU byte budget + LRU | ✅ implemented |
+| `text/` — FontManager (web fonts) + text layout (line/word/char) | ✅ implemented |
+| `compositor/` — graph + Reconciler + multi-track + clips + transitions | ✅ · some transitions 🚧 |
+| `effects/` — Effect registry, color/blur/warp, crossfade | 🚧 chroma/LUT/wipe TODO |
+| `audio/` — AudioEngine (Web Audio + OfflineAudioContext) | ✅ implemented |
+| `export/` — Exporter (FixedStep loop + Mediabunny mux) | ✅ · golden-frame diff follow-up |
+
+See the milestone-by-milestone progress table in [`todo/README.md`](todo/README.md).
 
 ## Quick start
 
@@ -45,8 +56,10 @@ pnpm install     # install + link the workspace
 pnpm test        # vitest across every package (pnpm -r test)
 pnpm typecheck   # tsc --noEmit across every package
 pnpm build       # build the engine library (ESM + CJS + d.ts)
-pnpm dev         # run the studio editor (dev:engine / dev:server for the others)
+pnpm dev         # run the studio editor (dev:engine / dev:server / dev:runtime for the others)
 ```
+
+Build a timeline imperatively with the engine's own classes and drive it with a clock:
 
 ```ts
 import { Timebase, RealtimeClock, Compositor, VisualTrack } from '@sequio/engine';
@@ -60,11 +73,22 @@ clock.onTick((t) => compositor.renderPreview(t)); // wire clock → preview
 clock.start();
 ```
 
+Or author a composition as a file and render / preview it with the CLI:
+
+```bash
+pnpm sequio render composition.ts --out out.mp4   # encode to video (pure-Node WebGPU; needs a GPU or Mesa lavapipe)
+pnpm sequio preview composition.ts --watch        # live in-browser preview, reloads on change
+```
+
 `pixi.js` is a **peer dependency** — install it in the consuming app.
 
 ## Docs
 
-- [Architecture & design](docs/architecture.md)
+- [Architecture & design](docs/architecture.md) — the five contracts, modules, public surface
+- [Runtime](docs/runtime.md) — compile + run TS/JS into a `Composer`
+- [Server-side rendering](docs/server-side-rendering.md) — the `TimelineSpec` protocol and both render routes
+- [CLI](docs/cli.md) — `sequio render` / `sequio preview`
+- [Text animation](docs/text-animation.md) — clip/text animators, split motion, GSAP binding
 - [Contributor / agent guide](AGENT.md) (`CLAUDE.md` symlinks to it)
 - [Roadmap & tasks](todo/)
 
