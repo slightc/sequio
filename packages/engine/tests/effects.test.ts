@@ -77,6 +77,26 @@ describe('EffectRegistry + builtins', () => {
   });
 });
 
+/** An effect whose filter starts at Pixi's default `antialias: 'off'`. */
+class AAProbeEffect extends Effect {
+  params = {} as Effect['params'];
+  protected override createFilter(): Filter {
+    return { antialias: 'off', destroy: () => {} } as unknown as Filter;
+  }
+  updateAt(): void {}
+}
+
+describe('Effect base — antialias', () => {
+  it("sets the filter to inherit the render target's antialias (not Pixi's 'off' default)", () => {
+    const e = new AAProbeEffect();
+    const target = { filters: null } as unknown as Container;
+    e.attach(target);
+    const filter = (target.filters as unknown as Filter[])[0];
+    // Without this, a filtered clip's whole pass loses MSAA and its edges alias.
+    expect((filter as unknown as { antialias: string }).antialias).toBe('inherit');
+  });
+});
+
 /** A fake effect recording attach/detach/update. */
 class FakeEffect extends Effect {
   params = {} as Effect['params'];
