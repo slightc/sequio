@@ -74,6 +74,55 @@ describe('parseArgs', () => {
     });
   });
 
+  describe('frame', () => {
+    it('bare file → defaults (t=0, frame.png, 1×)', () => {
+      expect(parseArgs(['frame', 'a.ts'])).toEqual({
+        kind: 'frame',
+        file: 'a.ts',
+        time: 0,
+        out: undefined,
+        scale: 1,
+      });
+    });
+
+    it('--time / -t and --out / -o (order-independent)', () => {
+      expect(parseArgs(['frame', '-t', '2.5', '-o', 'shot.png', 'a.ts'])).toEqual({
+        kind: 'frame',
+        file: 'a.ts',
+        time: 2.5,
+        out: 'shot.png',
+        scale: 1,
+      });
+      expect(parseArgs(['frame', 'a.ts', '--time', '0'])).toMatchObject({ time: 0 });
+    });
+
+    it('--scale / -s', () => {
+      expect(parseArgs(['frame', 'a.ts', '--scale', '2'])).toMatchObject({ scale: 2 });
+    });
+
+    it('invalid time → error', () => {
+      expect(parseArgs(['frame', 'a.ts', '--time', '-1'])).toMatchObject({ kind: 'error' });
+      expect(parseArgs(['frame', 'a.ts', '-t', 'abc'])).toMatchObject({ kind: 'error' });
+    });
+
+    it('invalid scale → error', () => {
+      expect(parseArgs(['frame', 'a.ts', '--scale', '0'])).toMatchObject({ kind: 'error' });
+    });
+
+    it('missing file → error', () => {
+      expect(parseArgs(['frame', '-t', '1'])).toMatchObject({ kind: 'error' });
+    });
+
+    it('--time without a value → error', () => {
+      expect(parseArgs(['frame', 'a.ts', '--time'])).toMatchObject({ kind: 'error' });
+    });
+
+    it('unknown option / extra positional → error', () => {
+      expect(parseArgs(['frame', 'a.ts', '--nope'])).toMatchObject({ kind: 'error' });
+      expect(parseArgs(['frame', 'a.ts', 'b.ts'])).toMatchObject({ kind: 'error' });
+    });
+  });
+
   describe('preview', () => {
     it('defaults', () => {
       expect(parseArgs(['preview', 'a.ts'])).toEqual({

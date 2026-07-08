@@ -95,6 +95,30 @@ async function readFrameRGBA(renderer: GpuRendererLike, rtSource: { pixelWidth: 
   return rgba;
 }
 
+/**
+ * Render a single frame at `t` and return it as tightly-packed RGBA bytes plus
+ * its pixel dimensions. Same await-prepare → render → GPU-readback path as the
+ * per-frame loop in {@link renderTimelineToFile}, factored out for the
+ * single-frame (image) export that `sequio frame` uses. The `renderer` must be
+ * the WebGPU renderer backing `compositor`.
+ */
+export async function renderFrameRGBA(
+  compositor: Compositor,
+  renderer: Renderer,
+  t: number,
+): Promise<{ rgba: Uint8Array; width: number; height: number }> {
+  const gpu = renderer as unknown as GpuRendererLike;
+  await compositor.prepare(t); // await → the frame is complete before we read it (contract #1)
+  const rt = compositor.renderToTexture(t);
+  try {
+    const src = rt.source as unknown as { pixelWidth: number; pixelHeight: number };
+    const rgba = await readFrameRGBA(gpu, src);
+    return { rgba, width: src.pixelWidth, height: src.pixelHeight };
+  } finally {
+    rt.destroy(true);
+  }
+}
+
 /** True for errors we recover from by trying another codec: a missing server
  *  encoder (WebCodecs fallback in Node) or an unknown/unsupported codec name. */
 function isEncoderUnavailable(err: unknown): boolean {

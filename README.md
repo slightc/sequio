@@ -90,8 +90,9 @@ clock.start();
 Or author a composition as a file and render / preview it with the CLI:
 
 ```bash
-pnpm sequio render composition.ts --out out.mp4   # encode to video (pure-Node WebGPU; needs a GPU or Mesa lavapipe)
-pnpm sequio preview composition.ts --watch        # live in-browser preview, reloads on change
+pnpm sequio render composition.ts --out out.mp4      # encode to video (pure-Node WebGPU; needs a GPU or Mesa lavapipe)
+pnpm sequio frame composition.ts --time 2 --out shot.png  # export one frame as a PNG for a quick visual check
+pnpm sequio preview composition.ts --watch           # live in-browser preview, reloads on change
 ```
 
 ## Docs

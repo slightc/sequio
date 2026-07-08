@@ -45,7 +45,7 @@ packages/
   runtime/  @sequio/runtime   compile+run TS/JS → a Composer (depends on engine)
   server/   @sequio/server    server-side rendering (depends on engine + runtime)
   studio/   @sequio/studio    reference multi-track editor (depends on engine + server + runtime)
-  cli/      @sequio/cli       the `sequio` command line: render + preview (depends on engine + runtime + server)
+  cli/      @sequio/cli       the `sequio` command line: render + frame + preview (depends on engine + runtime + server)
   website/  @sequio/website   the project website: home · demo gallery (sequio-rendered covers) + Code Mode · engine API reference · studio showcase (depends on engine + runtime)
   skill/    @sequio/skill     an installable AI Agent Skill (SKILL.md) + llms.txt teaching how to use sequio (docs only; no runtime code, no deps)
 docs/       architecture & design (workspace-level)
@@ -149,23 +149,26 @@ src/
   bundle.ts     entry file on disk → RuntimeBundle (skips binary assets) ✅ implemented
   assets.ts     which files are binary assets + their MIME (bundle/serve) ✅ implemented
   assets-node.ts nodeAssetLoader: read local media off disk → Blob        ✅ implemented
-  render.ts     `render <file>` → pure Node WebGPU (server Route B)       ✅ implemented
+  render.ts     `render <file>` → video, pure Node WebGPU (server Route B) ✅ implemented
+  frame.ts      `frame <file> [--time t]` → single-frame PNG (Route B)     ✅ implemented
   preview.ts    `preview <file> [--watch]` → Vite dev server             ✅ implemented
   cli.ts        dispatch + process lifecycle;  index.ts = programmatic barrel
 preview/        the preview page (index.html + preview.ts: fetch /__bundle → Runtime → preview();
                 assets.ts = browserAssetLoader fetching the dev server's /__asset/…)
-scripts/        verify-cli.ts (e2e: render + preview against example/)
+scripts/        verify-cli.ts (e2e: render + frame + preview against example/)
 example/        a sample composition (index.ts + scene.ts + font.ts: embedded data: URL font);
                 media-network/ (image+video from URLs) + media-local/ (loadAsset('./video.mp4'),
                 git-ignored media) demos — neither commits any media asset
 tests/          args + bundle + example-demos (link every demo) unit tests
 ```
 
-Two commands, both thin front-ends over infrastructure the other packages own:
+Three commands, all thin front-ends over infrastructure the other packages own:
 `render` snapshots the composition into a {@link RuntimeBundle} and hands it to
 the server's **Route B** `renderBundleToFile` (`@sequio/server/route-b`) — pure
-Node, PixiJS WebGPU, no browser (needs a GPU or Mesa lavapipe); `preview` boots a
-Vite dev server (programmatic `createServer`) whose page runs the same
+Node, PixiJS WebGPU, no browser (needs a GPU or Mesa lavapipe); `frame` runs the
+same Route B path but seeks to one time and writes a single PNG
+(`renderBundleFrameToFile`) — a fast visual check without a full render; `preview`
+boots a Vite dev server (programmatic `createServer`) whose page runs the same
 `Runtime` → `Composer` → `preview()` path in-browser, with `--watch` reloading on
 any project-file change. See [`docs/cli.md`](docs/cli.md).
 
@@ -227,8 +230,9 @@ pnpm typecheck      # tsc --noEmit across every package (pnpm -r typecheck)
 pnpm build          # build the engine library (ESM + CJS + d.ts)
 pnpm dev            # studio: vite dev server for the editor + Code Mode (dev:engine / dev:server / dev:runtime for the others)
 pnpm sequio render <file> [--out out.mp4] [--scale 2] [--verify]   # CLI: encode a composition to video (pure Node WebGPU; needs a GPU or Mesa lavapipe)
+pnpm sequio frame <file> [--time 2] [--out frame.png] [--scale 2]  # CLI: export a single frame at a time as a PNG (quick visual check; same Route B render core)
 pnpm sequio preview <file> [--watch] [--port 6180]     # CLI: serve a live in-browser preview (re-runs on change)
-pnpm verify:cli     # Puppeteer e2e: `sequio render` → valid MP4 + `sequio preview` runs in-browser
+pnpm verify:cli     # Puppeteer e2e: `sequio render` → valid MP4 + `sequio frame` → valid PNG + `sequio preview` runs in-browser
 pnpm verify:runtime # Puppeteer e2e: compile+run multi-file TS → Composer → preview + export
 pnpm verify:decode  # Puppeteer e2e: real WebCodecs decode via VideoSource
 pnpm verify:render  # Puppeteer e2e: multi-track stacking / opacity / blendMode

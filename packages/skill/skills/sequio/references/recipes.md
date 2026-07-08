@@ -161,6 +161,26 @@ pnpm sequio render composition.ts --out out.mp4 --scale 2
 Route B is pure Node + PixiJS WebGPU (Dawn); it needs a GPU or the Mesa lavapipe
 software driver.
 
+## 10. Quick visual check — export a single frame (no full render)
+
+The fast way to confirm a composition looks right without rendering the whole
+video (and without a browser). `sequio frame` seeks to one time and writes a PNG
+through the same render core as `render`:
+
+```bash
+sequio frame composition.ts --time 2.5 --out /tmp/check.png   # then open/view the PNG
+sequio frame composition.ts --time 0    --out /tmp/start.png --scale 2
+```
+
+- `--time <sec>` is clamped to `[0, duration]` (so `--time 999` gives the last frame).
+- `--scale N` renders at N× like `render`.
+- Needs a WebGPU host (GPU or Mesa lavapipe), same as `render`.
+
+Recommended iterate loop for an agent: edit the composition → `sequio frame` at a
+few representative times → look at the PNGs → only `sequio render` once it's right.
+Programmatically it's `renderBundleFrameToFile(bundle, { out, time, scale })` from
+`@sequio/server/route-b`, or `runFrame(file, { out, time, scale })` from `@sequio/cli`.
+
 ## Gotchas
 
 - Call `await compositor.init()` before adding tracks.
