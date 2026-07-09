@@ -649,6 +649,10 @@ pre.code .n {
 #stage {
   line-height: 0;
   align-self: stretch; /* fill the preview column so the canvas can shrink to it */
+  /* Centre the canvas horizontally — a vertical (9:16) preview is narrower than
+     the column and would otherwise hug the left edge. */
+  display: flex;
+  justify-content: center;
 }
 #stage canvas {
   display: block;
