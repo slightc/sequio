@@ -52,9 +52,12 @@ export function buildGoogleCss2Url(base: string, spec: GoogleFontSpec): string {
 export class FontManager {
   private readonly loaded = new Map<string, Promise<void>>();
   private readonly stylesheets = new Set<string>();
+  /** Every `font-family` a load has been issued for (regardless of resolution). */
+  private readonly registeredFamilies = new Set<string>();
 
   /** Load + register a font once. Repeat calls return the same promise. */
   load(spec: FontSpec): Promise<void> {
+    this.registeredFamilies.add(spec.family);
     const key = this.keyOf(spec);
     let p = this.loaded.get(key);
     if (!p) {
@@ -65,12 +68,24 @@ export class FontManager {
   }
 
   /**
+   * The `font-family` names a load has been requested for. Registered eagerly
+   * (before the async face resolves), so it reflects intent — used for **static
+   * validation** (`sequio check`) to catch a `TextClip` referencing a family no
+   * `fonts.load(...)` ever registered (which would silently fall back to a system
+   * font, breaking preview↔render parity — contract #3).
+   */
+  families(): string[] {
+    return [...this.registeredFamilies];
+  }
+
+  /**
    * Load a font from Google Fonts by family name: injects the css2 stylesheet
    * and awaits the requested weights via `document.fonts.load`. Deduped like
    * {@link load} and covered by {@link ready}.
    */
   loadGoogleFont(spec: GoogleFontSpec): Promise<void> {
     const weights = spec.weights?.length ? spec.weights : [400];
+    this.registeredFamilies.add(spec.family);
     const key = `google:${spec.family}|${[...weights].sort((a, b) => a - b).join(',')}|${spec.italic ? 'i' : 'n'}`;
     let p = this.loaded.get(key);
     if (!p) {

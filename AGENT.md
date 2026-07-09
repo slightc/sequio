@@ -45,7 +45,7 @@ packages/
   runtime/  @sequio/runtime   compile+run TS/JS → a Composer (depends on engine)
   server/   @sequio/server    server-side rendering (depends on engine + runtime)
   studio/   @sequio/studio    reference multi-track editor (depends on engine + server + runtime)
-  cli/      @sequio/cli       the `sequio` command line: render + frame + preview (depends on engine + runtime + server)
+  cli/      @sequio/cli       the `sequio` command line: check + render + frame + preview (depends on engine + runtime + server)
   website/  @sequio/website   the project website: home · demo gallery (sequio-rendered covers) + Code Mode · engine API reference · studio showcase (depends on engine + runtime)
   skill/    @sequio/skill     an installable AI Agent Skill (SKILL.md) + llms.txt teaching how to use sequio (docs only; no runtime code, no deps)
 docs/       architecture & design (workspace-level)
@@ -151,6 +151,7 @@ src/
   bundle.ts     entry file on disk → RuntimeBundle (skips binary assets) ✅ implemented
   assets.ts     which files are binary assets + their MIME (bundle/serve) ✅ implemented
   assets-node.ts nodeAssetLoader: read local media off disk → Blob        ✅ implemented
+  check.ts      `check <file> [--json]` → GPU-free static validation (null renderer; Diagnostic[]) ✅ implemented
   render.ts     `render <file>` → video, pure Node WebGPU (server Route B) ✅ implemented
   frame.ts      `frame <file> [--time t]` → single-frame PNG (Route B)     ✅ implemented
   audio.ts      `audio <file> [--format mp3]` → audio-only file (Route B)  ✅ implemented
@@ -158,7 +159,7 @@ src/
   cli.ts        dispatch + process lifecycle;  index.ts = programmatic barrel
 preview/        the preview page (index.html + preview.ts: fetch /__bundle → Runtime → preview();
                 assets.ts = browserAssetLoader fetching the dev server's /__asset/…)
-scripts/        verify-cli.ts (e2e: render + frame + audio + preview against example/)
+scripts/        verify-cli.ts (e2e: check + render + frame + audio + preview against example/)
 example/        a sample composition (index.ts + scene.ts + font.ts: embedded data: URL font);
                 custom-fx/ (author your own effect · transition · animation — fx.ts: FocusPull/
                 PopEffect (Effect), EasedCrossfade (Transition), OrbitAnimator (ClipAnimator),
@@ -168,11 +169,16 @@ example/        a sample composition (index.ts + scene.ts + font.ts: embedded da
                 Sale" reel: echo-stack/arc/outline text + arch-masked network photos) showcases;
                 media-network/ (image+video from URLs) + media-local/ (loadAsset('./video.mp4'),
                 git-ignored media) demos — neither commits any media asset
-tests/          args + bundle + example-demos (link every demo) unit tests
+tests/          args + bundle + check + example-demos (link every demo) unit tests
 ```
 
-Four commands, all thin front-ends over infrastructure the other packages own:
-`render` snapshots the composition into a {@link RuntimeBundle} and hands it to
+Five commands, all thin front-ends over infrastructure the other packages own:
+`check` compiles + links + runs the builder with a **null renderer** (no WebGPU,
+no network) and statically walks the object graph — the first, cheapest ring of
+the `check → frame → render` verify loop, catching illegal clip times, dead
+keyframes, unregistered fonts, non-overlapping transitions, out-of-range anchors
+and missing local assets before any render; `render` snapshots the composition
+into a {@link RuntimeBundle} and hands it to
 the server's **Route B** `renderBundleToFile` (`@sequio/server/route-b`) — pure
 Node, PixiJS WebGPU, no browser (needs a GPU or Mesa lavapipe); `frame` runs the
 same Route B path but seeks to one time and writes a single PNG
@@ -253,6 +259,7 @@ pnpm typecheck      # tsc --noEmit across every package (pnpm -r typecheck)
 pnpm build          # build the engine library (ESM + CJS + d.ts)
 pnpm build:packages # build every publishable package (engine + runtime + server + cli) → dist/
 pnpm dev            # studio: vite dev server for the editor + Code Mode (dev:engine / dev:server / dev:runtime for the others)
+pnpm sequio check <file> [--json]                                  # CLI: GPU-free static validation of a composition (offline lint; the pre-flight before frame/render)
 pnpm sequio render <file> [--out out.mp4] [--scale 2] [--verify]   # CLI: encode a composition to video (pure Node WebGPU; needs a GPU or Mesa lavapipe)
 pnpm sequio frame <file> [--time 2] [--out frame.png] [--scale 2]  # CLI: export a single frame at a time as a PNG (quick visual check; same Route B render core)
 pnpm sequio audio <file> [--format mp3] [--out out.mp3] [--bitrate 192000]  # CLI: export just the audio mix to an audio-only file (mp3/m4a/wav/ogg/webm)

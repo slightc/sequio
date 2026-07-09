@@ -4,6 +4,7 @@
  * (independently testable) `args`, `render`, `frame` and `preview` modules.
  */
 import { parseArgs, USAGE, type CliCommand } from './args';
+import { runCheck } from './check';
 import { runRender } from './render';
 import { runFrame } from './frame';
 import { runAudio } from './audio';
@@ -26,6 +27,9 @@ async function main(argv: string[]): Promise<number> {
       console.error(`✖ ${command.message}\n`);
       console.error(USAGE);
       return 2;
+
+    case 'check':
+      return runCheck(command.file, { json: command.json });
 
     case 'render':
       return runRender(command.file, { out: command.out, scale: command.scale, verify: command.verify });

@@ -19,7 +19,8 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 - `Transform2D` — a clip's spatial state: `position`, `scale`, `rotation`,
   `anchor`, `alpha` (each an `AnimatableProperty`).
 - `AnimatableProperty` / `Keyframe` — `.setStatic(value)` or
-  `.setKeyframes([{ time, value, easing? }, ...])`.
+  `.setKeyframes([{ time, value, easing? }, ...])`; `.valueAt(t)`, `.animated`,
+  `.keyframeTimes` (sorted keyframe times, for static validation).
 - Easings: `linear`, `hold`, `cubicBezier`, `easeInQuad`, `easeOutQuad`,
   `easeInOutQuad`, `easeInCubic`, `easeOutCubic`, `easeInOutCubic`. Type `Easing`.
 - Clip/text animators: `ClipAnimator`, `TextAnimator`, `StaggerTextAnimator`,
@@ -53,6 +54,8 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 - `FontManager`, `fonts` (singleton), `buildGoogleCss2Url`; types `FontSpec`,
   `GoogleFontSpec`.
 - `fonts.load({ family, src })` before rendering a `TextClip` in that family.
+- `fonts.families()` — the family names a load has been requested for (used by
+  `sequio check` to catch a `TextClip` referencing an unregistered font).
 
 ## Compositor graph
 

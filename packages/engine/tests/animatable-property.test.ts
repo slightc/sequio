@@ -22,6 +22,19 @@ describe('AnimatableProperty', () => {
     expect(p.animated).toBe(true);
   });
 
+  it('exposes keyframe times in sorted order (empty when static)', () => {
+    const p = new AnimatableProperty(0);
+    expect(p.keyframeTimes).toEqual([]);
+    p.setKeyframes([
+      { time: 2, value: 9 },
+      { time: 0, value: 0 },
+      { time: 1, value: 3 },
+    ]);
+    expect(p.keyframeTimes).toEqual([0, 1, 2]);
+    p.setStatic(5);
+    expect(p.keyframeTimes).toEqual([]);
+  });
+
   it('clamps outside the keyframe range', () => {
     const p = new AnimatableProperty(0);
     p.setKeyframes([

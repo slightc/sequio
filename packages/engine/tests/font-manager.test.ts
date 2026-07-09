@@ -59,6 +59,15 @@ describe('FontManager', () => {
     expect(fm.isRequested({ family: 'Ghost', src: '/g.woff2' })).toBe(false);
   });
 
+  it('families() lists every requested family once (for static validation)', () => {
+    const fm = new TestFontManager();
+    expect(fm.families()).toEqual([]);
+    fm.load({ family: 'Inter', src: '/inter.woff2' });
+    fm.load({ family: 'Inter', src: '/inter-bold.woff2', weight: '700' }); // same family
+    fm.loadGoogleFont({ family: 'Roboto' });
+    expect(new Set(fm.families())).toEqual(new Set(['Inter', 'Roboto']));
+  });
+
   it('loadGoogleFont dedups and is covered by ready()', async () => {
     const fm = new TestFontManager();
     const spec: GoogleFontSpec = { family: 'Roboto', weights: [400, 700] };
