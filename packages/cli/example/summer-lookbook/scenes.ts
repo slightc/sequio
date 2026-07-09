@@ -248,10 +248,10 @@ function nail(content: VisualTrack, overlay: VisualTrack, P: Record<string, Img>
   // Big vertical wordmark on the right — hollow (outlined) text on a slight
   // diagonal, each glyph riding a travelling wave while the whole line slides
   // into place. `split:'char'` feeds the per-glyph WaveTextAnimator.
-  const vtext = strokeText('TIME TO NAIL THE SUMMER STYLE', SANS, 54, WHITE, 2);
+  const vtext = strokeText('TIME TO NAIL THE SUMMER STYLE', SANS, 54, WHITE, 3);
   vtext.transform.rotation.setStatic(1.66); // just past vertical (top tilts right)
   vtext.split = 'char';
-  vtext.textAnimator = new WaveTextAnimator({ amp: 9, wavelength: 0.5, speed: 3 });
+  vtext.textAnimator = new WaveTextAnimator({ amp: 5, wavelength: 0.5, speed: 1.5 });
   vtext.transform.position.setKeyframes([
     { time: start, value: [610, 812] },
     { time: start + 1.0, value: [610, 648], easing: easeOutCubic },
@@ -293,22 +293,27 @@ function outro(overlay: VisualTrack): void {
   enter(brand, CX, 600, { at: start + 0.3, rise: 16 });
   overlay.add(brand);
 
-  // Website pill: rounded plate + vector globe + url, revealed as one unit.
-  const pill = rect(380, 76, WHITE, { radius: 38 });
-  pill.transform.position.setStatic([CX, 720]);
+  // Website pill: rounded plate + vector globe + url, laid out as a centred row
+  // so the icon never overlaps and the text never overflows the plate.
+  const py = 720;
+  const pillW = 452;
+  const pill = rect(pillW, 76, WHITE, { radius: 38 });
+  pill.transform.position.setStatic([CX, py]);
   win(pill, start, end);
-  enter(pill, CX, 720, { at: start + 0.5, rise: 14, pop: 0.92 });
+  enter(pill, CX, py, { at: start + 0.5, rise: 14, pop: 0.92 });
   overlay.add(pill);
 
-  // Globe on the left, url left-anchored just past it — laid out as a row so
-  // the icon never overlaps the text.
-  const gl = globe(30, INK);
+  // Row content spans a little narrower than the plate; globe left, url after it.
+  const gap = 14;
+  const globeD = 30;
+  const rowLeft = CX - pillW / 2 + 44; // inner-left padding
+  const gl = globe(globeD, INK);
   win(gl, start, end);
-  enter(gl, CX - 142, 720, { at: start + 0.55 });
+  enter(gl, rowLeft + globeD / 2, py, { at: start + 0.55 });
   overlay.add(gl);
 
-  const url = text('www.brandname.com', SANS, 28, INK, [0, 0.5]);
+  const url = text('www.brandname.com', SANS, 26, INK, [0, 0.5]);
   win(url, start, end);
-  enter(url, CX - 112, 720, { at: start + 0.55 });
+  enter(url, rowLeft + globeD + gap, py, { at: start + 0.55 });
   overlay.add(url);
 }
