@@ -5,8 +5,10 @@
 > clock; the SDK owns the low-level runtime — decode, composite, audio, export.
 > Compositions are ordinary imperative TypeScript (you `new` the engine's own
 > classes), so the same code previews in a browser, exports in a browser, and
-> renders on a server. Persistence, schema, undo, collaboration and UI are out of
-> scope — they belong to the layer above.
+> renders on a server. sequio does not render HTML/CSS — there is no DOM/JSX or
+> declarative-template layer; you build the object graph in code. Persistence,
+> schema, undo, collaboration and UI are out of scope — they belong to the layer
+> above.
 
 Key facts an assistant should hold before writing sequio code:
 

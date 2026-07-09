@@ -6,7 +6,9 @@ description: >-
   video/motion-graphics programmatically — creating a timeline of tracks and
   clips (text, image, video, shapes), animating them (keyframes or GSAP),
   applying effects/transitions, mixing audio, and exporting to MP4/WebM or
-  rendering server-side. Triggers: "sequio", "video editor SDK", "compose a
+  rendering server-side. sequio does NOT render HTML/CSS — compositions are
+  imperative TypeScript that `new`s engine classes, not a declarative DOM/JSX
+  framework. Triggers: "sequio", "video editor SDK", "compose a
   video", "timeline / track / clip", "render an mp4 from code", "TextClip",
   "Compositor", "defineComposition".
 ---

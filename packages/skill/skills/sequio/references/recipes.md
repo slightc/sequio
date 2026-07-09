@@ -275,6 +275,107 @@ sequio audio composition.ts --out track.wav --bitrate 192000
   from `@sequio/server/route-b`, or `runAudio(file, { out, format, bitrate })` from
   `@sequio/cli`; in-app it's `Exporter.exportAudio(...)` (recipe 8).
 
+## 12. Bring your own spec (JSON → object graph)
+
+sequio ships **no** persistent schema — an imperative `defineComposition` module
+is the only portable format the SDK blesses (the server re-runs that code via a
+`RuntimeBundle`, contract #3). If your app already has a document model — a Y.Doc,
+a database row, an editor's own JSON — **you own the schema**, and mapping it onto
+the engine is a ~30-line builder. This is a **pattern, not an API**: copy it and
+bend it to your data; don't look for an official spec type to import.
+
+The mapping has four moving parts, all mechanical:
+
+1. **keyframes** → `prop.setStatic(v)` for a constant, `prop.setKeyframes([...])` to animate.
+2. **easing** → a name→function lookup table (easings are just exported functions).
+3. **fonts** → `await fonts.load(...)` up front, before any `TextClip` uses the family.
+4. **effects** → a `type` switch that `new`s the engine effect and writes its params.
+
+```ts
+import {
+  Compositor, VisualTrack, TextClip, ShapeClip, ImageClip, ImageSource,
+  BlurEffect, ColorEffect, fonts,
+  linear, easeOutCubic, easeInOutCubic,
+  type Easing, type Effect,
+} from '@sequio/engine';
+import { defineComposition, loadAsset } from '@sequio/runtime';
+
+// ── YOUR schema (you define this — here's a minimal one) ─────────────────────
+type Prop<T> = T | { keyframes: Array<{ time: number; value: T; easing?: string }> };
+interface MySpec {
+  width: number; height: number; fps: number; background?: number;
+  fonts?: { family: string; src: string }[];
+  clips: Array<{
+    type: 'text' | 'shape' | 'image';
+    start: number; end: number;
+    position?: Prop<[number, number]>;
+    opacity?: Prop<number>;
+    text?: string; fontFamily?: string; fill?: number;   // text
+    width?: number; height?: number; src?: string;       // shape / image
+    effects?: Array<{ type: 'blur' | 'color'; strength?: number; brightness?: number }>;
+  }>;
+}
+
+// ── the fixed lookup tables ──────────────────────────────────────────────────
+const EASINGS: Record<string, Easing> = { linear, easeOutCubic, easeInOutCubic };
+
+function applyProp<T>(p: { setStatic(v: T): void; setKeyframes(k: any[]): void }, s: Prop<T> | undefined) {
+  if (s === undefined) return;
+  if (typeof s === 'object' && s !== null && 'keyframes' in s)
+    p.setKeyframes(s.keyframes.map((k) => ({ ...k, easing: k.easing ? EASINGS[k.easing] : undefined })));
+  else p.setStatic(s as T);
+}
+
+function buildEffect(e: { type: string; strength?: number; brightness?: number }): Effect {
+  if (e.type === 'blur') { const fx = new BlurEffect(); if (e.strength != null) fx.strength.setStatic(e.strength); return fx; }
+  const fx = new ColorEffect(); if (e.brightness != null) fx.brightness.setStatic(e.brightness); return fx;
+}
+
+// ── the builder: MySpec → Composer ───────────────────────────────────────────
+export function fromSpec(spec: MySpec) {
+  return defineComposition(async () => {
+    const c = new Compositor({ width: spec.width, height: spec.height, fps: spec.fps, background: spec.background });
+    await c.init();
+    for (const f of spec.fonts ?? []) await fonts.load(f);      // fonts BEFORE clips
+
+    const track = new VisualTrack();
+    for (const cs of spec.clips) {
+      let clip;
+      if (cs.type === 'text')  clip = new TextClip({ text: cs.text!, fontFamily: cs.fontFamily, fill: cs.fill });
+      else if (cs.type === 'shape') clip = new ShapeClip({ kind: 'rect', width: cs.width!, height: cs.height!, fill: cs.fill ?? 0xffffff });
+      else clip = new ImageClip(new ImageSource({ src: cs.src! }));
+      clip.start = cs.start; clip.end = cs.end;
+      applyProp(clip.transform.position, cs.position);
+      applyProp(clip.opacity, cs.opacity);
+      for (const e of cs.effects ?? []) clip.effects.push(buildEffect(e));
+      track.add(clip);
+    }
+    c.addTrack(track);
+    return { compositor: c };
+  });
+}
+```
+
+Feed it your JSON and you get a `Composer` that previews, exports and
+server-renders like any other composition:
+
+```ts
+export default fromSpec(JSON.parse(await loadAsset('./timeline.json')));
+```
+
+**Why the SDK doesn't ship this for you:** any real product already has a document
+model (undo, collaboration, its own field names); an official spec would just be a
+second schema to fight. The fuller reference implementation — video/audio clips,
+`sourceIn`/`sourceOut`, blend modes, a global grade — lives in
+`packages/server/src/timeline.ts` (the `TimelineSpec` type + `buildTimeline`). Read
+it for the complete pattern, then write your own.
+
+**Trust boundary:** a `RuntimeBundle` is *code* — re-running it executes arbitrary
+TS/JS on your server. Serve bundles only from trusted (first-party) sources. For a
+multi-tenant or public-facing service, accept *data* (a tenant's JSON + your
+builder above), never their code, and allowlist any media `src` URL your builder
+fetches. See `docs/server-side-rendering.md` § 信任边界与安全模型.
+
 ## Outlined / echoed / italic display text
 
 `TextStyleLike` passes weight, italic, letter-spacing and a stroke straight into
