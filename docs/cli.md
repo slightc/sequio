@@ -36,6 +36,19 @@ src/
 preview/        预览页（index.html + preview.ts：fetch /__bundle → Runtime → preview() + 播放条）
 scripts/        verify-cli.ts（端到端：render + preview 都跑一遍 example/）
 example/        一段样例作曲（index.ts + scene.ts + font.ts=内嵌 data: URL 字体，跨文件 import）
+  custom-fx/    **自定义 effect · transition · animation** demo：在作曲代码里扩展引擎的四个扩展点，
+                直接塞进 `clip.effects` / `track.addTransition(...)` / `clip.animator` /
+                `textClip.textAnimator`。`fx.ts` 定义四个类：`FocusPull extends BlurEffect`（一个
+                `focus` 旋钮做 blur→sharp 对焦）+ `PopEffect extends ColorEffect`（一个 `pop` 旋钮联动
+                亮度/对比度/饱和度）、`EasedCrossfade extends CrossfadeTransition`（覆写 `progressAt`
+                给溶解加缓动）、`OrbitAnimator implements ClipAnimator`（`sampleAt` 纯函数做绕圈+自转+
+                脉动）、`DropInTextAnimator implements TextAnimator`（`sampleForPart` 逐字掉落淡入）。
+                `index.ts` 把它们编成四个带标号的分镜依次展示：① effect 打在一个 shape emblem 上（从
+                模糊对焦并 pop 一下）；② transition 在**两张网络图片**之间溶解；③ animation 用
+                `OrbitAnimator` 驱动一个 shape 绕圈；④ text animation 逐字掉落拼出「sequio」。四个类都
+                不碰 `pixi.js`（只 import `@sequio/engine`）、复用父类内建滤镜或为纯数学，故 preview
+                (WebGL) 与 `render`(Node WebGPU) 表现一致（契约 #2/#3）。transition 分镜走网络取图，需联网
+                （取图失败自动降级，和 media-network 一样）
   media-network/  引用**网络** image + video 的 demo（ImageSource/VideoSource 直接吃 URL，零本地文件）
   media-local/    引用**本地** image + video 的 demo（loadAsset('./video.mp4')；媒体 .gitignore、不进仓库）
   yc-spot/      独立 showcase：仿 Y Combinator 编辑风格的 15s 动态海报（1920×1080/30fps）——
@@ -197,10 +210,10 @@ Route B 的 `renderBundleToFile` 开了通用 `externals` 透传口（server 自
 # 需要 WebGPU 宿主（GPU 或 Mesa lavapipe）：
 #   apt install mesa-vulkan-drivers
 #   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json   # 用软件驱动时
-pnpm sequio render example/index.ts --out demo.mp4 --scale 2 --verify
+pnpm sequio render example/index.ts --out demo.mp4 --verify
 
 # 导出单帧 PNG 做快速校验（--time 采样时刻，越界自动 clamp；--out 省略则 frame.png）
-pnpm sequio frame example/index.ts --time 2 --out shot.png --scale 2
+pnpm sequio frame example/index.ts --time 2 --out shot.png
 
 # 实时预览（默认端口 6180；--watch 改文件即时重载；--host 暴露到局域网）
 pnpm sequio preview example/index.ts --watch
@@ -208,12 +221,16 @@ pnpm sequio preview example/index.ts --watch
 # 直接用 bin（等价）
 node packages/cli/bin/sequio.js preview example/index.ts --watch
 
+# 自定义 effect · transition · animation demo（扩展引擎四个扩展点，见 custom-fx/fx.ts；transition 分镜需联网取图）
+pnpm sequio preview packages/cli/example/custom-fx/index.ts --watch
+pnpm sequio render  packages/cli/example/custom-fx/index.ts --out custom-fx.mp4
+
 # 独立 showcase（仿 YC 编辑风格、gsap 驱动的 15s 动态海报）
-pnpm sequio render  packages/cli/example/yc-spot/index.ts --out yc.mp4 --scale 2 --verify
+pnpm sequio render  packages/cli/example/yc-spot/index.ts --out yc.mp4 --verify
 pnpm sequio preview packages/cli/example/yc-spot/index.ts --watch
 
 # 独立 showcase（仿时尚品牌 9:16 竖屏宣传片、Unsplash 配图，需联网）
-pnpm sequio render  packages/cli/example/summer-lookbook/index.ts --out summer.mp4 --scale 2
+pnpm sequio render  packages/cli/example/summer-lookbook/index.ts --out summer.mp4
 pnpm sequio preview packages/cli/example/summer-lookbook/index.ts --watch
 
 # 引用网络 image + video（需联网）

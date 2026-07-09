@@ -13,6 +13,7 @@ import { readBundle } from '../src/bundle';
  */
 const DEMOS = [
   'example/index.ts',
+  'example/custom-fx/index.ts',
   'example/yc-spot/index.ts',
   'example/valentine/index.ts',
   'example/summer-lookbook/index.ts',

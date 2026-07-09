@@ -153,8 +153,13 @@ eyeball → then `sequio render` once it looks right.
   clip.animator = gsapClipAnimator(gsap, (tl, o) => tl.from(o, { y: -60, alpha: 0, ease: 'back.out(1.7)' }));
   ```
   The binding seeks a **paused** timeline, keeping `render(t)` pure.
-- **Text motion** — `TextClip.split` + `StaggerTextAnimator` / `gsapTextAnimator`
-  animate per line/word/char (e.g. a staggered drop-in).
+- **Text motion** — `TextClip.split` + `TextClip.textAnimator` (`StaggerTextAnimator`
+  / `gsapTextAnimator`) animate per line/word/char (e.g. a staggered drop-in).
+- **Bring your own** — the four seams are subclass/implement points: subclass
+  `Effect` / `Transition` (or an engine effect) and implement `ClipAnimator`
+  (`clip.animator`) / `TextAnimator` (`textClip.textAnimator`). Build on the
+  engine's own classes and no `pixi.js` is needed — same in preview and render.
+  See recipe 7b and `packages/cli/example/custom-fx/`.
 
 ## Media, fonts, effects, audio, export — quick pointers
 
@@ -165,7 +170,10 @@ eyeball → then `sequio render` once it looks right.
   `TextClip`. Load an explicit web font so preview and Node render match — system
   defaults differ per platform.
 - **Effects/Transitions**: `ColorEffect`, `BlurEffect`, `BulgeEffect`,
-  `CrossfadeTransition`, etc. (some — chroma/LUT/wipe — are still TODO).
+  `CrossfadeTransition`, etc. (some — chroma/LUT/wipe — are still TODO). Attach an
+  effect with `clip.effects.push(fx)`; bind a transition with
+  `track.addTransition(new T(frames).between(a, b))` over the clips' overlap.
+  Roll your own by subclassing — see recipe 7b.
 - **Audio**: `AudioTrack` + `AudioSource`; `AudioEngine` mixes (Web Audio live,
   OfflineAudioContext for export).
 - **Export in an app** (not the CLI): use `Exporter` from `@sequio/engine`, or a

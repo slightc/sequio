@@ -25,7 +25,9 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 - Clip/text animators: `ClipAnimator`, `TextAnimator`, `StaggerTextAnimator`,
   `TweenAnimator`, `IDENTITY_SAMPLE`, `lerpSample`, `AnimationSample`, plus
   `TextPart` / `TextSplit` / `StaggerOrder` / `StaggerTextOptions` /
-  `TweenAnimatorOptions`.
+  `TweenAnimatorOptions`. `ClipAnimator` (`sampleAt`) and `TextAnimator`
+  (`sampleForPart`) are **extension seams** — implement your own for custom motion
+  (assign to `clip.animator` / `textClip.textAnimator`); see recipe 7b.
 - GSAP binding (engine has no gsap dep): `gsapClipAnimator`, `gsapTextAnimator`,
   `identityTarget`; types `GsapLike`, `GsapTimelineLike`, `GsapTarget`.
 - Text layout: `computeTextParts`, `MeasureWidth`.
@@ -82,6 +84,10 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 - Warp math: `Mat3`, `Quad`, `Vec2`, `UNIT_QUAD`, `squareToQuad`, `invert3x3`,
   `applyHomography`, `perspectiveSampleMatrix`, `bulgeSourceUv`.
 - Transitions: `Transition`, `CrossfadeTransition`, `crossfadeAlpha`.
+- Extend: subclass `Effect` (or an engine effect) for a custom filter/param, and
+  `Transition` (or `CrossfadeTransition`) for a custom mix — no `pixi.js` needed if
+  you build on the engine's own classes. Attach: `clip.effects.push(fx)`,
+  `track.addTransition(new T(frames).between(a, b))`. See recipe 7b.
 - Status: color/blur/warp + crossfade done; chroma/LUT/wipe TODO.
 
 ## Audio
