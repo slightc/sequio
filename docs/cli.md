@@ -47,10 +47,17 @@ example/        一段样例作曲（index.ts + scene.ts + font.ts=内嵌 data: 
                 一个 bundle，不与上面的 index.ts demo 相互影响
   valentine/    独立 showcase：竖屏（1080×1920/9:16）「Valentine's Day Sale」促销短片（~11s，七个硬切
                 分镜）——index.ts + theme.ts（玫瑰配色/字号/时间轴/网络图集）+ kit.ts（回声堆叠字、
-                弧形字、拱形裁图、点阵等 builder）+ scenes.ts（六幕）。全部用 ShapeClip/TextClip/
+                弧形字、拱形裁图、点阵等 builder）+ scenes.ts（七幕）。全部用 ShapeClip/TextClip/
                 GroupClip 搭出，并用到两个引擎能力：`TextClip` 排版直通（空心 SUPER 描边、斜体
                 MAKE IT YOURS、字距）与 `VisualClip.maskShape`（把网络照片裁成拱形）。图片走网络
                 （Unsplash，自由授权占位图，加载失败自动降级为纯色块），不进仓库
+  summer-lookbook/ 独立 showcase：仿时尚品牌「2023 Summer Collection」的 9:16 竖屏宣传片
+                （720×1280/30fps，~17s、七个场景）——index.ts（入口）+ theme.ts（配色/字体/
+                场景时间轴/图片 URL）+ kit.ts（带白边相框 framedPhoto、矢量地球 globe、逐字
+                成弧的 arcText 等 builder）+ scenes.ts（七幕分镜）。相框是 GroupClip（白垫 +
+                ImageClip）、色带/药丸/地球是 ShapeClip、所有标题都是 TextClip（含逐字符拼出
+                的弧形字幕）；照片沿用 media-network 的做法用公开 Unsplash URL 直接引用、不进
+                仓库；动效为关键帧 + gsap 入场，末幕相框用 BlurEffect 做动态模糊收束
 tests/          args + bundle 单测
 ```
 
@@ -204,6 +211,10 @@ node packages/cli/bin/sequio.js preview example/index.ts --watch
 # 独立 showcase（仿 YC 编辑风格、gsap 驱动的 15s 动态海报）
 pnpm sequio render  packages/cli/example/yc-spot/index.ts --out yc.mp4 --scale 2 --verify
 pnpm sequio preview packages/cli/example/yc-spot/index.ts --watch
+
+# 独立 showcase（仿时尚品牌 9:16 竖屏宣传片、Unsplash 配图，需联网）
+pnpm sequio render  packages/cli/example/summer-lookbook/index.ts --out summer.mp4 --scale 2
+pnpm sequio preview packages/cli/example/summer-lookbook/index.ts --watch
 
 # 引用网络 image + video（需联网）
 pnpm sequio preview packages/cli/example/media-network/index.ts --watch

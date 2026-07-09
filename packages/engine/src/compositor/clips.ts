@@ -95,7 +95,11 @@ export interface TextStyleLike {
   align?: TextStyleOptions['align'];
   /** Line height in px (defaults to the font's natural line height). */
   lineHeight?: number;
-  /** Outline drawn around the glyphs (e.g. hollow / outlined display type). */
+  /**
+   * Outline drawn around the glyphs. For **hollow / outlined** display type pair
+   * it with a transparent `fill` (a color string carrying alpha 0, e.g.
+   * `'rgba(255,255,255,0)'` or `'#ffffff00'`), so only the outline shows.
+   */
   stroke?: TextStrokeLike;
 }
 
@@ -137,7 +141,7 @@ export class TextClip extends VisualClip {
   align: TextStyleOptions['align'];
   /** Line height in px, or `0` to use the font's natural line height. */
   lineHeight: number;
-  /** Outline drawn around the glyphs, or `null` for no stroke. */
+  /** Outline drawn around the glyphs (hollow / outlined text), or `null` for none. */
   stroke: TextStrokeLike | null;
   /** Break the text into per-unit objects for motion effects (default `'none'`). */
   split: TextSplit = 'none';

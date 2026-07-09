@@ -58,7 +58,6 @@ Times are **seconds** at the API boundary, quantized to frames internally via
   fps?, background?, timebase?, createRenderer?, resolution? })`, then
   `await init()`, `addTrack(track)`, `renderPreview(t)`.
 - Tracks: `Track`, `VisualTrack` (stacks by `.zIndex`), `AudioTrack`.
-- Clips: `Clip`, `VisualClip`, `AudioClip`; concrete `VideoClip`, `ImageClip`,
   `TextClip`, `ShapeClip`, `GroupClip`. Types: `TextStyleLike`, `TextStrokeLike`,
   `ShapeSpec`, `ShapeKind`, `MaskSpec`.
 - Every clip has `.start` / `.end` (seconds) and `.transform` (`Transform2D`).

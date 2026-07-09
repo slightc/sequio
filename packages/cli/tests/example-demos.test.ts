@@ -15,6 +15,7 @@ const DEMOS = [
   'example/index.ts',
   'example/yc-spot/index.ts',
   'example/valentine/index.ts',
+  'example/summer-lookbook/index.ts',
   'example/media-network/index.ts',
   'example/media-local/index.ts',
 ];
