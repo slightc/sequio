@@ -32,7 +32,7 @@ Key facts an assistant should hold before writing sequio code:
 - [Architecture & the five contracts](https://github.com/slightc/sequio/blob/main/docs/architecture.md): modules, invariants, and the public-surface table.
 - [Runtime](https://github.com/slightc/sequio/blob/main/docs/runtime.md): compile + link + run multi-file TS/JS into a `Composer`; `defineComposition`, `loadAsset`, externals.
 - [CLI](https://github.com/slightc/sequio/blob/main/docs/cli.md): `sequio render` / `sequio preview --watch`, `--scale`, fonts, local/network media.
-- [Server-side rendering](https://github.com/slightc/sequio/blob/main/docs/server-side-rendering.md): the `TimelineSpec` protocol and both render routes (headless Chrome / pure-Node WebGPU).
+- [Server-side rendering](https://github.com/slightc/sequio/blob/main/docs/server-side-rendering.md): re-run a composition's own code (a `RuntimeBundle`, via `renderBundleToFile`) on a server through either render route (headless Chrome / pure-Node WebGPU) — no spec to serialize or keep in sync.
 - [Text animation](https://github.com/slightc/sequio/blob/main/docs/text-animation.md): clip/text animators, split motion, the GSAP binding.
 - [Contributor / agent guide (AGENT.md)](https://github.com/slightc/sequio/blob/main/AGENT.md): conventions, monorepo layout, working agreement.
 
