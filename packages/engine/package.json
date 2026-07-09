@@ -49,6 +49,8 @@
     "verify:gsap": "node scripts/verify-page.cjs example/gsap-demo.html __GSAP_TEST__ \"gsap-driven clips\"",
     "verify:font": "node scripts/verify-page.cjs example/font-test.html __FONT_TEST__ \"google font\"",
     "verify:audio": "node scripts/verify-page.cjs example/audio-test.html __AUDIO_TEST__ \"audio engine\"",
+    "verify:reverse": "node scripts/verify-page.cjs example/reverse-test.html __REVERSE_TEST__ \"reverse playback\"",
+    "verify:reverse-decode": "node scripts/verify-page.cjs example/reverse-decode-test.html __REVERSE_DECODE_TEST__ \"reverse decode\"",
     "verify:effects": "node scripts/verify-page.cjs example/effects-test.html __EFFECTS_TEST__ \"effects & transitions\"",
     "verify:export": "node scripts/verify-page.cjs example/export-test.html __EXPORT_TEST__ \"exporter\"",
     "verify:origin": "node scripts/verify-page.cjs example/origin-test.html __ORIGIN_TEST__ \"compositor origin\"",

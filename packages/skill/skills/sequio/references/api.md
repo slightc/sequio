@@ -63,6 +63,14 @@ Times are **seconds** at the API boundary, quantized to frames internally via
   `TextClip`, `ShapeClip`, `GroupClip`. Types: `TextStyleLike`, `TextStrokeLike`,
   `ShapeSpec`, `ShapeKind`, `MaskSpec`.
 - Every clip has `.start` / `.end` (seconds) and `.transform` (`Transform2D`).
+- Time-remap on any clip: `.speed` (default `1`; time-line seconds → `speed`×
+  source seconds — variable-speed + pitch shift for audio) and `.reversed`
+  (default `false`; 倒放 — plays the same source window backwards. Video feeds a
+  decreasing source time to the decoder (decoded in GOP batches so reverse isn't
+  O(GOP²)); audio plays a reversed copy of the buffer, since Web Audio has no
+  negative playback rate). `clip.sourceTimeAt(t)` is the resulting source time —
+  the single mapping both decode-prep and render use, so `speed`/`reversed` set
+  on the clip apply everywhere.
 - `TextClip` style (`TextStyleLike`): `text`, `fontFamily`, `fontSize`
   (animatable), `fill`, plus pass-throughs `fontWeight`, `fontStyle`
   (`'italic'`), `letterSpacing`, `align`, `lineHeight` and `stroke`

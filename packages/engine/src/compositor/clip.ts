@@ -17,13 +17,40 @@ export abstract class Clip {
   sourceOut = 0;
   /** Playback speed (time remap). 1 = realtime. */
   speed = 1;
+  /**
+   * Play the source backwards (倒放). The clip still occupies `[start, end)` on
+   * the timeline, but source time runs from the end of the played window back to
+   * `sourceIn`: at `start` it shows the frame at `sourceIn + (end-start)·speed`,
+   * at `end` it shows `sourceIn`. `speed` still scales the rate (so `speed` > 1
+   * is a fast reverse). For video this simply feeds a decreasing source time to
+   * the decoder (its look-ahead already runs backwards); for audio the engine
+   * plays a reversed copy of the buffer. Default `false`.
+   */
+  reversed = false;
 
   isActiveAt(t: number): boolean {
     return t >= this.start && t < this.end;
   }
 
-  /** Map a timeline time to the corresponding source time. */
+  /**
+   * The source time this clip shows at timeline time `t`, honouring `speed` and
+   * {@link reversed}. This is the **single source of truth** for both the render
+   * path (`VideoClip.update` reads the frame here) and the decode-prep path (the
+   * Compositor pre-decodes the frame here) — so a reversed / sped clip decodes
+   * exactly the frame it will display. Public wrapper over {@link mapToSource}.
+   */
+  sourceTimeAt(t: number): number {
+    return this.mapToSource(t);
+  }
+
+  /**
+   * Map a timeline time to the corresponding source time. Forward playback walks
+   * the source window `[sourceIn, sourceIn + (end-start)·speed]` up from
+   * `sourceIn`; {@link reversed} playback walks the SAME window down to `sourceIn`
+   * (so the reversed and forward frames mirror around the window's midpoint).
+   */
   protected mapToSource(t: number): number {
+    if (this.reversed) return this.sourceIn + (this.end - t) * this.speed;
     return this.sourceIn + (t - this.start) * this.speed;
   }
 }
@@ -174,9 +201,5 @@ export class AudioClip extends Clip {
   /** Fade durations in seconds. */
   fadeIn = 0;
   fadeOut = 0;
-
-  /** Resolve the source time for the audio engine to schedule. */
-  sourceTimeAt(t: number): number {
-    return this.mapToSource(t);
-  }
+  // Source-time mapping (incl. `reversed` / `speed`) is `Clip.sourceTimeAt`.
 }

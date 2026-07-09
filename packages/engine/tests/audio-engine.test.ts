@@ -27,6 +27,16 @@ function fakeContext(currentTime = 10) {
       };
       return node;
     },
+    createBuffer(numberOfChannels: number, length: number, sampleRate: number) {
+      const channels = Array.from({ length: numberOfChannels }, () => new Float32Array(length));
+      return {
+        numberOfChannels,
+        length,
+        sampleRate,
+        duration: length / sampleRate,
+        getChannelData: (ch: number) => channels[ch]!,
+      } as unknown as AudioBuffer;
+    },
     createGain() {
       const events: { type: 'set' | 'ramp'; value: number; time: number }[] = [];
       gains.push({ events });
@@ -73,6 +83,42 @@ describe('AudioEngine', () => {
     engine.schedule(audioClip({ start: 0, end: 4, speed: 2 }), fakeSource());
     engine.play(1); // play from timeline 1
     expect(started).toEqual([{ when: 0, offset: 2, duration: 6, rate: 2 }]);
+  });
+
+  it('倒放: plays a reversed copy of the buffer and offsets into it', () => {
+    const { engine, started } = makeEngine(0);
+    // A 4-sample buffer [1,2,3,4] at 1 Hz → 4s. Reverse over a 4s clip: forward
+    // would read [0,4); reversed reads the flipped copy [4,3,2,1] from offset 0.
+    const data = Float32Array.from([1, 2, 3, 4]);
+    const buffer = {
+      numberOfChannels: 1,
+      length: 4,
+      sampleRate: 1,
+      duration: 4,
+      getChannelData: () => data,
+    } as unknown as AudioBuffer;
+    const source = { getBuffer: () => buffer } as unknown as AudioSource;
+    let uploaded: Float32Array | null = null;
+    // Capture the buffer the node received by wrapping createBufferSource.
+    const orig = (engine as unknown as { ctx(): AudioContext }).ctx();
+    const realCreate = orig.createBufferSource.bind(orig);
+    orig.createBufferSource = () => {
+      const node = realCreate();
+      Object.defineProperty(node, 'buffer', {
+        set(b: AudioBuffer | null) {
+          if (b) uploaded = b.getChannelData(0);
+        },
+        get() {
+          return null;
+        },
+      });
+      return node;
+    };
+    engine.schedule(audioClip({ start: 0, end: 4, reversed: true }), source);
+    engine.play(0);
+    // reversed offset = bufferDuration(4) - sourceStart(4) = 0, whole thing plays.
+    expect(started).toEqual([{ when: 0, offset: 0, duration: 4, rate: 1 }]);
+    expect(Array.from(uploaded!)).toEqual([4, 3, 2, 1]);
   });
 
   it('lays fade automation onto the gain node', () => {

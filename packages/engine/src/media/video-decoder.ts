@@ -27,6 +27,21 @@ export interface VideoDecoderBackend {
    */
   decode(sec: number): Promise<DecodedFrame | null>;
   /**
+   * Optional reverse-play fast path: decode every frame whose presentation
+   * timestamp is in `[fromSec, toSec)` in ONE forward sweep — each packet decoded
+   * at most once — yielding frames in presentation order. The caller owns and
+   * caches each yielded frame.
+   *
+   * Backward playback decoded frame-by-frame is O(GOP²): showing frame N then
+   * N-1 re-seeks to the GOP keyframe and re-decodes the whole prefix *every*
+   * frame, because inter-frame codecs can't decode a P/B-frame without its
+   * predecessors. A forward range sweep decodes the GOP once, so
+   * {@link VideoSource} fills the cache with a batch and serves it in reverse.
+   * Backends that can't range-decode omit this; `VideoSource` then falls back to
+   * per-frame backward decode.
+   */
+  decodeRange?(fromSec: number, toSec: number): AsyncGenerator<DecodedFrame, void, unknown>;
+  /**
    * Optional: create an independent decoder that **shares the demux** (the file
    * is parsed once) but has its own decode position — so a preview and an export
    * can decode the same source in parallel without contending on one decoder.

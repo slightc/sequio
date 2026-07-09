@@ -53,6 +53,11 @@ export function setFrameImageExtractor(fn: FrameImageExtractor | null): void {
  * rebuilds the iterator. Mediabunny is loaded dynamically so it stays out of the
  * import graph until a real decode happens (consumers injecting their own
  * backend never pay for it).
+ *
+ * **Reverse fast path.** Backward playback via `decode` alone would rebuild the
+ * iterator every frame (re-decoding the whole GOP prefix each time — O(GOP²)).
+ * {@link decodeRange} instead decodes a `[from, to)` window in one forward sweep
+ * so {@link VideoSource} fills a cache batch and serves it in reverse.
  */
 export class MediabunnyVideoDecoder implements VideoDecoderBackend {
   private input: Input | null = null;
@@ -172,6 +177,37 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
     ); // keep the chain alive past rejections
     const sample = await run;
     if (!sample) return null;
+    return this.toFrame(sample);
+  }
+
+  /**
+   * Reverse-play fast path: decode every frame in `[fromSec, toSec)` in one
+   * forward sweep via `VideoSampleSink.samples` (each packet decoded once), so
+   * {@link VideoSource} can fill a cache batch and serve it backward instead of
+   * re-seeking to the GOP keyframe per frame (O(GOP²) → O(GOP)). Uses its OWN
+   * `samples()` iterator (mediabunny spins an independent decoder per iterator),
+   * so it doesn't disturb the forward {@link cursor}.
+   */
+  async *decodeRange(fromSec: number, toSec: number): AsyncGenerator<DecodedFrame, void, unknown> {
+    if (this.disposed || !this.sink) return;
+    const iter = this.sink.samples(Math.max(0, fromSec), toSec);
+    try {
+      for (;;) {
+        const next = await iter.next();
+        if (next.done) break;
+        if (this.disposed) {
+          next.value.close();
+          break;
+        }
+        yield await this.toFrame(next.value);
+      }
+    } finally {
+      await iter.return().catch(() => {});
+    }
+  }
+
+  /** Turn a decoded {@link VideoSample} into an owned {@link DecodedFrame}. */
+  private async toFrame(sample: VideoSample): Promise<DecodedFrame> {
     const timestamp = sample.timestamp;
 
     // Node (SSR): the injected extractor copies pixels into a stable canvas, so

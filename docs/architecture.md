@@ -160,23 +160,54 @@ MSAA——于是带 Effect 的 Clip（如旋转的 `ColorEffect` 矩形）边缘
 - **预览的过渡观感（非崩溃）**：跨到新 clip 的那一刻，新 clip 的源可能**还没解码好**，
   预览是尽力而为（fire-and-forget prepare + 立即 renderSync，契约 #1），故切换后的头几帧
   可能 miss → 短暂空白。**导出** `await prepare` 等齐、帧级精确、无此现象。
+- **解码时间 = 渲染时间（单一真相 `Clip.sourceTimeAt`）**：`prepare`（解码预热）与
+  `VideoClip.update`（渲染取帧）**必须**取同一个源时间，否则会永久 miss。二者都走
+  `clip.sourceTimeAt(t)`（`mapToSource` 的公开封装），故 `speed`/`reversed`（倒放）只在 clip 上
+  设一次就同时作用于两端——**不要**在 compositor 里另算 `localT - start + sourceIn`（那是只认正放、
+  丢掉 speed/reversed 的老写法，会让倒放/变速 clip 解错帧）。
 - **跨 clip 预热**：`prepare(t)` 除了预解码当前活跃 clip 的源，还会预解码**在
-  `t + prewarmSeconds` 内即将变活跃**的 clip 的**首帧**（`prepare(sourceIn)`），使切换首帧
-  在预览里也命中缓存。窗口 `Compositor.prewarmSeconds` 可配（默认 0.5s，`0` 关闭）、可运行时
-  调整；对 `GroupClip` 递归生效（活跃组按局部时间、即将上场的组按其起点 0 递归）。
+  `t + prewarmSeconds` 内即将变活跃**的 clip 的**首帧**（`prepare(clip.sourceTimeAt(clip.start))`
+  ——正放即 `sourceIn`、倒放即窗口末端），使切换首帧在预览里也命中缓存。窗口
+  `Compositor.prewarmSeconds` 可配（默认 0.5s，`0` 关闭）、可运行时调整；对 `GroupClip` 递归生效
+  （活跃组按局部时间、即将上场的组按其起点 0 递归）。
 - **边界值实践**：让 `clip2.start === clip1.end`（共用同一数值，别分别算）以免浮点 sub-epsilon
   的缝/叠；边界尽量用 `Timebase.toSeconds(frame)` 对齐到帧。
+
+### 变速与倒放（`speed` / `reversed`）
+
+Clip 的**时间重映射**都收敛到一个纯函数 `Clip.mapToSource(t)`（视频经 `VideoClip.update`、
+音频经 `AudioClip.sourceTimeAt`），把时间线时间映射到源时间：
+
+- **`speed`**（变速变调，默认 1）：正放窗口是源 `[sourceIn, sourceIn + (end-start)·speed]`
+  ——时间线每走 1s 消耗 `speed` s 源。视频里体现为跳帧/放慢；音频里 `speed` 直接是
+  `AudioBufferSourceNode.playbackRate`（**变速即变调**）。
+- **`reversed`**（倒放，默认 `false`）：clip 仍占时间线 `[start, end)`，但源时间从窗口**末端往回
+  走到 `sourceIn``——`mapToSource(t) = sourceIn + (end - t)·speed`，与正放帧关于窗口中点镜像
+  （所以正/倒放消耗的源窗口完全相同，只是方向相反；`speed` 仍缩放速率，`speed`>1 即快速倒放）。
+  - **视频**：`mapToSource` 每帧喂给 `VideoSource.prepare` 的源时间递减。**逐帧倒放解码是
+    O(GOP²)**——帧间编码（P/B 帧）离不开在先的帧，故每退一帧都要回到 GOP 关键帧重解整段前缀，
+    肉眼可见卡顿（即"倒放解码很慢"）。修法：`VideoDecoderBackend.decodeRange(from,to)`（Mediabunny
+    `VideoSampleSink.samples` 一次前向扫）把**一整段窗口前向解码一次**填进 `FrameCache`；`prepare`
+    检测到后退方向即调 `ensureReverseWindow` 解 `[idx-batch+1 .. idx]`（`batch` = 缓存预算，受契约 #4
+    约束，倒放不比正放多占解码内存；`FrameCache` **最旧先逐**，故新解的一批必整批存活），随后
+    `batch-1` 次后退全是缓存命中 → **O(GOP²) 降到 O(GOP)**。`render(t)` 仍是 `(graph, t)` 的纯函数
+    （契约 #2），故导出可复现、golden-frame 成立。校验 `pnpm verify:reverse-decode`。
+  - **音频**：Web Audio 无负 `playbackRate`，故倒放播放 buffer 的**反转副本**（见下）。
 
 ### 音频排程与导出（AudioEngine）
 
 `AudioSource.load` 用 Mediabunny `Input` + `AudioBufferSink` 把整轨解码成一个
 `AudioBuffer`。`AudioEngine` 把 `AudioClip` 排到 Web Audio 图上:
 
-- **纯排程核心**(`src/audio/scheduling.ts`,可单测):`clipPlaybackAt(clip, playhead)`
-  算出 `when`(相对起播时刻)/`offset`(入缓冲)/`duration`(消耗缓冲秒)/`playbackRate`;
+- **纯排程核心**(`src/audio/scheduling.ts`,可单测):`clipPlaybackAt(clip, playhead, bufferDuration?)`
+  算出 `when`(相对起播时刻)/`offset`(入缓冲)/`duration`(消耗缓冲秒)/`playbackRate`/`reversed`;
   `speed` 即 `playbackRate`——**变调变速**(时间线 `[playStart,end)` 以速率 s 消耗缓冲
   `[offset, offset+span*s)`,实播 span 秒)。`gainEventsAt` 把 `gain` 自动化与
   `fadeIn`/`fadeOut` 合成一串增益事件(首个 setValueAtTime、其余 linearRamp)。
+- **倒放**(`clip.reversed`):Web Audio 无负 `playbackRate`,故 `AudioEngine` 播放 buffer 的**逐通道
+  反转副本**(`reversedBuffer`,按源 buffer `WeakMap` 缓存、`play`/`seek`/`renderOffline` 复用),
+  正向播即倒放。`clipPlaybackAt` 据 `bufferDuration` 把正向源时间 τ 翻成反转副本里的 `offset =
+  bufferDuration − τ`;fade/gain 仍按**时间线**位置生效(fade-in 在 clip 头、fade-out 在尾),与方向无关。
 - **预览**:`play(playhead)` / `pause()` / `seek(playhead)`——每个 clip 建
   `AudioBufferSourceNode → GainNode → destination`,`src.start(when, offset, duration)`。
   与视觉时钟对齐由上层同时驱动;Web Audio 采样级精确,漂移小。
@@ -185,6 +216,9 @@ MSAA——于是带 Effect 的 Clip（如旋转的 `ColorEffect` 矩形）边缘
 - 校验:`tests/audio-scheduling.test.ts` + `tests/audio-engine.test.ts`(假 context 记录
   节点参数);e2e `pnpm verify:audio`——真实 `OfflineAudioContext` 渲染带 fade+gain 的正弦,
   断言 `midRms≈0.5×0.707`、fade 段更弱;并用 MediaRecorder 录一段 Opus 经 `AudioSource` 解回。
+  倒放:`pnpm verify:reverse`——真实 `OfflineAudioContext` 把一条斜坡缓冲正/倒各渲一遍,断言倒放
+  混音**逐样本等于**正放翻转、斜坡方向反转;交互 demo `example/reverse-demo.html`(旋律+标记,一个
+  `reversed` 开关同时翻转音画,或载入视频倒放真实解码)。
 
 ### 导出（Exporter）
 

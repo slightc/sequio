@@ -323,8 +323,11 @@ export class Compositor implements Disposable {
       if (source instanceof VisualSource) {
         // Route every source's texture uploads through one VRAM budget.
         if (isTextureManagerAware(source)) source.adoptTextureManager(this.textures);
-        // Active → current source time; upcoming → the clip's first frame.
-        const sourceTime = active ? localT - clip.start + clip.sourceIn : clip.sourceIn;
+        // Decode the frame the clip will actually SHOW — via the clip's own
+        // source-time mapping, so `speed` and `reversed` (倒放) are honoured and
+        // prepare (decode) stays in lockstep with update (render). Active → the
+        // current source time; upcoming → the clip's first shown frame (at start).
+        const sourceTime = clip.sourceTimeAt(active ? localT : clip.start);
         jobs.push(source.prepare(sourceTime));
       }
     }
