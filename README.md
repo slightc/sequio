@@ -60,6 +60,19 @@ npm install @sequio/engine
 `pixi.js` ships as a direct dependency, so it is installed automatically — no
 separate install needed.
 
+The rest of the stack is published alongside it (each ships built ESM + `.d.ts`):
+
+| Package | Install | What it adds |
+| --- | --- | --- |
+| [`@sequio/runtime`](https://www.npmjs.com/package/@sequio/runtime) | `npm i @sequio/runtime` | Compile + run multi-file TS/JS into a `Composer`. Also exposes a Node filesystem adapter at `@sequio/runtime/node-fs`. |
+| [`@sequio/server`](https://www.npmjs.com/package/@sequio/server) | `npm i @sequio/server` | The serializable `TimelineSpec` protocol; the pure-Node WebGPU render route at `@sequio/server/route-b` (its native bindings are `optionalDependencies`). |
+| [`@sequio/cli`](https://www.npmjs.com/package/@sequio/cli) | `npm i -g @sequio/cli` | The `sequio` command: `render` / `frame` / `preview`. |
+| [`@sequio/skill`](https://www.npmjs.com/package/@sequio/skill) | `npm i @sequio/skill` | An installable AI Agent Skill + `llms.txt` (docs only). |
+
+Route A (headless Chrome) is a repo-internal verify harness and is **not** part
+of the published `@sequio/server` package — only the protocol (`.`) and Route B
+(`./route-b`) ship.
+
 ## Quick start
 
 Commands run from the workspace root and fan out to the packages:
@@ -115,6 +128,16 @@ matching `engine-v<version>` tag or run the workflow manually
 needs a repository secret `NPM_TOKEN` (an npm automation token with publish
 rights to the `@sequio` scope). Trigger it with `dry_run: true` to build + pack
 without publishing.
+
+The other four packages — `@sequio/runtime`, `@sequio/server`, `@sequio/cli`
+and `@sequio/skill` — are published by the
+[`Release packages`](.github/workflows/release-packages.yml) workflow
+(`workflow_dispatch`, same `NPM_TOKEN`). Bump the versions you want to release,
+then run it: `dry_run: true` builds + packs everything; `dry_run: false`
+publishes in dependency order (`runtime → server → cli`), skipping any package
+whose version is already on npm. Their cross-package deps use the
+`workspace:^` protocol, which `pnpm publish` rewrites to the concrete published
+version range.
 
 ## License
 

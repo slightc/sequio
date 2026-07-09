@@ -7,7 +7,10 @@
  * so this module simply re-runs from scratch on load.
  */
 import { Runtime, type PreviewHandle, type RuntimeBundle } from '@sequio/runtime';
-import { cliExternals } from '../src/externals';
+// Browser-safe subpath so the preview page resolves the same `cliExternals` in
+// both hosts: from source in this repo (alias in src/preview.ts) and from the
+// published `dist/externals.js` when installed from npm.
+import { cliExternals } from '@sequio/cli/externals';
 import { browserAssetLoader } from './assets';
 
 function $<T extends HTMLElement>(id: string): T {

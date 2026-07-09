@@ -22,8 +22,20 @@ import { mimeForAsset } from './assets';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PREVIEW_ROOT = resolve(HERE, '../preview');
-const ENGINE_SRC = resolve(HERE, '../../engine/src/index.ts');
-const RUNTIME_SRC = resolve(HERE, '../../runtime/src/index.ts');
+
+// Source-tree aliases so the preview page resolves the engine / runtime / this
+// package's `externals` straight from source when running inside this repo (from
+// `src/`). In a published install (`dist/`) these paths don't exist, so we skip
+// them and let Vite resolve the bare specifiers from `node_modules`.
+const SOURCE_ALIASES: Record<string, string> = {};
+for (const [spec, rel] of [
+  ['@sequio/engine', '../../engine/src/index.ts'],
+  ['@sequio/runtime', '../../runtime/src/index.ts'],
+  ['@sequio/cli/externals', './externals.ts'],
+] as const) {
+  const abs = resolve(HERE, rel);
+  if (existsSync(abs)) SOURCE_ALIASES[spec] = abs;
+}
 
 export interface PreviewServerOptions {
   port?: number;
@@ -64,10 +76,7 @@ export async function startPreviewServer(
       strictPort: true,
     },
     resolve: {
-      alias: {
-        '@sequio/engine': ENGINE_SRC,
-        '@sequio/runtime': RUNTIME_SRC,
-      },
+      alias: SOURCE_ALIASES,
     },
     plugins: [
       {

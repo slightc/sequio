@@ -1,16 +1,49 @@
 {
   "name": "@sequio/runtime",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Compile and run multi-file TS/JS (virtual or injected real filesystem) into a Composer that renders/exports in the client or feeds server-side rendering.",
   "type": "module",
   "license": "MIT",
-  "main": "./src/index.ts",
+  "author": "slightc",
+  "homepage": "https://sequio-demo.vercel.app/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slightc/sequio.git",
+    "directory": "packages/runtime"
+  },
+  "bugs": {
+    "url": "https://github.com/slightc/sequio/issues"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./node-fs": "./src/node-fs.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./node-fs": {
+      "types": "./dist/node-fs.d.ts",
+      "import": "./dist/node-fs.js",
+      "require": "./dist/node-fs.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "dev": "vite",
+    "build": "vite build",
+    "prepublishOnly": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -24,7 +57,7 @@
     "composer"
   ],
   "dependencies": {
-    "@sequio/engine": "workspace:*",
+    "@sequio/engine": "workspace:^",
     "typescript": "^5.7.0"
   }
 }

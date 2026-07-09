@@ -8,6 +8,7 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "build": "pnpm -F @sequio/engine build",
+    "build:packages": "pnpm --filter @sequio/engine --filter @sequio/runtime --filter @sequio/server --filter @sequio/cli build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:watch": "pnpm -F @sequio/engine test:watch",
