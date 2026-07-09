@@ -56,6 +56,28 @@ describe('TextClip', () => {
     expect(t.style.fontSize).toBe(24);
   });
 
+  it('supports a hollow (stroked + transparent-fill) style', () => {
+    // Hollow text = a stroke around the glyphs + a fill that carries alpha 0
+    // through the color string (no separate fill-opacity field needed).
+    const clip = new TextClip({
+      text: 'OUT',
+      fontSize: 40,
+      fill: 'rgba(255,255,255,0)',
+      stroke: { color: 0xffffff, width: 3 },
+    });
+    expect(clip.stroke).toEqual({ color: 0xffffff, width: 3 });
+    const t = clip.mount() as Text;
+    // Pixi normalizes the outline into a StrokeStyle and the transparent fill
+    // into a FillStyle with alpha 0 — the two ingredients of hollow text.
+    expect(t.style.stroke).toMatchObject({ width: 3 });
+    expect(t.style._fill.alpha).toBe(0);
+  });
+
+  it('defaults to no stroke', () => {
+    const clip = new TextClip({ text: 'x', fill: 0x010203 });
+    expect(clip.stroke).toBeNull();
+  });
+
   it('animates font size via keyframes', () => {
     const clip = new TextClip({ text: 'Hi', fontSize: 20 });
     clip.fontSize.setKeyframes([
