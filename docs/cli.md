@@ -36,6 +36,14 @@ src/
 preview/        预览页（index.html + preview.ts：fetch /__bundle → Runtime → preview() + 播放条）
 scripts/        verify-cli.ts（端到端：render + preview 都跑一遍 example/）
 example/        一段样例作曲（index.ts + scene.ts + font.ts=内嵌 data: URL 字体，跨文件 import）
+  custom-fx/    **自定义 Effect + Transition** demo：在作曲代码里 subclass 引擎自带类，直接塞进
+                `clip.effects` / `track.addTransition(...)`——`fx.ts` 定义 `PopEffect extends
+                ColorEffect`（一个 `pop` 旋钮联动 brightness/contrast/saturation，只覆写纯函数
+                `valuesAt`）与 `EasedCrossfade extends CrossfadeTransition`（覆写 `progressAt` 给
+                溶解加缓动），`index.ts` 用四张全屏色卡把它们编排成「effect × transition」序列：
+                色卡之间用 `EasedCrossfade` 溶解、每张入场时 `PopEffect` 闪一下。两个子类都不碰
+                `pixi.js`（只 import `@sequio/engine`），复用父类内建滤镜，故 preview(WebGL) 与
+                `render`(Node WebGPU) 表现一致（契约 #3）
   media-network/  引用**网络** image + video 的 demo（ImageSource/VideoSource 直接吃 URL，零本地文件）
   media-local/    引用**本地** image + video 的 demo（loadAsset('./video.mp4')；媒体 .gitignore、不进仓库）
   yc-spot/      独立 showcase：仿 Y Combinator 编辑风格的 15s 动态海报（1920×1080/30fps）——
