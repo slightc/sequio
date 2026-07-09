@@ -45,6 +45,12 @@ example/        一段样例作曲（index.ts + scene.ts + font.ts=内嵌 data: 
                 用 `gsapClipAnimator` 绑 paused 时间轴（`back.out`/`power` 缓动 + 轻微 overshoot），
                 首屏标题用 `gsapTextAnimator` + `split:'line'` 做逐行 stagger。它是独立目录、自成
                 一个 bundle，不与上面的 index.ts demo 相互影响
+  valentine/    独立 showcase：竖屏（1080×1920/9:16）「Valentine's Day Sale」促销短片（~11s，七个硬切
+                分镜）——index.ts + theme.ts（玫瑰配色/字号/时间轴/网络图集）+ kit.ts（回声堆叠字、
+                弧形字、拱形裁图、点阵等 builder）+ scenes.ts（七幕）。全部用 ShapeClip/TextClip/
+                GroupClip 搭出，并用到两个引擎能力：`TextClip` 排版直通（空心 SUPER 描边、斜体
+                MAKE IT YOURS、字距）与 `VisualClip.maskShape`（把网络照片裁成拱形）。图片走网络
+                （Unsplash，自由授权占位图，加载失败自动降级为纯色块），不进仓库
   summer-lookbook/ 独立 showcase：仿时尚品牌「2023 Summer Collection」的 9:16 竖屏宣传片
                 （720×1280/30fps，~17s、七个场景）——index.ts（入口）+ theme.ts（配色/字体/
                 场景时间轴/图片 URL）+ kit.ts（带白边相框 framedPhoto、矢量地球 globe、逐字

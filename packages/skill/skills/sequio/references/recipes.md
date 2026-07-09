@@ -181,6 +181,57 @@ few representative times → look at the PNGs → only `sequio render` once it's
 Programmatically it's `renderBundleFrameToFile(bundle, { out, time, scale })` from
 `@sequio/server/route-b`, or `runFrame(file, { out, time, scale })` from `@sequio/cli`.
 
+## Outlined / echoed / italic display text
+
+`TextStyleLike` passes weight, italic, letter-spacing and a stroke straight into
+Pixi's text style — so one family covers bold / hollow / italic cuts:
+
+```ts
+// Hollow outlined word: pale fill + a coloured stroke.
+new TextClip({ text: 'SUPER', fontFamily: 'Oswald', fontSize: 150, fill: 0xf7cfcf,
+  fontWeight: '700', letterSpacing: 2, stroke: { color: 0xa5120f, width: 4 } });
+
+// Bold italic call-to-action.
+new TextClip({ text: 'MAKE IT YOURS', fontFamily: 'Oswald', fontSize: 96,
+  fill: 0xa5120f, fontWeight: '700', fontStyle: 'italic' });
+```
+
+An "echo" stack (fading after-image) is N copies with decreasing opacity:
+
+```ts
+const g = new GroupClip();
+for (let i = 0; i < 4; i++) {
+  const t = new TextClip({ text: 'PROMO', fontFamily: 'Oswald', fontSize: 150, fill: 0xffffff, fontWeight: '700' });
+  t.start = 0; t.end = 3;
+  t.transform.anchor.setStatic([0, 0]);
+  t.transform.position.setStatic([0, i * 205]);
+  t.opacity.setStatic(Math.pow(0.7, i)); // each copy fainter
+  g.add(t);
+}
+```
+
+## Arch / circle-cropped photo (`maskShape`)
+
+Clip an image to a rounded-rect (arch) or ellipse. Mask a **`GroupClip`** that
+wraps the image — a Sprite can't be masked by its own child — and lay the image
+out from `(0, 0)` in the group, sized to fill the mask:
+
+```ts
+const src = new ImageSource({ src: 'https://…?w=760&h=1500&fit=crop' }); // pre-crop to region aspect
+const meta = await src.load();
+const img = new ImageClip(src);
+img.start = 0; img.end = 3;
+img.transform.anchor.setStatic([0, 0]);
+img.transform.scale.setStatic([760 / meta.width, 1500 / meta.height]);
+
+const arch = new GroupClip();
+arch.start = 0; arch.end = 3;
+arch.transform.anchor.setStatic([0, 0]);
+arch.transform.position.setStatic([170, -60]);            // where the arch sits
+arch.maskShape = { kind: 'rect', width: 760, height: 1500, radius: 380 }; // big radius → arch
+arch.add(img);
+```
+
 ## Gotchas
 
 - Call `await compositor.init()` before adding tracks.

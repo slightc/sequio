@@ -1,4 +1,4 @@
-import type { BLEND_MODES, Container } from 'pixi.js';
+import { type BLEND_MODES, type Container, Graphics } from 'pixi.js';
 import { AnimatableProperty } from '../animation/animatable-property';
 import { Transform2D } from '../animation/transform2d';
 import type { AnimationSample, ClipAnimator } from '../animation/clip-animator';
@@ -28,12 +28,47 @@ export abstract class Clip {
   }
 }
 
+/**
+ * Clips the visible region of a {@link VisualClip} to a rounded rectangle or an
+ * ellipse — an editorial "arch" / rounded-photo / circle-crop, built from the
+ * graph instead of a pre-masked asset. The mask is a shape in the clip's local
+ * space (pre-transform), so it moves, scales and rotates with the clip. Sizes
+ * are given explicitly (`width`/`height`, optional `x`/`y` top-left offset), so
+ * the crop is deterministic and independent of when texture bounds settle.
+ *
+ * Apply it to a container-backed clip — a {@link GroupClip} wrapping the content
+ * (a Sprite cannot be masked by its own child). The group's origin is the mask's
+ * coordinate space, so lay the content out from `(0, 0)` and size the mask to the
+ * region you want revealed.
+ */
+export interface MaskSpec {
+  kind: 'rect' | 'ellipse';
+  /** Reveal-region width in local px. */
+  width: number;
+  /** Reveal-region height in local px. */
+  height: number;
+  /** Top-left x of the region in local space (default `0`). */
+  x?: number;
+  /** Top-left y of the region in local space (default `0`). */
+  y?: number;
+  /** Corner radius in px for `rect` (a large value → arch/stadium). */
+  radius?: number;
+  /** Shrink the mask inward on every side (px). */
+  inset?: number;
+}
+
 /** A clip that renders into the PixiJS scene graph. */
 export abstract class VisualClip extends Clip {
   transform = new Transform2D();
   opacity = new AnimatableProperty<number>(1);
   blendMode: BLEND_MODES = 'normal';
   effects: Effect[] = [];
+  /**
+   * Clip the content to a rounded-rect / ellipse fitted to its bounds, or
+   * `null` (default) for no clipping. See {@link MaskSpec}.
+   */
+  maskShape: MaskSpec | null = null;
+  private maskGraphics: Graphics | null = null;
   /**
    * Optional whole-clip animator, sampled at the clip's local time
    * (`t - start`) and composed over the base transform/opacity. Assign a
@@ -59,6 +94,50 @@ export abstract class VisualClip extends Clip {
     obj.alpha = sample?.alpha != null ? alpha * sample.alpha : alpha;
     obj.blendMode = this.blendMode;
     this.syncEffects(obj, t);
+    this.syncMask(obj);
+  }
+
+  /**
+   * Fit the {@link maskShape} to the object's current local bounds and assign it
+   * as a child mask (or tear the mask down when cleared / on re-mount). The mask
+   * is a child, so it inherits the clip's transform — an empty first-frame draw
+   * means it never feeds back into the bounds it is measured from.
+   */
+  private syncMask(obj: Container): void {
+    if (this.maskGraphics && this.maskGraphics.destroyed) this.maskGraphics = null;
+    if (!this.maskShape) {
+      if (this.maskGraphics) {
+        obj.mask = null;
+        this.maskGraphics.parent?.removeChild(this.maskGraphics);
+        this.maskGraphics.destroy();
+        this.maskGraphics = null;
+      }
+      return;
+    }
+    let g = this.maskGraphics;
+    if (!g) {
+      g = new Graphics();
+      this.maskGraphics = g;
+    }
+    if (g.parent !== obj) {
+      g.parent?.removeChild(g);
+      obj.addChild(g);
+      obj.mask = g;
+    }
+    const inset = this.maskShape.inset ?? 0;
+    const x = (this.maskShape.x ?? 0) + inset;
+    const y = (this.maskShape.y ?? 0) + inset;
+    const w = Math.max(0, this.maskShape.width - inset * 2);
+    const h = Math.max(0, this.maskShape.height - inset * 2);
+    g.clear();
+    if (this.maskShape.kind === 'ellipse') {
+      g.ellipse(x + w / 2, y + h / 2, w / 2, h / 2);
+    } else if (this.maskShape.radius) {
+      g.roundRect(x, y, w, h, Math.min(this.maskShape.radius, w / 2, h / 2));
+    } else {
+      g.rect(x, y, w, h);
+    }
+    g.fill(0xffffff);
   }
 
   /** Sample the whole-clip {@link animator} at local time (`undefined` if none). */
