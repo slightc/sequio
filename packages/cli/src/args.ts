@@ -41,7 +41,7 @@ export interface AudioCommand {
   file: string;
   /** Output audio path. `undefined` → `out.<format>`. */
   out?: string;
-  /** Audio container format. `undefined` → inferred from `out`'s extension, else `m4a`. */
+  /** Audio container format. `undefined` → inferred from `out`'s extension, else `mp3`. */
   format?: AudioFormat;
   /** Target audio bitrate, bits/sec. `undefined` → the engine default (128 kbps). */
   bitrate?: number;
@@ -91,7 +91,7 @@ Frame options (pure Node, PixiJS WebGPU — needs a GPU or Mesa lavapipe):
 
 Audio options:
   -o, --out <path>     Output path (default: out.<format>)
-  -f, --format <fmt>   Container: ${AUDIO_FORMATS.join(' | ')} (default: m4a, or inferred from --out)
+  -f, --format <fmt>   Container: ${AUDIO_FORMATS.join(' | ')} (default: mp3, or inferred from --out)
   -b, --bitrate <bps>  Target audio bitrate in bits/sec (default: 128000; ignored for wav)
 
 Preview options:

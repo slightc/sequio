@@ -216,7 +216,7 @@ MSAA——于是带 Effect 的 Clip（如旋转的 `ColorEffect` 矩形）边缘
   不走定步循环、不需要 GPU,是 `exportFrame`(单帧静图)的音频对偶。编码/封装 = `AudioExportSink`
   seam:默认 `MediabunnyAudioExportSink` 声明**单音轨、无视频轨**的 `Output`,把混音喂给
   `AudioBufferSource` → `BufferTarget` → `Blob`。`AudioExportOptions`:`format`
-  ('m4a' 默认 | 'mp3' | 'wav' | 'ogg' | 'webm')/ `codec`(各格式默认 aac/mp3/pcm-s16/opus)/
+  ('mp3' 默认 | 'm4a' | 'wav' | 'ogg' | 'webm')/ `codec`(各格式默认 mp3/aac/pcm-s16/opus)/
   `bitrate`(默认 128k,`wav`(PCM)忽略)/ `range` / `sampleRate`。测试可注入假 sink。
 - **fork 导出(不打扰预览、不重复加载)**:导出会独占渲染循环。要让预览完全不受影响、
   **导出期间仍能正常播放**,消费者可**另起一个离屏 `Compositor` 专供导出**:
@@ -235,7 +235,7 @@ MSAA——于是带 Effect 的 Clip（如旋转的 `ColorEffect` 矩形）边缘
   **每帧 prepare→render→addFrame 的顺序**、帧时刻、progress 单调到 1、`audio:false` 跳过音频、
   `range` 覆盖时长、`cancel` 中止且不 finalize;`exportFrame` 断言 prepare→render→encode
   单帧、不碰 movie sink/音频、`type`/`quality` 透传编码器;`exportAudio` 断言 start→离线混音→
-  addAudio→finalize 顺序、不碰视频 sink、格式默认 m4a/aac、按 format 推导默认编码器、`codec`/
+  addAudio→finalize 顺序、不碰视频 sink、格式默认 mp3、按 format 推导默认编码器、`codec`/
   `bitrate`/`range`/`sampleRate` 透传、失败时 `cancel` 且不 finalize)+ e2e `pnpm verify:export`——真实导出:
   ①视频-only 红 clip 到 MP4,解回断言帧数(8)、尺寸(160×120)、帧确实是红色(排除空画布抓取);
   ②音+画(排一段 440Hz 正弦进 `AudioEngine`)到 WebM(vp8/opus,挑能编码的),解回断言

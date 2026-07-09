@@ -21,7 +21,7 @@ import { bridgeFontManagerToNode } from './fonts-node';
 export interface ExportBundleAudioNodeOptions {
   /** Output file path. The extension is corrected to match the audio format. */
   out: string;
-  /** Audio container format. @default 'm4a' */
+  /** Audio container format. @default 'mp3' */
   format?: AudioExportFormat;
   /** Audio codec (Mediabunny name). Defaults per format (aac / mp3 / pcm-s16 / opus). */
   codec?: string;
@@ -74,7 +74,7 @@ export async function exportBundleAudioToFile(
   // audio-only path renders no text, so the builder runs without crashing.
   bridgeFontManagerToNode();
 
-  const format = opts.format ?? 'm4a';
+  const format = opts.format ?? 'mp3';
   const codec = opts.codec ?? DEFAULT_CODEC[format];
   let renderer: Renderer | null = null;
 

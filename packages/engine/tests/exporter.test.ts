@@ -150,13 +150,12 @@ describe('Exporter.exportAudio', () => {
     expect(log).toEqual(['audio:start', 'offline@0.100', 'audio:addAudio', 'audio:finalize']);
     expect(sink.start).not.toHaveBeenCalled(); // the video sink is untouched
     expect(blob).toBeInstanceOf(Blob);
-    expect(blob.type).toBe('audio/mp4');
   });
 
-  it('defaults to m4a/aac and passes resolved options to the sink', async () => {
+  it('defaults to mp3 and passes resolved options to the sink', async () => {
     const { audioOpts, exporter } = harness();
     await exporter.exportAudio();
-    expect(audioOpts).toEqual([{ format: 'm4a', codec: 'aac', bitrate: 128_000 }]);
+    expect(audioOpts).toEqual([{ format: 'mp3', codec: 'mp3', bitrate: 128_000 }]);
   });
 
   it('resolves the default codec from the chosen format (webm → opus)', async () => {

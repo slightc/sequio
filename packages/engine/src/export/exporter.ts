@@ -44,7 +44,7 @@ export interface ExportFrameOptions {
 
 /** Options for {@link Exporter.exportAudio} (audio-only export). */
 export interface AudioExportOptions {
-  /** Audio container format. @default 'm4a' */
+  /** Audio container format. @default 'mp3' */
   format?: AudioExportFormat;
   /**
    * Audio codec (Mediabunny name). Defaults per format: `aac` (m4a), `mp3`
@@ -90,7 +90,7 @@ function resolveOptions(o: ExportOptions): ResolvedExportOptions {
 }
 
 function resolveAudioOptions(o: AudioExportOptions): ResolvedAudioExportOptions {
-  const format = o.format ?? 'm4a';
+  const format = o.format ?? 'mp3';
   return {
     format,
     codec: o.codec ?? DEFAULT_AUDIO_CODEC[format],
@@ -168,7 +168,7 @@ export class Exporter {
 
   /**
    * Render just the audio track — the {@link AudioEngine} offline mix — to an
-   * audio-only file (`.m4a` / `.mp3` / `.wav` / `.ogg` / `.webm`). No frames are
+   * audio-only file (`.mp3` / `.m4a` / `.wav` / `.ogg` / `.webm`). No frames are
    * rendered, so this needs no GPU and skips the fixed-step loop entirely; it's
    * the audio sibling of {@link exportFrame} (a single still). The mix is the same
    * `AudioEngine.renderOffline` the video {@link export} muxes, so the exported

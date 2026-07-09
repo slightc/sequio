@@ -5,7 +5,7 @@
  * It snapshots the entry file's project into a {@link RuntimeBundle}, re-runs the
  * composition's own builder in Node, and drives the SDK's `Exporter.exportAudio`
  * — the same {@link AudioEngine} offline mix `sequio render` muxes — into an
- * audio-only container (`.m4a` / `.mp3` / `.wav` / `.ogg` / `.webm`). No frames
+ * audio-only container (`.mp3` / `.m4a` / `.wav` / `.ogg` / `.webm`). No frames
  * are rendered, so the exported audio is exactly the movie's soundtrack
  * (contract #3).
  *
@@ -22,7 +22,7 @@ import { cliExternals } from './externals';
 export interface AudioOptions {
   /** Output audio path. `undefined` → `out.<format>`. */
   out?: string;
-  /** Audio container format. `undefined` → inferred from `out`'s extension, else `m4a`. */
+  /** Audio container format. `undefined` → inferred from `out`'s extension, else `mp3`. */
   format?: AudioFormat;
   /** Target audio bitrate, bits/sec. `undefined` → the engine default (128 kbps). */
   bitrate?: number;
@@ -45,8 +45,8 @@ export async function runAudio(entryFile: string, options: AudioOptions = {}): P
   // reads a composition's local media files from on disk.
   const projectRoot = dirname(resolve(entryFile));
 
-  // Prefer an explicit --format, else infer from --out's extension, else m4a.
-  const format = options.format ?? formatFromExt(options.out) ?? 'm4a';
+  // Prefer an explicit --format, else infer from --out's extension, else mp3.
+  const format = options.format ?? formatFromExt(options.out) ?? 'mp3';
 
   // Import Route B lazily: it pulls Node-only deps (WebGPU, canvas, codecs), only
   // needed when actually exporting.

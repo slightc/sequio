@@ -153,7 +153,7 @@ src/
   assets-node.ts nodeAssetLoader: read local media off disk → Blob        ✅ implemented
   render.ts     `render <file>` → video, pure Node WebGPU (server Route B) ✅ implemented
   frame.ts      `frame <file> [--time t]` → single-frame PNG (Route B)     ✅ implemented
-  audio.ts      `audio <file> [--format m4a]` → audio-only file (Route B)  ✅ implemented
+  audio.ts      `audio <file> [--format mp3]` → audio-only file (Route B)  ✅ implemented
   preview.ts    `preview <file> [--watch]` → Vite dev server             ✅ implemented
   cli.ts        dispatch + process lifecycle;  index.ts = programmatic barrel
 preview/        the preview page (index.html + preview.ts: fetch /__bundle → Runtime → preview();
@@ -255,7 +255,7 @@ pnpm build:packages # build every publishable package (engine + runtime + server
 pnpm dev            # studio: vite dev server for the editor + Code Mode (dev:engine / dev:server / dev:runtime for the others)
 pnpm sequio render <file> [--out out.mp4] [--scale 2] [--verify]   # CLI: encode a composition to video (pure Node WebGPU; needs a GPU or Mesa lavapipe)
 pnpm sequio frame <file> [--time 2] [--out frame.png] [--scale 2]  # CLI: export a single frame at a time as a PNG (quick visual check; same Route B render core)
-pnpm sequio audio <file> [--format m4a] [--out out.m4a] [--bitrate 192000]  # CLI: export just the audio mix to an audio-only file (m4a/mp3/wav/ogg/webm)
+pnpm sequio audio <file> [--format mp3] [--out out.mp3] [--bitrate 192000]  # CLI: export just the audio mix to an audio-only file (mp3/m4a/wav/ogg/webm)
 pnpm sequio preview <file> [--watch] [--port 6180]     # CLI: serve a live in-browser preview (re-runs on change)
 pnpm verify:cli     # Puppeteer e2e: `sequio render` → valid MP4 + `sequio frame` → valid PNG + `sequio audio` → valid m4a + `sequio preview` runs in-browser
 pnpm verify:runtime # Puppeteer e2e: compile+run multi-file TS → Composer → preview + export

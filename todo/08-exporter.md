@@ -47,7 +47,7 @@
 - **`exportAudio(options?)`**:单独导出音频——只 `audio.renderOffline(duration)` 拿离线混音,
   经 `AudioExportSink` seam（默认 `MediabunnyAudioExportSink`:单音轨、无视频轨的 `Output` +
   `AudioBufferSource` + `BufferTarget`）封装成音频 `Blob`。不渲染帧、不走定步循环、不需 GPU。
-  `AudioExportOptions`:`format`（'m4a' 默认 | 'mp3' | 'wav' | 'ogg' | 'webm'）/ `codec`（各格式
+  `AudioExportOptions`:`format`（'mp3' 默认 | 'm4a' | 'wav' | 'ogg' | 'webm'）/ `codec`（各格式
   默认 aac/mp3/pcm-s16/opus）/ `bitrate`（默认 128k,wav 忽略）/ `range` / `sampleRate`。CLI
   `sequio audio <file>` 走 Route B 的 `exportBundleAudioToFile` 复用它。
 - 测试:`tests/exporter.test.ts` + `pnpm verify:export`(真实导出→Mediabunny 解回:①视频-only
