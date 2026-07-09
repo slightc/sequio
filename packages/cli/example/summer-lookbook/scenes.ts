@@ -44,7 +44,21 @@ import {
   WHITE,
   imgUrl,
 } from './theme';
-import { arcText, bareImage, enter, flowIn, framedPhoto, globe, loadImage, rect, slashReveal, text, win } from './kit';
+import {
+  WaveTextAnimator,
+  arcText,
+  bareImage,
+  enter,
+  flowIn,
+  framedPhoto,
+  globe,
+  loadImage,
+  rect,
+  slashReveal,
+  strokeText,
+  text,
+  win,
+} from './kit';
 
 /** Letter-spaced wordmark — `TextClip` can't track type, so we space the glyphs. */
 const BRAND = 'B R A N D N A M E';
@@ -231,12 +245,22 @@ function nail(content: VisualTrack, overlay: VisualTrack, P: Record<string, Img>
     content.add(card);
   });
 
-  // Big vertical wordmark on the right — one line rotated a quarter turn.
-  const vtext = text('NAIL THE SUMMER STYLE', SANS, 60, WHITE);
-  vtext.transform.rotation.setStatic(Math.PI / 2);
-  vtext.opacity.setStatic(0.94);
+  // Big vertical wordmark on the right — hollow (outlined) text on a slight
+  // diagonal, each glyph riding a travelling wave while the whole line slides
+  // into place. `split:'char'` feeds the per-glyph WaveTextAnimator.
+  const vtext = strokeText('TIME TO NAIL THE SUMMER STYLE', SANS, 54, WHITE, 2);
+  vtext.transform.rotation.setStatic(1.66); // just past vertical (top tilts right)
+  vtext.split = 'char';
+  vtext.textAnimator = new WaveTextAnimator({ amp: 9, wavelength: 0.5, speed: 3 });
+  vtext.transform.position.setKeyframes([
+    { time: start, value: [610, 812] },
+    { time: start + 1.0, value: [610, 648], easing: easeOutCubic },
+  ]);
+  vtext.opacity.setKeyframes([
+    { time: start, value: 0 },
+    { time: start + 0.4, value: 1 },
+  ]);
   win(vtext, start, end);
-  enter(vtext, 604, 640, { at: start + 0.25, rise: 120, dur: 0.8 });
   overlay.add(vtext);
 }
 
@@ -276,13 +300,15 @@ function outro(overlay: VisualTrack): void {
   enter(pill, CX, 720, { at: start + 0.5, rise: 14, pop: 0.92 });
   overlay.add(pill);
 
+  // Globe on the left, url left-anchored just past it — laid out as a row so
+  // the icon never overlaps the text.
   const gl = globe(30, INK);
   win(gl, start, end);
-  enter(gl, CX - 132, 720, { at: start + 0.55 });
+  enter(gl, CX - 142, 720, { at: start + 0.55 });
   overlay.add(gl);
 
-  const url = text('www.brandname.com', SANS, 28, INK);
+  const url = text('www.brandname.com', SANS, 28, INK, [0, 0.5]);
   win(url, start, end);
-  enter(url, CX + 20, 720, { at: start + 0.55 });
+  enter(url, CX - 112, 720, { at: start + 0.55 });
   overlay.add(url);
 }

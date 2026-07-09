@@ -61,6 +61,9 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 - Clips: `Clip`, `VisualClip`, `AudioClip`; concrete `VideoClip`, `ImageClip`,
   `TextClip`, `ShapeClip`, `GroupClip`. Types: `TextStyleLike`, `ShapeSpec`,
   `ShapeKind`.
+  - `TextStyleLike` = `{ text, fontFamily?, fontSize?, fill?, stroke?, fillAlpha? }`.
+    `stroke: { color, width }` outlines the glyphs; `fillAlpha: 0` makes the fill
+    transparent — together they give **hollow / outlined** text.
 - Every clip has `.start` / `.end` (seconds) and `.transform` (`Transform2D`).
 
 ## Effects & transitions

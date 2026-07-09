@@ -70,6 +70,13 @@ export interface TextStyleLike {
   fontFamily?: string;
   fontSize?: number;
   fill?: number | string;
+  /** Outline stroke drawn around the glyphs (e.g. hollow / outlined text). */
+  stroke?: { color: number | string; width: number };
+  /**
+   * Fill opacity `0..1` (default `1`). Set to `0` for **hollow** text: nothing
+   * inside the glyphs, only the {@link stroke} outline shows through.
+   */
+  fillAlpha?: number;
 }
 
 /**
@@ -100,6 +107,10 @@ export class TextClip extends VisualClip {
   /** Font size in px; animatable (only when {@link split} is `'none'`). */
   fontSize = new AnimatableProperty<number>(32);
   fill: number | string;
+  /** Outline stroke around the glyphs (hollow / outlined text); `null` = none. */
+  stroke: { color: number | string; width: number } | null;
+  /** Fill opacity `0..1`; `0` = hollow (only the {@link stroke} shows). */
+  fillAlpha: number;
   /** Break the text into per-unit objects for motion effects (default `'none'`). */
   split: TextSplit = 'none';
   /** Per-part animator, sampled at local time when {@link split} != `'none'`. */
@@ -118,6 +129,24 @@ export class TextClip extends VisualClip {
     this.fontFamily = style.fontFamily ?? 'sans-serif';
     this.fontSize.setStatic(style.fontSize ?? 32);
     this.fill = style.fill ?? 0xffffff;
+    this.stroke = style.stroke ?? null;
+    this.fillAlpha = style.fillAlpha ?? 1;
+  }
+
+  /** The resolved fill for Pixi — an `{ color, alpha }` object when hollow. */
+  private fillInput(): number | string | { color: number | string; alpha: number } {
+    return this.fillAlpha < 1 ? { color: this.fill, alpha: this.fillAlpha } : this.fill;
+  }
+
+  /** The Pixi text-style options at font size `size` (fill + optional stroke). */
+  private styleOptions(size: number): {
+    fontFamily: string;
+    fontSize: number;
+    fill: number | string | { color: number | string; alpha: number };
+    stroke?: { color: number | string; width: number };
+  } {
+    const opts = { fontFamily: this.fontFamily, fontSize: size, fill: this.fillInput() };
+    return this.stroke ? { ...opts, stroke: this.stroke } : opts;
   }
 
   /**
@@ -137,10 +166,7 @@ export class TextClip extends VisualClip {
 
   override mount(): Container {
     if (this.split === 'none') {
-      this.textObj = new Text({
-        text: this.text,
-        style: { fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill },
-      });
+      this.textObj = new Text({ text: this.text, style: this.styleOptions(this.fontSize.valueAt(0)) });
       return this.textObj;
     }
     this.root = new Container();
@@ -154,7 +180,11 @@ export class TextClip extends VisualClip {
       if (this.textObj.text !== this.text) this.textObj.text = this.text;
       const size = this.fontSize.valueAt(t);
       if (this.textObj.style.fontSize !== size) this.textObj.style.fontSize = size;
-      if (this.textObj.style.fill !== this.fill) this.textObj.style.fill = this.fill;
+      // Plain fill fast-path; skip when hollow/stroked (fill is an object set at
+      // mount and static — reassigning the raw colour would drop the alpha/stroke).
+      if (this.fillAlpha >= 1 && !this.stroke && this.textObj.style.fill !== this.fill) {
+        this.textObj.style.fill = this.fill;
+      }
       this.applyCommon(this.textObj, t);
       return;
     }
@@ -204,7 +234,7 @@ export class TextClip extends VisualClip {
 
   /** Build the `TextStyle` used for both rendering and measurement. */
   private buildStyle(): TextStyle {
-    return new TextStyle({ fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill });
+    return new TextStyle(this.styleOptions(this.fontSize.valueAt(0)));
   }
 
   /** Measure and split the text into parts using Pixi's canvas metrics. */
@@ -222,7 +252,7 @@ export class TextClip extends VisualClip {
     for (const o of this.partObjs) o.destroy();
     this.partObjs = [];
     this.parts = this.layout();
-    const style = { fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill };
+    const style = this.styleOptions(this.fontSize.valueAt(0));
     for (const p of this.parts) {
       const o = new Text({ text: p.text, style });
       o.anchor.set(0.5, 0.5); // pivot each glyph around its center for scale/rotate

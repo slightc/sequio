@@ -8,13 +8,16 @@
  * like a shot list instead of transform bookkeeping.
  */
 import {
+  type AnimationSample,
   GroupClip,
   ImageClip,
   ImageSource,
   ShapeClip,
   type SourceMetadata,
   StaggerTextAnimator,
+  type TextAnimator,
   TextClip,
+  type TextPart,
   type VisualClip,
   easeOutCubic,
   gsapClipAnimator,
@@ -39,6 +42,46 @@ export function text(
   const c = new TextClip({ text: str, fontFamily: family, fontSize: size, fill });
   c.transform.anchor.setStatic(anchor);
   return c;
+}
+
+/** A hollow (outlined) text clip — transparent fill + a stroke around the glyphs. */
+export function strokeText(
+  str: string,
+  family: string,
+  size: number,
+  color: number,
+  strokeWidth: number,
+  anchor: [number, number] = [0.5, 0.5],
+): TextClip {
+  const c = new TextClip({
+    text: str,
+    fontFamily: family,
+    fontSize: size,
+    fill: color,
+    fillAlpha: 0,
+    stroke: { color, width: strokeWidth },
+  });
+  c.transform.anchor.setStatic(anchor);
+  return c;
+}
+
+/**
+ * A per-part {@link TextAnimator} that rides every glyph on a **travelling sine
+ * wave** perpendicular to the baseline: the offset depends on both the part's
+ * index (so the line undulates) and local time (so the wave scrolls along it).
+ * Pure in `(part, localT)` — reproducible in preview and export. Pair with a
+ * `split:'char'` TextClip; on a rotated (vertical) clip the perpendicular offset
+ * reads as a side-to-side ripple down the column.
+ */
+export class WaveTextAnimator implements TextAnimator {
+  constructor(private readonly opts: { amp?: number; wavelength?: number; speed?: number } = {}) {}
+
+  sampleForPart(part: TextPart, localT: number): AnimationSample {
+    const amp = this.opts.amp ?? 10;
+    const wavelength = this.opts.wavelength ?? 0.55; // phase step per glyph
+    const speed = this.opts.speed ?? 3;
+    return { y: amp * Math.sin(part.index * wavelength - localT * speed) };
+  }
 }
 
 /** A rectangle (optionally rounded / stroked), centre-anchored by default. */
