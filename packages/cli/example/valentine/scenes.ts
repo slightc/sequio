@@ -271,21 +271,22 @@ export function scene6(scene: Scene, m: MediaSet): GroupClip {
     const photo = full(g, archPhoto(p.source, p.meta, { x: 40, y: -60, w: IW, h: 1560, radius: IW / 2 }), dur);
     kenBurns(photo, dur, 1.06, 1);
 
-    // "50% OFF" echo — right-aligned column down the right side, cascading in.
+    // "50% OFF" echo column down the right side, cascading in. Left-anchored so
+    // the whole tag stays fully on-screen (it may overlap the photo's right edge,
+    // which is fine); every copy is the same width, so it still reads as a column.
     full(
       g,
       echoStack('50% OFF', {
-        x: W - 44,
+        x: 560,
         y: 70,
-        size: 104,
+        size: 100,
         lineGap: 150,
         count: 7,
         fill: CRIMSON,
         spacing: 1,
         weight: '700',
         falloff: 0.8,
-        anchor: [1, 0],
-        enter: { from: [50, 0], stagger: 0.06, duration: 0.6 },
+        enter: { from: [40, 0], stagger: 0.06, duration: 0.6 },
       }),
       dur,
     );
