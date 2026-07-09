@@ -4,10 +4,11 @@ The **Sequio project website** — a single-page marketing + docs site:
 
 - **Home** — what Sequio is, the five contracts, the package DAG, quick start.
 - **Demos** — a gallery whose card covers are **live `Composer` previews drawn by
-  Sequio itself** — shapes, text, effects, GSAP, plus two that fetch a still
-  **image** and a **video** straight off the network (`ImageSource` /
-  `VideoSource`) and composite them. Click a card to open its source in
-  **Code Mode**.
+  Sequio itself** — shapes, text, effects, GSAP, two that fetch a still **image**
+  and a **video** straight off the network (`ImageSource` / `VideoSource`), plus
+  the CLI's multi-file showcase compositions (`custom-fx`, `yc-spot`, `valentine`,
+  `summer-lookbook`) pulled in **verbatim** via Vite `?raw` so the gallery and the
+  CLI share one source of truth. Click a card to open its source in **Code Mode**.
 - **Code Mode** — the same `@sequio/runtime` → `Composer` → preview / export /
   bundle loop the studio ships, embedded in the site; edit the multi-file program
   and re-run it live.

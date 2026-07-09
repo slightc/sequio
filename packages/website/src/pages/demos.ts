@@ -46,7 +46,7 @@ export const demosPage: Page = ({ view, navigate }) => {
       { class: 'lead', style: 'margin-top: 12px' },
       'Each cover is a real ',
       h('code', {}, 'Composer'),
-      ' preview looping in your browser — shapes, text, effects and GSAP, plus a pair that pull a still image and a video straight off the network. Click a card to open its source in Code Mode and re-run it.',
+      ' preview looping in your browser — shapes, text, effects and GSAP, a pair that pull a still image and a video straight off the network, and the CLI’s multi-file showcase compositions (a bring-your-own-FX reel plus three editorial promos) shown verbatim. Click a card to open its source in Code Mode and re-run it.',
     ),
   );
 
