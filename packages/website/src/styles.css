@@ -474,6 +474,11 @@ pre.code .n {
   width: 100% !important;
   height: 100% !important;
   display: block;
+  /* Preserve the composition's own aspect ratio inside the fixed 16/9 cover —
+     vertical (9:16) demos letterbox against the cover backdrop instead of
+     stretching. The canvas is a replaced element whose intrinsic size is the
+     composition resolution, so `contain` fits by aspect ratio. */
+  object-fit: contain;
 }
 .demo-cover .cover-badge {
   position: absolute;
@@ -650,12 +655,16 @@ pre.code .n {
   border-radius: 12px;
   box-shadow: 0 12px 44px rgba(0, 0, 0, 0.6);
   background: #000;
-  /* Shrink to fit the available width when space is tight while keeping the
-     aspect ratio locked. PixiJS writes an inline `width`/`height` in px on the
-     canvas, so `max-width` alone would just squash it — we override the inline
-     height with `!important` so it scales proportionally with the capped width. */
-  max-width: 100% !important;
+  /* Fit the preview column in BOTH dimensions, aspect ratio locked. PixiJS
+     writes an inline `width`/`height` in px on the canvas, so we override both
+     with `auto !important` and let `max-width` / `max-height` scale it down
+     proportionally (the replaced-element sizing keeps the ratio). Without the
+     height cap a vertical (9:16) composition fills the column width and grows
+     far taller than the viewport, showing only its top. */
+  width: auto !important;
   height: auto !important;
+  max-width: 100% !important;
+  max-height: calc(100vh - 240px) !important;
 }
 .stage-empty {
   display: grid;
