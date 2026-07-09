@@ -157,8 +157,10 @@ preview/        the preview page (index.html + preview.ts: fetch /__bundle → R
                 assets.ts = browserAssetLoader fetching the dev server's /__asset/…)
 scripts/        verify-cli.ts (e2e: render + frame + preview against example/)
 example/        a sample composition (index.ts + scene.ts + font.ts: embedded data: URL font);
-                custom-fx/ (author your own Effect + Transition: PopEffect extends ColorEffect,
-                EasedCrossfade extends CrossfadeTransition — fx.ts, choreographed in index.ts);
+                custom-fx/ (author your own effect · transition · animation — fx.ts: FocusPull/
+                PopEffect (Effect), EasedCrossfade (Transition), OrbitAnimator (ClipAnimator),
+                DropInTextAnimator (TextAnimator); index.ts shows each as a labelled chapter —
+                effect on a shape, transition between two images, animation on a shape, per-char text);
                 yc-spot/ (editorial 15s poster) + valentine/ (vertical 9:16 "Valentine's Day
                 Sale" reel: echo-stack/arc/outline text + arch-masked network photos) showcases;
                 media-network/ (image+video from URLs) + media-local/ (loadAsset('./video.mp4'),

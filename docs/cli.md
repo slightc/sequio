@@ -36,14 +36,19 @@ src/
 preview/        预览页（index.html + preview.ts：fetch /__bundle → Runtime → preview() + 播放条）
 scripts/        verify-cli.ts（端到端：render + preview 都跑一遍 example/）
 example/        一段样例作曲（index.ts + scene.ts + font.ts=内嵌 data: URL 字体，跨文件 import）
-  custom-fx/    **自定义 Effect + Transition** demo：在作曲代码里 subclass 引擎自带类，直接塞进
-                `clip.effects` / `track.addTransition(...)`——`fx.ts` 定义 `PopEffect extends
-                ColorEffect`（一个 `pop` 旋钮联动 brightness/contrast/saturation，只覆写纯函数
-                `valuesAt`）与 `EasedCrossfade extends CrossfadeTransition`（覆写 `progressAt` 给
-                溶解加缓动），`index.ts` 用四张全屏色卡把它们编排成「effect × transition」序列：
-                色卡之间用 `EasedCrossfade` 溶解、每张入场时 `PopEffect` 闪一下。两个子类都不碰
-                `pixi.js`（只 import `@sequio/engine`），复用父类内建滤镜，故 preview(WebGL) 与
-                `render`(Node WebGPU) 表现一致（契约 #3）
+  custom-fx/    **自定义 effect · transition · animation** demo：在作曲代码里扩展引擎的四个扩展点，
+                直接塞进 `clip.effects` / `track.addTransition(...)` / `clip.animator` /
+                `textClip.textAnimator`。`fx.ts` 定义四个类：`FocusPull extends BlurEffect`（一个
+                `focus` 旋钮做 blur→sharp 对焦）+ `PopEffect extends ColorEffect`（一个 `pop` 旋钮联动
+                亮度/对比度/饱和度）、`EasedCrossfade extends CrossfadeTransition`（覆写 `progressAt`
+                给溶解加缓动）、`OrbitAnimator implements ClipAnimator`（`sampleAt` 纯函数做绕圈+自转+
+                脉动）、`DropInTextAnimator implements TextAnimator`（`sampleForPart` 逐字掉落淡入）。
+                `index.ts` 把它们编成四个带标号的分镜依次展示：① effect 打在一个 shape emblem 上（从
+                模糊对焦并 pop 一下）；② transition 在**两张网络图片**之间溶解；③ animation 用
+                `OrbitAnimator` 驱动一个 shape 绕圈；④ text animation 逐字掉落拼出「sequio」。四个类都
+                不碰 `pixi.js`（只 import `@sequio/engine`）、复用父类内建滤镜或为纯数学，故 preview
+                (WebGL) 与 `render`(Node WebGPU) 表现一致（契约 #2/#3）。transition 分镜走网络取图，需联网
+                （取图失败自动降级，和 media-network 一样）
   media-network/  引用**网络** image + video 的 demo（ImageSource/VideoSource 直接吃 URL，零本地文件）
   media-local/    引用**本地** image + video 的 demo（loadAsset('./video.mp4')；媒体 .gitignore、不进仓库）
   yc-spot/      独立 showcase：仿 Y Combinator 编辑风格的 15s 动态海报（1920×1080/30fps）——
@@ -216,7 +221,7 @@ pnpm sequio preview example/index.ts --watch
 # 直接用 bin（等价）
 node packages/cli/bin/sequio.js preview example/index.ts --watch
 
-# 自定义 Effect + Transition demo（在作曲里 subclass 引擎自带类，见 custom-fx/fx.ts）
+# 自定义 effect · transition · animation demo（扩展引擎四个扩展点，见 custom-fx/fx.ts；transition 分镜需联网取图）
 pnpm sequio preview packages/cli/example/custom-fx/index.ts --watch
 pnpm sequio render  packages/cli/example/custom-fx/index.ts --out custom-fx.mp4
 
