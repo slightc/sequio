@@ -12,7 +12,30 @@
  *
  * `gsap` is available to these programs because the website injects it as a
  * runtime external (see code-mode.ts), mirroring how the `sequio` CLI ships it.
+ *
+ * The last four cards are the CLI's multi-file showcase compositions
+ * (`packages/cli/example/*`), pulled in **verbatim** as raw source (Vite `?raw`)
+ * so the gallery and the CLI share one source of truth. They render at full
+ * canvas size, load Google fonts, and (valentine · summer · custom-fx) pull
+ * imagery off the network — degrading gracefully if a fetch fails, exactly as
+ * they do under `sequio render`.
  */
+// ── CLI showcase sources, imported verbatim (single source of truth) ──────────
+import customFxIndex from '../../cli/example/custom-fx/index.ts?raw';
+import customFxFx from '../../cli/example/custom-fx/fx.ts?raw';
+import ycIndex from '../../cli/example/yc-spot/index.ts?raw';
+import ycTheme from '../../cli/example/yc-spot/theme.ts?raw';
+import ycKit from '../../cli/example/yc-spot/kit.ts?raw';
+import ycScenes from '../../cli/example/yc-spot/scenes.ts?raw';
+import valentineIndex from '../../cli/example/valentine/index.ts?raw';
+import valentineTheme from '../../cli/example/valentine/theme.ts?raw';
+import valentineKit from '../../cli/example/valentine/kit.ts?raw';
+import valentineScenes from '../../cli/example/valentine/scenes.ts?raw';
+import summerIndex from '../../cli/example/summer-lookbook/index.ts?raw';
+import summerTheme from '../../cli/example/summer-lookbook/theme.ts?raw';
+import summerKit from '../../cli/example/summer-lookbook/kit.ts?raw';
+import summerScenes from '../../cli/example/summer-lookbook/scenes.ts?raw';
+
 export interface Demo {
   id: string;
   title: string;
@@ -550,7 +573,85 @@ export default defineComposition(async () => {
   },
 };
 
-export const DEMOS: Demo[] = [hello, easing, type, effects, gsapBuild, layers, netImage, netVideo];
+// ── 9. Custom FX — bring-your-own effect · transition · animation ──────────
+// The CLI's `custom-fx` showcase, verbatim: four chapters demonstrating the
+// engine's extension seams (a custom Effect, Transition, ClipAnimator and
+// TextAnimator), all authored in composition code (see ./fx.ts).
+const customFx: Demo = {
+  id: 'custom-fx',
+  title: 'Custom FX',
+  description: 'Bring-your-own effect, transition, animation and text-animator — four chapters, each a subclass of an engine seam dropped straight onto a clip. The CLI’s custom-fx showcase, verbatim.',
+  tags: ['effects', 'transition', 'animation', 'extend'],
+  entry: '/index.ts',
+  poster: 1.6,
+  files: {
+    '/index.ts': customFxIndex,
+    '/fx.ts': customFxFx,
+  },
+};
+
+// ── 10. YC spot — editorial four-act motion piece ──────────────────────────
+const ycSpot: Demo = {
+  id: 'yc-spot',
+  title: 'YC spot',
+  description: 'A four-act editorial Y Combinator spot rebuilt from the engine’s object graph — warm-paper layout, kinetic display type and a rolling count-up, every entrance a seeked GSAP timeline. Self-contained (no bitmaps).',
+  tags: ['editorial', 'gsap', 'text', 'multitrack'],
+  entry: '/index.ts',
+  poster: 2.0,
+  files: {
+    '/index.ts': ycIndex,
+    '/theme.ts': ycTheme,
+    '/kit.ts': ycKit,
+    '/scenes.ts': ycScenes,
+  },
+};
+
+// ── 11. Valentine reel — vertical 9:16 sale promo ──────────────────────────
+const valentine: Demo = {
+  id: 'valentine',
+  title: 'Valentine reel',
+  description: 'A vertical 9:16 “Valentine’s Day Sale” reel — echo-stacked and arced headlines, hollow display type and arch-masked network photos across seven hard-cut scenes.',
+  tags: ['vertical', 'text', 'image', 'mask'],
+  entry: '/index.ts',
+  poster: 1.0,
+  files: {
+    '/index.ts': valentineIndex,
+    '/theme.ts': valentineTheme,
+    '/kit.ts': valentineKit,
+    '/scenes.ts': valentineScenes,
+  },
+};
+
+// ── 12. Summer lookbook — 9:16 fashion promo ───────────────────────────────
+const summerLookbook: Demo = {
+  id: 'summer-lookbook',
+  title: 'Summer lookbook',
+  description: 'A 9:16 “Summer Collection” fashion lookbook — framed photos, an arced glyph-by-glyph wordmark and a vector globe, motion driven by keyframes + seeked GSAP. Pulls its imagery off the network.',
+  tags: ['vertical', 'image', 'text', 'gsap'],
+  entry: '/index.ts',
+  poster: 3.5,
+  files: {
+    '/index.ts': summerIndex,
+    '/theme.ts': summerTheme,
+    '/kit.ts': summerKit,
+    '/scenes.ts': summerScenes,
+  },
+};
+
+export const DEMOS: Demo[] = [
+  hello,
+  easing,
+  type,
+  effects,
+  gsapBuild,
+  layers,
+  netImage,
+  netVideo,
+  customFx,
+  ycSpot,
+  valentine,
+  summerLookbook,
+];
 
 export function getDemo(id: string | null | undefined): Demo | undefined {
   return DEMOS.find((d) => d.id === id);
