@@ -100,11 +100,12 @@ Then, from the workspace root:
 ```bash
 sequio preview composition.ts --watch                    # live in-browser preview, reloads on edit
 sequio frame   composition.ts --time 2 --out shot.png     # export ONE frame at t=2s as a PNG (fast visual check)
+sequio audio   composition.ts --out track.mp3            # export ONLY the audio mix (mp3 default; also m4a/wav/ogg/webm)
 sequio render  composition.ts --out out.mp4              # encode the whole thing to video (pure-Node WebGPU)
 sequio render  composition.ts --out out.mp4 --scale 2    # 2× resolution (sharp text/edges)
 ```
 
-`sequio render` and `sequio frame` need a WebGPU host — a real GPU or the Mesa
+`sequio render`, `sequio frame` and `sequio audio` need a WebGPU host — a real GPU or the Mesa
 **lavapipe** software driver (`apt install mesa-vulkan-drivers`; then
 `export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`). Without one they
 throw a clear error.
@@ -176,8 +177,10 @@ eyeball → then `sequio render` once it looks right.
   Roll your own by subclassing — see recipe 7b.
 - **Audio**: `AudioTrack` + `AudioSource`; `AudioEngine` mixes (Web Audio live,
   OfflineAudioContext for export).
-- **Export in an app** (not the CLI): use `Exporter` from `@sequio/engine`, or a
-  runtime `Composer`'s `composer.export(...)`.
+- **Export in an app** (not the CLI): use `Exporter` from `@sequio/engine`
+  (`export(...)` → video, `exportFrame(t, ...)` → one still image, `exportAudio(...)`
+  → audio-only file), or a runtime `Composer`'s `composer.export(...)`. Audio-only
+  on the CLI is `sequio audio composition.ts` (recipe 11).
 
 ## Before you finish
 

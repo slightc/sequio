@@ -204,14 +204,23 @@ transform: `x`/`y`/`rotation` add, `scaleX`/`scaleY`/`alpha` multiply.
 
 ## 8. Export from your own app (not the CLI)
 
-Two ways:
-
 - Runtime `Composer`: `const blob = await composer.export({ format: 'mp4' });`
-- Engine `Exporter` directly against a `Compositor`:
+- Engine `Exporter` directly against a `Compositor` + `AudioEngine` — one object,
+  three exits (all reuse the same render/audio core, contract #3):
   ```ts
   import { Exporter } from '@sequio/engine';
-  const exporter = new Exporter(compositor, { duration, fps: 30, format: 'mp4' });
-  const blob = await exporter.run();       // FixedStep loop, awaits prepare — no dropped frames
+  const exporter = new Exporter(compositor, audioEngine);
+
+  // Video: FixedStep loop, awaits prepare — no dropped frames.
+  const movie = await exporter.export({ fps: 30, container: 'mp4' });
+
+  // One still image at a time (no fps boundary needed).
+  const still = await exporter.exportFrame(2.5, { type: 'image/png' });
+
+  // Audio only — just the AudioEngine offline mix, no frames rendered, no GPU.
+  const track = await exporter.exportAudio({ format: 'mp3' });
+  //   format: 'mp3' (default) | 'm4a' | 'wav' | 'ogg' | 'webm'
+  //   codec defaults per format (mp3 / aac / pcm-s16 / opus); bitrate, range, sampleRate optional
   ```
 
 ## 9. Server-side render (no browser)
@@ -247,6 +256,24 @@ Recommended iterate loop for an agent: edit the composition → `sequio frame` a
 few representative times → look at the PNGs → only `sequio render` once it's right.
 Programmatically it's `renderBundleFrameToFile(bundle, { out, time, scale })` from
 `@sequio/server/route-b`, or `runFrame(file, { out, time, scale })` from `@sequio/cli`.
+
+## 11. Export just the audio (no video)
+
+Encode only the composition's audio track — the same `AudioEngine` offline mix the
+video export muxes — to an audio-only file:
+
+```bash
+sequio audio composition.ts --out track.mp3                 # default format: mp3
+sequio audio composition.ts --format m4a --out track.m4a    # or m4a / wav / ogg / webm
+sequio audio composition.ts --out track.wav --bitrate 192000
+```
+
+- `--format` is `mp3` (default) `| m4a | wav | ogg | webm`; when omitted it's
+  inferred from `--out`'s extension. `--bitrate` is ignored for `wav` (PCM).
+- Same Route B path as `render`, so it needs a WebGPU host (GPU or Mesa lavapipe).
+- Programmatically it's `exportBundleAudioToFile(bundle, { out, format, bitrate })`
+  from `@sequio/server/route-b`, or `runAudio(file, { out, format, bitrate })` from
+  `@sequio/cli`; in-app it's `Exporter.exportAudio(...)` (recipe 8).
 
 ## Outlined / echoed / italic display text
 

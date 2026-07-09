@@ -23,7 +23,9 @@ Key facts an assistant should hold before writing sequio code:
 - `sequio render <file>` encodes to video (pure-Node WebGPU; needs a GPU or Mesa
   lavapipe). `sequio frame <file> --time <sec>` exports a single frame as a PNG
   through the same render core — the fast way to visually check a composition
-  before a full render. `sequio preview <file> --watch` serves a live preview.
+  before a full render. `sequio audio <file>` exports only the audio mix to an
+  audio-only file (mp3 default; also m4a/wav/ogg/webm). `sequio preview <file>
+  --watch` serves a live preview.
 
 ## Docs
 
