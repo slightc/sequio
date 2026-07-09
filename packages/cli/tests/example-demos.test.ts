@@ -14,6 +14,7 @@ import { readBundle } from '../src/bundle';
 const DEMOS = [
   'example/index.ts',
   'example/yc-spot/index.ts',
+  'example/valentine/index.ts',
   'example/media-network/index.ts',
   'example/media-local/index.ts',
 ];

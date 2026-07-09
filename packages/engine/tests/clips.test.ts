@@ -1,6 +1,7 @@
-import { Graphics, Text } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import { describe, expect, it } from 'vitest';
 import { ShapeClip, TextClip } from '../src/compositor/clips';
+import { GroupClip } from '../src/compositor/group-clip';
 import { ImageSource } from '../src/media/image-source';
 
 /** Text.getLocalBounds() measures glyphs via a canvas, which headless node
@@ -77,6 +78,57 @@ describe('TextClip', () => {
     expect(t.text).toBe('b');
     clip.unmount();
     clip.update(0); // no-op, must not throw
+  });
+
+  it('passes weight / italic / letter-spacing / align / stroke into the style', () => {
+    const clip = new TextClip({
+      text: 'Hi',
+      fontSize: 40,
+      fontWeight: '700',
+      fontStyle: 'italic',
+      letterSpacing: 6,
+      align: 'center',
+      stroke: { color: 0xff0000, width: 3 },
+    });
+    const t = clip.mount() as Text;
+    expect(t.style.fontWeight).toBe('700');
+    expect(t.style.fontStyle).toBe('italic');
+    expect(t.style.letterSpacing).toBe(6);
+    expect(t.style.align).toBe('center');
+    // Pixi normalises `stroke` into a StrokeStyle carrying the requested width.
+    expect((t.style.stroke as { width: number }).width).toBe(3);
+  });
+});
+
+describe('VisualClip.maskShape', () => {
+  it('attaches a Graphics mask sized to the spec, and tears it down when cleared', () => {
+    const clip = new GroupClip();
+    clip.maskShape = { kind: 'rect', width: 120, height: 200, radius: 24 };
+    const c = clip.mount() as Container;
+
+    clip.update(0);
+    expect(c.mask).toBeInstanceOf(Graphics);
+    const mask = c.mask as unknown as Graphics;
+    expect(c.children).toContain(mask); // the mask lives in the display list
+    expect(mask.getLocalBounds().width).toBeCloseTo(120);
+    expect(mask.getLocalBounds().height).toBeCloseTo(200);
+
+    // Clearing the spec removes the mask on the next update.
+    clip.maskShape = null;
+    clip.update(0);
+    expect(c.mask ?? null).toBeNull();
+
+    clip.unmount(); // must not throw
+  });
+
+  it('offsets the reveal region by x / y', () => {
+    const clip = new GroupClip();
+    clip.maskShape = { kind: 'ellipse', width: 100, height: 100, x: 50, y: 30 };
+    const c = clip.mount() as Container;
+    clip.update(0);
+    const b = (c.mask as unknown as Graphics).getLocalBounds();
+    expect(b.x).toBeCloseTo(50);
+    expect(b.y).toBeCloseTo(30);
   });
 });
 

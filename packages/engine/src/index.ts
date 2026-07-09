@@ -94,13 +94,14 @@ export {
 // ── Compositor graph ─────────────────────────────────────────────────────────
 export { Compositor, type CompositorOptions } from './compositor/compositor';
 export { Track, VisualTrack, AudioTrack } from './compositor/track';
-export { Clip, VisualClip, AudioClip } from './compositor/clip';
+export { Clip, VisualClip, AudioClip, type MaskSpec } from './compositor/clip';
 export {
   VideoClip,
   ImageClip,
   TextClip,
   ShapeClip,
   type TextStyleLike,
+  type TextStrokeLike,
   type ShapeSpec,
   type ShapeKind,
 } from './compositor/clips';

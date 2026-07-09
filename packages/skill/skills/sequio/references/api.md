@@ -59,9 +59,20 @@ Times are **seconds** at the API boundary, quantized to frames internally via
   `await init()`, `addTrack(track)`, `renderPreview(t)`.
 - Tracks: `Track`, `VisualTrack` (stacks by `.zIndex`), `AudioTrack`.
 - Clips: `Clip`, `VisualClip`, `AudioClip`; concrete `VideoClip`, `ImageClip`,
-  `TextClip`, `ShapeClip`, `GroupClip`. Types: `TextStyleLike`, `ShapeSpec`,
-  `ShapeKind`.
+  `TextClip`, `ShapeClip`, `GroupClip`. Types: `TextStyleLike`, `TextStrokeLike`,
+  `ShapeSpec`, `ShapeKind`, `MaskSpec`.
 - Every clip has `.start` / `.end` (seconds) and `.transform` (`Transform2D`).
+- `TextClip` style (`TextStyleLike`): `text`, `fontFamily`, `fontSize`
+  (animatable), `fill`, plus pass-throughs `fontWeight`, `fontStyle`
+  (`'italic'`), `letterSpacing`, `align`, `lineHeight` and `stroke`
+  (`TextStrokeLike` `{ color, width }` → hollow / outlined type). Weight and
+  letter-spacing feed measurement too, so split-text layout stays correct.
+- `VisualClip.maskShape` (`MaskSpec`): clip the content to a rounded-rect
+  (`kind:'rect'`, big `radius` → arch/stadium) or `ellipse` (circle crop), sized
+  explicitly (`width`/`height`, optional `x`/`y`, `inset`). Apply it to a
+  container-backed clip — a `GroupClip` wrapping the image — since a Sprite
+  cannot be masked by its own child; lay the content out from `(0,0)` in the
+  group.
 
 ## Effects & transitions
 

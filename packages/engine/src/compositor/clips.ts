@@ -1,4 +1,13 @@
-import { CanvasTextMetrics, Container, Graphics, Sprite, Text, TextStyle, Texture } from 'pixi.js';
+import {
+  CanvasTextMetrics,
+  Container,
+  Graphics,
+  Sprite,
+  Text,
+  TextStyle,
+  type TextStyleOptions,
+  Texture,
+} from 'pixi.js';
 import { AnimatableProperty } from '../animation/animatable-property';
 import type { TextAnimator, TextPart, TextSplit } from '../animation/clip-animator';
 import { computeTextParts } from '../text/text-layout';
@@ -65,11 +74,29 @@ export class ImageClip extends VisualClip {
   }
 }
 
+/** An outline drawn around the glyphs (maps onto Pixi's `TextStyle.stroke`). */
+export interface TextStrokeLike {
+  color: number | string;
+  width: number;
+}
+
 export interface TextStyleLike {
   text: string;
   fontFamily?: string;
   fontSize?: number;
   fill?: number | string;
+  /** CSS font-weight (`'400'`, `'700'`, `'bold'`, …). Default `'normal'`. */
+  fontWeight?: TextStyleOptions['fontWeight'];
+  /** `'normal'` | `'italic'` | `'oblique'`. Default `'normal'`. */
+  fontStyle?: TextStyleOptions['fontStyle'];
+  /** Extra tracking between glyphs in px (affects split layout too). */
+  letterSpacing?: number;
+  /** Multi-line alignment. Default `'left'`. */
+  align?: TextStyleOptions['align'];
+  /** Line height in px (defaults to the font's natural line height). */
+  lineHeight?: number;
+  /** Outline drawn around the glyphs (e.g. hollow / outlined display type). */
+  stroke?: TextStrokeLike;
 }
 
 /**
@@ -100,6 +127,18 @@ export class TextClip extends VisualClip {
   /** Font size in px; animatable (only when {@link split} is `'none'`). */
   fontSize = new AnimatableProperty<number>(32);
   fill: number | string;
+  /** CSS font-weight (`'400'`, `'700'`, `'bold'`, …). */
+  fontWeight: TextStyleOptions['fontWeight'];
+  /** Glyph style — `'normal'` | `'italic'` | `'oblique'`. */
+  fontStyle: TextStyleOptions['fontStyle'];
+  /** Extra tracking between glyphs in px (also widens split layout). */
+  letterSpacing: number;
+  /** Multi-line alignment. */
+  align: TextStyleOptions['align'];
+  /** Line height in px, or `0` to use the font's natural line height. */
+  lineHeight: number;
+  /** Outline drawn around the glyphs, or `null` for no stroke. */
+  stroke: TextStrokeLike | null;
   /** Break the text into per-unit objects for motion effects (default `'none'`). */
   split: TextSplit = 'none';
   /** Per-part animator, sampled at local time when {@link split} != `'none'`. */
@@ -118,6 +157,33 @@ export class TextClip extends VisualClip {
     this.fontFamily = style.fontFamily ?? 'sans-serif';
     this.fontSize.setStatic(style.fontSize ?? 32);
     this.fill = style.fill ?? 0xffffff;
+    this.fontWeight = style.fontWeight ?? 'normal';
+    this.fontStyle = style.fontStyle ?? 'normal';
+    this.letterSpacing = style.letterSpacing ?? 0;
+    this.align = style.align ?? 'left';
+    this.lineHeight = style.lineHeight ?? 0;
+    this.stroke = style.stroke ?? null;
+  }
+
+  /**
+   * The `TextStyle` options for the current fields, at the given time (only
+   * `fontSize` is time-varying). One source of truth for both measurement
+   * (`layout`) and rendering (`mount` / `rebuildParts`) so a stroke/weight/
+   * letter-spacing change lays out and paints consistently.
+   */
+  private styleOptions(t: number): TextStyleOptions {
+    const opts: TextStyleOptions = {
+      fontFamily: this.fontFamily,
+      fontSize: this.fontSize.valueAt(t),
+      fill: this.fill,
+      fontWeight: this.fontWeight,
+      fontStyle: this.fontStyle,
+      letterSpacing: this.letterSpacing,
+      align: this.align,
+    };
+    if (this.lineHeight > 0) opts.lineHeight = this.lineHeight;
+    if (this.stroke) opts.stroke = { color: this.stroke.color, width: this.stroke.width };
+    return opts;
   }
 
   /**
@@ -137,10 +203,7 @@ export class TextClip extends VisualClip {
 
   override mount(): Container {
     if (this.split === 'none') {
-      this.textObj = new Text({
-        text: this.text,
-        style: { fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill },
-      });
+      this.textObj = new Text({ text: this.text, style: this.styleOptions(0) });
       return this.textObj;
     }
     this.root = new Container();
@@ -204,7 +267,7 @@ export class TextClip extends VisualClip {
 
   /** Build the `TextStyle` used for both rendering and measurement. */
   private buildStyle(): TextStyle {
-    return new TextStyle({ fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill });
+    return new TextStyle(this.styleOptions(0));
   }
 
   /** Measure and split the text into parts using Pixi's canvas metrics. */
@@ -222,7 +285,7 @@ export class TextClip extends VisualClip {
     for (const o of this.partObjs) o.destroy();
     this.partObjs = [];
     this.parts = this.layout();
-    const style = { fontFamily: this.fontFamily, fontSize: this.fontSize.valueAt(0), fill: this.fill };
+    const style = this.styleOptions(0);
     for (const p of this.parts) {
       const o = new Text({ text: p.text, style });
       o.anchor.set(0.5, 0.5); // pivot each glyph around its center for scale/rotate
