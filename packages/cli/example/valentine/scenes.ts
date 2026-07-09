@@ -165,19 +165,20 @@ export function scene3(scene: Scene, m: MediaSet): GroupClip {
     const dots = full(g, dotGrid(W - 150, 150, 3, 3), dur);
     fadeIn(dots, 0.2, 0.4);
 
-    // "COMFORTABLE" arced (∩) in the pink BELOW the photo, hugging its rounded
-    // bottom from outside — concave sense following the arch, clear of the image.
+    // "COMFORTABLE" arced as a smile (∪) in the pink BELOW the photo, sharing the
+    // curvature of the image's rounded bottom so it reads as one continuous form.
+    // A radius near the image's own corner radius makes it hug rather than float.
     full(
       g,
       arcLabel('COMFORTABLE', {
         x: IX + IW / 2,
-        y: IBOT + 210,
-        fontSize: 96,
+        y: IBOT + 150,
+        fontSize: 92,
         fill: CRIMSON,
         fontWeight: '700',
-        letterSpacing: 6,
-        radius: 620,
-        dir: 1,
+        letterSpacing: 5,
+        radius: 560,
+        dir: -1,
         reveal: { duration: 0.45, stagger: 0.05 },
       }),
       dur,
@@ -237,67 +238,79 @@ export function scene4(scene: Scene, m: MediaSet): GroupClip {
 export function scene5(scene: Scene, m: MediaSet): GroupClip {
   return sceneGroup(scene, (g, dur) => {
     const p = m.discount;
-    // A tall arch photo, easing up in scale from centre.
-    const photo = full(g, archPhoto(p.source, p.meta, { x: 170, y: -60, w: 760, h: 1500, radius: 380 }), dur);
+    // A tall arch photo, centred, easing up in scale.
+    const IW = 700;
+    const photo = full(g, archPhoto(p.source, p.meta, { x: (W - IW) / 2, y: -60, w: IW, h: 1560, radius: IW / 2 }), dur);
     photo.transform.anchor.setStatic([0.5, 0.5]);
-    photo.transform.position.setStatic([170 + 380, -60 + 750]);
+    photo.transform.position.setStatic([W / 2, -60 + 780]);
     photo.transform.scale.setKeyframes([
       { time: 0, value: [0.92, 0.92] },
       { time: 0.8, value: [1, 1], easing: SMOOTH },
     ]);
     fadeIn(photo, 0, 0.4);
 
-    // Crimson strip down the left edge.
-    full(g, rect(0, 720, 300, 760, { fill: CRIMSON, radius: 30 }), dur);
-
-    // Huge DISCOUNT, split across two lines at the edges, sliding in from opposite ends.
-    const disco = full(g, label('DISCO', { x: 46, y: 250, fontSize: 210, fill: CRIMSON, fontWeight: '700', anchor: [0, 0.5] }), dur);
-    slideIn(disco, [-40, -70], 0.0, 0.7);
-    const unt = full(g, label('UNT', { x: 46, y: H - 260, fontSize: 210, fill: CRIMSON, fontWeight: '700', anchor: [0, 0.5] }), dur);
-    slideIn(unt, [-40, 70], 0.1, 0.7);
+    // Huge DISCOUNT split top/bottom, crimson, over the pink margins and bleeding
+    // behind the photo — sliding in from opposite edges to meet the cut.
+    const disco = full(g, label('DISCO', { x: 40, y: 300, fontSize: 200, fill: CRIMSON, fontWeight: '700', letterSpacing: 1, anchor: [0, 0.5] }), dur);
+    slideIn(disco, [-70, 0], 0.0, 0.7);
+    const unt = full(g, label('UNT', { x: 40, y: H - 300, fontSize: 200, fill: CRIMSON, fontWeight: '700', letterSpacing: 1, anchor: [0, 0.5] }), dur);
+    slideIn(unt, [-70, 0], 0.1, 0.7);
 
     // "50% OFF" tag, top-right.
-    const off = full(g, label('50% OFF', { x: W - 46, y: 130, fontSize: 74, fill: CRIMSON, fontWeight: '700', anchor: [1, 0.5], letterSpacing: 1 }), dur);
+    const off = full(g, label('50% OFF', { x: W - 46, y: 120, fontSize: 72, fill: CRIMSON, fontWeight: '700', anchor: [1, 0.5], letterSpacing: 1 }), dur);
     slideIn(off, [40, 0], 0.25, 0.6);
     fadeIn(off, 0.25, 0.4);
   });
 }
 
-// ── Scene 6 — 50% OFF · MAKE IT YOURS · BRANDNAME ─────────────────────────────
+// ── Scene 6 — 50% OFF (echo stack) ────────────────────────────────────────────
 export function scene6(scene: Scene, m: MediaSet): GroupClip {
   return sceneGroup(scene, (g, dur) => {
     const p = m.discount;
-    const photo = full(g, archPhoto(p.source, p.meta, { x: 170, y: -60, w: 760, h: 1500, radius: 380 }), dur);
+    const IW = 760;
+    const photo = full(g, archPhoto(p.source, p.meta, { x: 40, y: -60, w: IW, h: 1560, radius: IW / 2 }), dur);
     kenBurns(photo, dur, 1.06, 1);
 
-    // "50% OFF" echo cascading up the right side.
+    // "50% OFF" echo — right-aligned column down the right side, cascading in.
     full(
       g,
       echoStack('50% OFF', {
-        x: W - 360,
-        y: 60,
+        x: W - 44,
+        y: 70,
         size: 104,
         lineGap: 150,
         count: 7,
         fill: CRIMSON,
         spacing: 1,
         weight: '700',
-        falloff: 0.82,
-        enter: { from: [0, 90], stagger: 0.05, duration: 0.6 },
+        falloff: 0.8,
+        anchor: [1, 0],
+        enter: { from: [50, 0], stagger: 0.06, duration: 0.6 },
       }),
       dur,
     );
+  });
+}
 
-    // Crimson BRANDNAME pill, top-right, sliding down.
-    const pill = full(g, rect(W - 620, -80, 700, 200, { fill: CRIMSON, radius: 100 }), dur);
-    slideIn(pill, [0, -80], 0.1, 0.6);
-    const brand = full(g, label('BRANDNAME', { x: W - 260, y: 58, fontSize: 56, fill: WHITE, fontWeight: '700', letterSpacing: 3, anchor: [0.5, 0.5] }), dur);
-    slideIn(brand, [0, -80], 0.1, 0.6);
+// ── Scene 7 — BRANDNAME · MAKE IT YOURS ───────────────────────────────────────
+export function scene7(scene: Scene, m: MediaSet): GroupClip {
+  return sceneGroup(scene, (g, dur) => {
+    const p = m.discount;
+    const IW = 760;
+    const photo = full(g, archPhoto(p.source, p.meta, { x: 40, y: -60, w: IW, h: 1560, radius: IW / 2 }), dur);
+    kenBurns(photo, dur, 1.06, 1);
+
+    // Crimson BRANDNAME tab hugging the top-right corner (top + right bleed off →
+    // only its bottom-left corner rounds), sliding down into place.
+    const pill = full(g, rect(W - 560, -120, 640, 240, { fill: CRIMSON, radius: 110 }), dur);
+    slideIn(pill, [0, -90], 0.1, 0.6);
+    const brand = full(g, label('BRANDNAME', { x: W - 240, y: 66, fontSize: 54, fill: WHITE, fontWeight: '700', letterSpacing: 3, anchor: [0.5, 0.5] }), dur);
+    slideIn(brand, [0, -90], 0.1, 0.6);
 
     // "MAKE IT YOURS" italic, bottom-left, over a dot grid.
     const cta = full(
       g,
-      label('MAKE IT YOURS', { x: 56, y: H - 300, fontSize: 96, fill: CRIMSON, fontWeight: '700', fontStyle: 'italic', letterSpacing: 1, anchor: [0, 0.5] }),
+      label('MAKE IT YOURS', { x: 56, y: H - 300, fontSize: 92, fill: CRIMSON, fontWeight: '700', fontStyle: 'italic', letterSpacing: 1, anchor: [0, 0.5] }),
       dur,
     );
     slideIn(cta, [-70, 0], 0.2, 0.6);

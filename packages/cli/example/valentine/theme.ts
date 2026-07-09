@@ -39,17 +39,18 @@ export const FONT_SPECS: Array<{ family: string; weights: number[] }> = [
   { family: 'Dancing Script', weights: [700] },
 ];
 
-// ── Timeline (six scenes, hard cuts like the source reel) ─────────────────────
+// ── Timeline (seven scenes, hard cuts like the source reel) ───────────────────
 export interface Scene {
   start: number;
   end: number;
 }
 export const S1: Scene = { start: 0.0, end: 1.9 }; // Valentine's Day Sale
-export const S2: Scene = { start: 1.9, end: 3.6 }; // Casual Look
-export const S3: Scene = { start: 3.6, end: 5.4 }; // Comfortable
-export const S4: Scene = { start: 5.4, end: 7.2 }; // Super / Promo
-export const S5: Scene = { start: 7.2, end: 9.0 }; // Discount
-export const S6: Scene = { start: 9.0, end: 11.0 }; // 50% OFF / Make it yours
+export const S2: Scene = { start: 1.9, end: 3.5 }; // Casual Look
+export const S3: Scene = { start: 3.5, end: 5.2 }; // Comfortable
+export const S4: Scene = { start: 5.2, end: 7.0 }; // Super / Promo
+export const S5: Scene = { start: 7.0, end: 8.3 }; // Discount
+export const S6: Scene = { start: 8.3, end: 9.6 }; // 50% OFF (echo stack)
+export const S7: Scene = { start: 9.6, end: 11.0 }; // Brandname / Make it yours
 
 // ── Photo set (network, free-licence placeholders) ───────────────────────────
 // Cropped server-side to each region's aspect via Unsplash's `w/h/fit=crop`

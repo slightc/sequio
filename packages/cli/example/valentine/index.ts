@@ -1,8 +1,8 @@
 import { Compositor, ImageSource, VisualTrack, fonts } from '@sequio/engine';
 import { defineComposition } from '@sequio/runtime';
-import { DURATION, FONT_SPECS, H, PHOTOS, PINK, S1, S2, S3, S4, S5, S6, W } from './theme';
+import { DURATION, FONT_SPECS, H, PHOTOS, PINK, S1, S2, S3, S4, S5, S6, S7, W } from './theme';
 import type { Media, MediaSet } from './scenes';
-import { scene1, scene2, scene3, scene4, scene5, scene6 } from './scenes';
+import { scene1, scene2, scene3, scene4, scene5, scene6, scene7 } from './scenes';
 import { rect } from './kit';
 
 // A vertical (9:16) **Valentine's Day Sale** reel for the CLI, rebuilt from the
@@ -55,6 +55,7 @@ export default defineComposition(async () => {
   content.add(scene4(S4, media));
   content.add(scene5(S5, media));
   content.add(scene6(S6, media));
+  content.add(scene7(S7, media));
   compositor.addTrack(content);
 
   return { compositor, duration: DURATION };
