@@ -22,7 +22,7 @@ const FONT = "'Poppins', 'Inter', system-ui, sans-serif";
 // another with a custom `EasedCrossfade`, and each incoming card carries a custom
 // `PopEffect` that flashes on entry — a bespoke "effect × transition" beat.
 //   sequio preview example/custom-fx/index.ts --watch
-//   sequio render  example/custom-fx/index.ts --out custom-fx.mp4 --scale 2
+//   sequio render  example/custom-fx/index.ts --out custom-fx.mp4
 const W = 1280;
 const H = 720;
 const FPS = 30;

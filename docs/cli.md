@@ -205,10 +205,10 @@ Route B 的 `renderBundleToFile` 开了通用 `externals` 透传口（server 自
 # 需要 WebGPU 宿主（GPU 或 Mesa lavapipe）：
 #   apt install mesa-vulkan-drivers
 #   export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json   # 用软件驱动时
-pnpm sequio render example/index.ts --out demo.mp4 --scale 2 --verify
+pnpm sequio render example/index.ts --out demo.mp4 --verify
 
 # 导出单帧 PNG 做快速校验（--time 采样时刻，越界自动 clamp；--out 省略则 frame.png）
-pnpm sequio frame example/index.ts --time 2 --out shot.png --scale 2
+pnpm sequio frame example/index.ts --time 2 --out shot.png
 
 # 实时预览（默认端口 6180；--watch 改文件即时重载；--host 暴露到局域网）
 pnpm sequio preview example/index.ts --watch
@@ -216,12 +216,16 @@ pnpm sequio preview example/index.ts --watch
 # 直接用 bin（等价）
 node packages/cli/bin/sequio.js preview example/index.ts --watch
 
+# 自定义 Effect + Transition demo（在作曲里 subclass 引擎自带类，见 custom-fx/fx.ts）
+pnpm sequio preview packages/cli/example/custom-fx/index.ts --watch
+pnpm sequio render  packages/cli/example/custom-fx/index.ts --out custom-fx.mp4
+
 # 独立 showcase（仿 YC 编辑风格、gsap 驱动的 15s 动态海报）
-pnpm sequio render  packages/cli/example/yc-spot/index.ts --out yc.mp4 --scale 2 --verify
+pnpm sequio render  packages/cli/example/yc-spot/index.ts --out yc.mp4 --verify
 pnpm sequio preview packages/cli/example/yc-spot/index.ts --watch
 
 # 独立 showcase（仿时尚品牌 9:16 竖屏宣传片、Unsplash 配图，需联网）
-pnpm sequio render  packages/cli/example/summer-lookbook/index.ts --out summer.mp4 --scale 2
+pnpm sequio render  packages/cli/example/summer-lookbook/index.ts --out summer.mp4
 pnpm sequio preview packages/cli/example/summer-lookbook/index.ts --watch
 
 # 引用网络 image + video（需联网）
