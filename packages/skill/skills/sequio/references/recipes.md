@@ -76,13 +76,16 @@ it directly — the engine declares only the structural `GsapLike` types.
 import { StaggerTextAnimator } from '@sequio/engine';
 
 title.split = 'char';                       // split into per-character parts
-title.animator = new StaggerTextAnimator({
-  each: 0.04,                               // stagger between parts
-  from: (o) => ({ y: -40, alpha: 0 }),      // starting sample per part
+title.textAnimator = new StaggerTextAnimator({
+  from: { y: -40, alpha: 0 },               // each part starts 40px up + invisible
+  stagger: 0.04,                            // delay between consecutive parts (s)
+  duration: 0.5,                            // per-part animation length (s)
 });
 ```
 
-For gsap-driven per-part motion use `gsapTextAnimator(gsap, split, builder)`.
+Split text uses `textAnimator` (a `TextAnimator`); a whole-clip animator uses
+`animator` (a `ClipAnimator`) — don't mix the two fields. For gsap-driven per-part
+motion use `gsapTextAnimator(gsap, split, builder)`.
 
 ## 5. Video and image clips
 
@@ -127,13 +130,77 @@ const title = new TextClip({ text: 'sequio', fontFamily: 'Poppins', fontSize: 72
 ```ts
 import { BlurEffect, CrossfadeTransition } from '@sequio/engine';
 
-clip.effects.add(new BlurEffect({ strength: 8 }));
-// A crossfade between two overlapping clips on a track (overlap drives it):
-track.transition = new CrossfadeTransition({ duration: 0.5 });
+const blur = new BlurEffect();
+blur.strength.setStatic(8);            // strength is an AnimatableProperty (keyframe it too)
+clip.effects.push(blur);               // `effects` is an array
+
+// A crossfade between two OVERLAPPING clips on one track — their overlap is the
+// transition window (bind order is direction: from → to):
+track.addTransition(new CrossfadeTransition(15).between(clipA, clipB)); // 15 frames
 ```
 
-(Effect/transition constructor options vary — check `references/api.md` and the
-class in `packages/engine/src/effects/`. chroma/LUT/wipe are not yet built.)
+(chroma/LUT/wipe are not yet built — check `references/api.md` and the classes in
+`packages/engine/src/effects/`. To author your own, see the next recipe.)
+
+## 7b. Bring your own — custom effect · transition · animation
+
+All four extension points are plain subclasses/implementations imported from
+`@sequio/engine` only. Build on the engine's own classes (or keep the animators
+pure math) and you need **no `pixi.js`**, so they render the same in preview
+(WebGL) and Node render (WebGPU). Full worked demo: `packages/cli/example/custom-fx/`.
+
+```ts
+// ── a custom EFFECT — subclass an engine effect, reuse its built-in filter ──
+import { BlurEffect, AnimatableProperty } from '@sequio/engine';
+class FocusPull extends BlurEffect {
+  readonly focus = new AnimatableProperty<number>(0);     // 0 sharp → 1 blurred
+  constructor(readonly maxBlur = 28) { super(); }
+  override updateAt(t: number) {
+    this.strength.setStatic(this.focus.valueAt(t) * this.maxBlur);
+    super.updateAt(t);                                     // let BlurEffect push it into the filter
+  }
+}
+const fx = new FocusPull(30);
+fx.focus.setKeyframes([{ time: 0, value: 1 }, { time: 0.8, value: 0 }]);
+clip.effects.push(fx);
+
+// ── a custom TRANSITION — subclass CrossfadeTransition, reshape the curve ──
+import { CrossfadeTransition, easeInOutCubic } from '@sequio/engine';
+class EasedCrossfade extends CrossfadeTransition {
+  override progressAt(t: number) { return easeInOutCubic(super.progressAt(t)); }
+}
+track.addTransition(new EasedCrossfade(30).between(clipA, clipB));
+
+// ── a custom whole-clip ANIMATION — implement ClipAnimator (pure sampleAt) ──
+import type { AnimationSample, ClipAnimator } from '@sequio/engine';
+class OrbitAnimator implements ClipAnimator {
+  constructor(private r = 90, private period = 2.6) {}
+  sampleAt(localT: number): AnimationSample {              // sampled at t - clip.start
+    const a = (localT / this.period) * Math.PI * 2;
+    return { x: Math.cos(a) * this.r, y: Math.sin(a) * this.r, rotation: a };
+  }
+}
+clip.animator = new OrbitAnimator();
+
+// ── a custom TEXT ANIMATION — implement TextAnimator (per split part) ──
+import type { AnimationSample, TextAnimator, TextPart } from '@sequio/engine';
+import { easeOutCubic } from '@sequio/engine';
+class DropInText implements TextAnimator {
+  constructor(private stagger = 0.06, private dur = 0.5, private drop = 70) {}
+  sampleForPart(part: TextPart, localT: number): AnimationSample {
+    const k = (localT - part.index * this.stagger) / this.dur;
+    const p = k <= 0 ? 0 : k >= 1 ? 1 : easeOutCubic(k);
+    return { y: -this.drop * (1 - p), alpha: p };
+  }
+}
+title.split = 'char';
+title.textAnimator = new DropInText();
+```
+
+`sampleAt` / `sampleForPart` / `updateAt(t)` / `render(t)` must be **pure functions
+of time** (contract #2) — no wall-clock, no dependence on the previous frame — so
+export stays reproducible. An `AnimationSample` composes over the clip's base
+transform: `x`/`y`/`rotation` add, `scaleX`/`scaleY`/`alpha` multiply.
 
 ## 8. Export from your own app (not the CLI)
 
