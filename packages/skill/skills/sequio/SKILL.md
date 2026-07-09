@@ -8,8 +8,7 @@ description: >-
   applying effects/transitions, mixing audio, and exporting to MP4/WebM or
   rendering server-side. sequio does NOT render HTML/CSS — compositions are
   imperative TypeScript that `new`s engine classes, not a declarative DOM/JSX
-  framework; do not carry over a Remotion / hyperframes mental model. Triggers:
-  "sequio", "video editor SDK", "compose a
+  framework. Triggers: "sequio", "video editor SDK", "compose a
   video", "timeline / track / clip", "render an mp4 from code", "TextClip",
   "Compositor", "defineComposition".
 ---
