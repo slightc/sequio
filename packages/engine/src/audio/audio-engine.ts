@@ -23,6 +23,8 @@ export class AudioEngine implements Disposable {
   private readonly entries: Entry[] = [];
   private nodes: AudioBufferSourceNode[] = [];
   private playing = false;
+  /** Reversed copies of source buffers (倒放), built lazily and reused. */
+  private readonly reverseCache = new WeakMap<AudioBuffer, AudioBuffer>();
 
   constructor(
     private readonly timebase: Timebase,
@@ -114,11 +116,13 @@ export class AudioEngine implements Disposable {
     ctxStart: number,
     dest: AudioNode,
   ): AudioBufferSourceNode | null {
-    const pb = clipPlaybackAt(clip, playhead);
+    const pb = clipPlaybackAt(clip, playhead, buffer.duration);
     if (!pb) return null;
 
     const src = ctx.createBufferSource();
-    src.buffer = buffer;
+    // Web Audio has no negative playbackRate, so 倒放 plays a reversed copy of
+    // the buffer forward; scheduling already flipped `offset` into that copy.
+    src.buffer = pb.reversed ? this.reversedBuffer(ctx, buffer) : buffer;
     src.playbackRate.value = pb.playbackRate;
 
     const gain = ctx.createGain();
@@ -133,6 +137,25 @@ export class AudioEngine implements Disposable {
     src.connect(gain).connect(dest);
     src.start(ctxStart + pb.when, pb.offset, pb.duration);
     return src;
+  }
+
+  /**
+   * A copy of `buffer` with every channel's samples reversed, cached per source
+   * buffer (built via `ctx.createBuffer`, so it works on both live and offline
+   * contexts). Reused across `play`/`seek`/`renderOffline` for one source.
+   */
+  private reversedBuffer(ctx: BaseAudioContext, buffer: AudioBuffer): AudioBuffer {
+    const cached = this.reverseCache.get(buffer);
+    if (cached) return cached;
+    const rev = ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      const input = buffer.getChannelData(ch);
+      const output = rev.getChannelData(ch);
+      const n = input.length;
+      for (let i = 0; i < n; i++) output[i] = input[n - 1 - i];
+    }
+    this.reverseCache.set(buffer, rev);
+    return rev;
   }
 
   private stopNodes(): void {

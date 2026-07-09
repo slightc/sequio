@@ -4,12 +4,14 @@ import type { AudioClip } from '../compositor/clip';
 export interface ClipPlayback {
   /** Seconds after the transport start at which to `start()` the node (≥ 0). */
   when: number;
-  /** Offset into the source buffer, in buffer seconds. */
+  /** Offset into the buffer, in buffer seconds (into the reversed copy when {@link reversed}). */
   offset: number;
   /** Buffer seconds to consume; the node auto-stops after this. */
   duration: number;
   /** Playback rate (clip speed / time-remap). Affects pitch and duration. */
   playbackRate: number;
+  /** Whether the node should read from a reversed copy of the buffer (倒放). */
+  reversed: boolean;
 }
 
 /**
@@ -20,17 +22,34 @@ export interface ClipPlayback {
  * Speed maps timeline seconds to buffer seconds: playing timeline
  * `[playStart, end)` at rate `s` consumes buffer `[offset, offset + span*s)` and
  * takes `span` real seconds (rate `s` stretches the buffer back to real time).
+ *
+ * For a {@link AudioClip.reversed} clip the driver plays a reversed copy of the
+ * buffer (Web Audio has no negative `playbackRate`), so `offset` is measured
+ * into that reversed copy — pass `bufferDuration` (the source buffer length in
+ * seconds) so the forward source time can be flipped to a reversed offset.
  */
-export function clipPlaybackAt(clip: AudioClip, playhead: number): ClipPlayback | null {
+export function clipPlaybackAt(
+  clip: AudioClip,
+  playhead: number,
+  bufferDuration = 0,
+): ClipPlayback | null {
   const speed = clip.speed > 0 ? clip.speed : 1;
   const playStart = Math.max(clip.start, playhead);
   if (playStart >= clip.end) return null;
   const span = clip.end - playStart;
+  // Forward source time at playStart. In a reversed clip the window is walked
+  // downward, so the highest source time consumed is at the *end* of the window.
+  const sourceStart = clip.reversed
+    ? clip.sourceIn + (clip.end - playStart) * speed
+    : clip.sourceIn + (playStart - clip.start) * speed;
   return {
     when: playStart - playhead,
-    offset: clip.sourceIn + (playStart - clip.start) * speed,
+    // A reversed copy maps original time τ → position (bufferDuration − τ); the
+    // reversed node then plays *forward* from there as source time counts down.
+    offset: clip.reversed ? bufferDuration - sourceStart : sourceStart,
     duration: span * speed,
     playbackRate: speed,
+    reversed: clip.reversed,
   };
 }
 

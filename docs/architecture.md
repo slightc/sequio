@@ -167,16 +167,36 @@ MSAA——于是带 Effect 的 Clip（如旋转的 `ColorEffect` 矩形）边缘
 - **边界值实践**：让 `clip2.start === clip1.end`（共用同一数值，别分别算）以免浮点 sub-epsilon
   的缝/叠；边界尽量用 `Timebase.toSeconds(frame)` 对齐到帧。
 
+### 变速与倒放（`speed` / `reversed`）
+
+Clip 的**时间重映射**都收敛到一个纯函数 `Clip.mapToSource(t)`（视频经 `VideoClip.update`、
+音频经 `AudioClip.sourceTimeAt`），把时间线时间映射到源时间：
+
+- **`speed`**（变速变调，默认 1）：正放窗口是源 `[sourceIn, sourceIn + (end-start)·speed]`
+  ——时间线每走 1s 消耗 `speed` s 源。视频里体现为跳帧/放慢；音频里 `speed` 直接是
+  `AudioBufferSourceNode.playbackRate`（**变速即变调**）。
+- **`reversed`**（倒放，默认 `false`）：clip 仍占时间线 `[start, end)`，但源时间从窗口**末端往回
+  走到 `sourceIn``——`mapToSource(t) = sourceIn + (end - t)·speed`，与正放帧关于窗口中点镜像
+  （所以正/倒放消耗的源窗口完全相同，只是方向相反；`speed` 仍缩放速率，`speed`>1 即快速倒放）。
+  - **视频**：`mapToSource` 每帧喂给 `VideoSource.prepare` 的源时间递减，解码器的方向性
+    look-ahead（`prepare` 里 `sourceTime < lastSec ? -1 : 1`）**自然朝后预解码**，无需额外接线；
+    `render(t)` 仍是 `(graph, t)` 的纯函数（契约 #2），故导出可复现、golden-frame 成立。
+  - **音频**：Web Audio 无负 `playbackRate`，故倒放播放 buffer 的**反转副本**（见下）。
+
 ### 音频排程与导出（AudioEngine）
 
 `AudioSource.load` 用 Mediabunny `Input` + `AudioBufferSink` 把整轨解码成一个
 `AudioBuffer`。`AudioEngine` 把 `AudioClip` 排到 Web Audio 图上:
 
-- **纯排程核心**(`src/audio/scheduling.ts`,可单测):`clipPlaybackAt(clip, playhead)`
-  算出 `when`(相对起播时刻)/`offset`(入缓冲)/`duration`(消耗缓冲秒)/`playbackRate`;
+- **纯排程核心**(`src/audio/scheduling.ts`,可单测):`clipPlaybackAt(clip, playhead, bufferDuration?)`
+  算出 `when`(相对起播时刻)/`offset`(入缓冲)/`duration`(消耗缓冲秒)/`playbackRate`/`reversed`;
   `speed` 即 `playbackRate`——**变调变速**(时间线 `[playStart,end)` 以速率 s 消耗缓冲
   `[offset, offset+span*s)`,实播 span 秒)。`gainEventsAt` 把 `gain` 自动化与
   `fadeIn`/`fadeOut` 合成一串增益事件(首个 setValueAtTime、其余 linearRamp)。
+- **倒放**(`clip.reversed`):Web Audio 无负 `playbackRate`,故 `AudioEngine` 播放 buffer 的**逐通道
+  反转副本**(`reversedBuffer`,按源 buffer `WeakMap` 缓存、`play`/`seek`/`renderOffline` 复用),
+  正向播即倒放。`clipPlaybackAt` 据 `bufferDuration` 把正向源时间 τ 翻成反转副本里的 `offset =
+  bufferDuration − τ`;fade/gain 仍按**时间线**位置生效(fade-in 在 clip 头、fade-out 在尾),与方向无关。
 - **预览**:`play(playhead)` / `pause()` / `seek(playhead)`——每个 clip 建
   `AudioBufferSourceNode → GainNode → destination`,`src.start(when, offset, duration)`。
   与视觉时钟对齐由上层同时驱动;Web Audio 采样级精确,漂移小。

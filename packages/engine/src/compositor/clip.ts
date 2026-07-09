@@ -17,13 +17,29 @@ export abstract class Clip {
   sourceOut = 0;
   /** Playback speed (time remap). 1 = realtime. */
   speed = 1;
+  /**
+   * Play the source backwards (倒放). The clip still occupies `[start, end)` on
+   * the timeline, but source time runs from the end of the played window back to
+   * `sourceIn`: at `start` it shows the frame at `sourceIn + (end-start)·speed`,
+   * at `end` it shows `sourceIn`. `speed` still scales the rate (so `speed` > 1
+   * is a fast reverse). For video this simply feeds a decreasing source time to
+   * the decoder (its look-ahead already runs backwards); for audio the engine
+   * plays a reversed copy of the buffer. Default `false`.
+   */
+  reversed = false;
 
   isActiveAt(t: number): boolean {
     return t >= this.start && t < this.end;
   }
 
-  /** Map a timeline time to the corresponding source time. */
+  /**
+   * Map a timeline time to the corresponding source time. Forward playback walks
+   * the source window `[sourceIn, sourceIn + (end-start)·speed]` up from
+   * `sourceIn`; {@link reversed} playback walks the SAME window down to `sourceIn`
+   * (so the reversed and forward frames mirror around the window's midpoint).
+   */
   protected mapToSource(t: number): number {
+    if (this.reversed) return this.sourceIn + (this.end - t) * this.speed;
     return this.sourceIn + (t - this.start) * this.speed;
   }
 }
