@@ -98,9 +98,14 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 
 ## Export
 
-- `Exporter` (`ExportOptions`, `ExportFrameOptions`), `ExportCancelledError`.
+- `Exporter` (`ExportOptions`, `ExportFrameOptions`, `AudioExportOptions`),
+  `ExportCancelledError`. `Exporter.export` → video, `exportFrame` → one still
+  image, `exportAudio` → audio-only file (the `AudioEngine` offline mix).
 - `ExportSink`, `ResolvedExportOptions`, `exportFrameTimes`,
   `MediabunnyExportSink`.
+- Audio-only: `AudioExportSink`, `AudioExportFormat`
+  (`'m4a' | 'mp3' | 'wav' | 'ogg' | 'webm'`), `ResolvedAudioExportOptions`,
+  `MediabunnyAudioExportSink`.
 
 ## Re-exported PixiJS types (type-only)
 

@@ -30,6 +30,23 @@ export interface PreviewCommand {
   host: boolean;
 }
 
+/** Audio-only container formats `sequio audio` can write. */
+export const AUDIO_FORMATS = ['m4a', 'mp3', 'wav', 'ogg', 'webm'] as const;
+export type AudioFormat = (typeof AUDIO_FORMATS)[number];
+
+/** `sequio audio <file> [-o out.m4a] [--format m4a] [--bitrate N]`. */
+export interface AudioCommand {
+  kind: 'audio';
+  /** Path to the entry composition file. */
+  file: string;
+  /** Output audio path. `undefined` → `out.<format>`. */
+  out?: string;
+  /** Audio container format. `undefined` → inferred from `out`'s extension, else `mp3`. */
+  format?: AudioFormat;
+  /** Target audio bitrate, bits/sec. `undefined` → the engine default (128 kbps). */
+  bitrate?: number;
+}
+
 /** `sequio frame <file> [-t sec] [-o out.png] [--scale N]`. */
 export interface FrameCommand {
   kind: 'frame';
@@ -50,7 +67,7 @@ export interface MetaCommand {
   message?: string;
 }
 
-export type CliCommand = RenderCommand | PreviewCommand | FrameCommand | MetaCommand;
+export type CliCommand = RenderCommand | PreviewCommand | FrameCommand | AudioCommand | MetaCommand;
 
 export const DEFAULT_PREVIEW_PORT = 6180;
 
@@ -59,6 +76,7 @@ export const USAGE = `sequio — programmable-timeline CLI
 Usage:
   sequio render <file> [options]     Encode a composition to a video file
   sequio frame <file> [options]      Export a single frame at a time as a PNG
+  sequio audio <file> [options]      Export just the audio track to an audio file
   sequio preview <file> [options]    Serve a live in-browser preview
 
 Render options (pure Node, PixiJS WebGPU — needs a GPU or Mesa lavapipe):
@@ -70,6 +88,11 @@ Frame options (pure Node, PixiJS WebGPU — needs a GPU or Mesa lavapipe):
   -t, --time <sec>     Timeline time to sample, in seconds (default: 0)
   -o, --out <path>     Output PNG path (default: frame.png)
   -s, --scale <n>      Render at n× the composition resolution (default: 1)
+
+Audio options:
+  -o, --out <path>     Output path (default: out.<format>)
+  -f, --format <fmt>   Container: ${AUDIO_FORMATS.join(' | ')} (default: mp3, or inferred from --out)
+  -b, --bitrate <bps>  Target audio bitrate in bits/sec (default: 128000; ignored for wav)
 
 Preview options:
   -w, --watch          Re-run on any project-file change (live reload)
@@ -98,6 +121,7 @@ export function parseArgs(argv: string[]): CliCommand {
 
   if (first === 'render') return parseRender(argv.slice(1));
   if (first === 'frame') return parseFrame(argv.slice(1));
+  if (first === 'audio') return parseAudio(argv.slice(1));
   if (first === 'preview') return parsePreview(argv.slice(1));
 
   return { kind: 'error', message: `Unknown command: ${first}` };
@@ -159,6 +183,38 @@ function parseFrame(rest: string[]): CliCommand {
 
   if (file === undefined) return { kind: 'error', message: 'frame needs a <file>' };
   return { kind: 'frame', file, time, out, scale };
+}
+
+function parseAudio(rest: string[]): CliCommand {
+  let file: string | undefined;
+  let out: string | undefined;
+  let format: AudioFormat | undefined;
+  let bitrate: number | undefined;
+
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '-h' || a === '--help') return { kind: 'help' };
+    else if (a === '-o' || a === '--out') {
+      out = rest[++i];
+      if (out === undefined) return { kind: 'error', message: `${a} needs a path` };
+    } else if (a === '-f' || a === '--format') {
+      const raw = rest[++i];
+      if (!AUDIO_FORMATS.includes(raw as AudioFormat)) {
+        return { kind: 'error', message: `${a} needs one of ${AUDIO_FORMATS.join(', ')}, got: ${raw}` };
+      }
+      format = raw as AudioFormat;
+    } else if (a === '-b' || a === '--bitrate') {
+      const raw = rest[++i];
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n <= 0) return { kind: 'error', message: `${a} needs a number > 0, got: ${raw}` };
+      bitrate = n;
+    } else if (a.startsWith('-')) return { kind: 'error', message: `Unknown option: ${a}` };
+    else if (file === undefined) file = a;
+    else return { kind: 'error', message: `Unexpected argument: ${a}` };
+  }
+
+  if (file === undefined) return { kind: 'error', message: 'audio needs a <file>' };
+  return { kind: 'audio', file, out, format, bitrate };
 }
 
 function parsePreview(rest: string[]): CliCommand {

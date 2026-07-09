@@ -1,6 +1,6 @@
 # 08 · Exporter（FixedStep + 编码封装）
 
-**状态**: ✅ Done（核心落地:定步循环 + `await prepare` 不丢帧 + Mediabunny 封装 MP4/WebM;音画一起导出 e2e + golden-frame 全帧对比为后续）
+**状态**: ✅ Done（核心落地:定步循环 + `await prepare` 不丢帧 + Mediabunny 封装 MP4/WebM;音画一起导出 e2e;单帧图片导出 `exportFrame` + 单独音频导出 `exportAudio`；golden-frame 全帧对比为后续）
 **依赖**: 01, 02, 03, 06
 
 ## 目标
@@ -16,6 +16,8 @@
   `WebMOutputFormat`，取代 `mp4-muxer` / `webm-muxer`。
 - `ExportOptions`（分辨率/fps/codec/bitrate/range）、`onProgress`、`cancel()`。
 - 单帧导出：`exportFrame(time, options?)` 把指定时刻渲染成图片 `Blob`（PNG/JPEG/WebP）。
+- 单独导出音频：`exportAudio(options?)` 只把 `AudioEngine` 离线混音封装成音频 `Blob`
+  （m4a/mp3/wav/ogg/webm，不渲染帧、不需 GPU）。
 
 ## 验收标准
 - 导出结果与预览逐帧一致（golden-frame 对比）。🟡 共用同一 `renderSync` 渲染核心(契约 #3),
@@ -42,8 +44,16 @@
   `Blob`。`ExportFrameOptions`:`type`（'image/png' 默认 | 'image/jpeg' | 'image/webp'）/
   `quality`（有损,默认 0.92）。编码 = `encodeFrame` seam（`convertToBlob`/`toBlob`,测试可注入）。
   `time` 不必落在 fps 帧边界。
+- **`exportAudio(options?)`**:单独导出音频——只 `audio.renderOffline(duration)` 拿离线混音,
+  经 `AudioExportSink` seam（默认 `MediabunnyAudioExportSink`:单音轨、无视频轨的 `Output` +
+  `AudioBufferSource` + `BufferTarget`）封装成音频 `Blob`。不渲染帧、不走定步循环、不需 GPU。
+  `AudioExportOptions`:`format`（'mp3' 默认 | 'm4a' | 'wav' | 'ogg' | 'webm'）/ `codec`（各格式
+  默认 aac/mp3/pcm-s16/opus）/ `bitrate`（默认 128k,wav 忽略）/ `range` / `sampleRate`。CLI
+  `sequio audio <file>` 走 Route B 的 `exportBundleAudioToFile` 复用它。
 - 测试:`tests/exporter.test.ts` + `pnpm verify:export`(真实导出→Mediabunny 解回:①视频-only
-  帧数 8、尺寸 160×120、帧是红色;②音+画到 WebM,解回断言视频轨 + 音频轨都在)。
+  帧数 8、尺寸 160×120、帧是红色;②音+画到 WebM,解回断言视频轨 + 音频轨都在)。`exportAudio`:
+  单测断言 start→离线混音→addAudio→finalize 顺序/默认格式/编码器推导/透传/失败清理;`pnpm verify:cli`
+  的 `audio` 步骤真实导出 m4a 并校验 `ftyp`。
 - 交互 demo:`pnpm dev` 后打开 `/example/export-demo.html`——并入了 av-player:一个时钟同时驱动
   画面与 `AudioEngine`(音画一起播),默认 4 音符旋律 + 同步跳动的 marker,或加载视频文件;点
   **Export** 把当前场景的**视频 + 音频**带进度条导出成真实 MP4/WebM,结果内联播放并可下载

@@ -211,6 +211,13 @@ MSAA——于是带 Effect 的 Clip（如旋转的 `ColorEffect` 矩形）边缘
   `ExportFrameOptions`:`type`('image/png' 默认 | 'image/jpeg' | 'image/webp')/ `quality`
   (有损格式,`[0,1]`,默认 0.92)。编码 = `encodeFrame` seam:优先 `OffscreenCanvas.convertToBlob`
   (worker/Node),回落 `HTMLCanvasElement.toBlob`;测试可注入假 encoder。
+- **单独导出音频(`exportAudio(options?)`)**:只导出**音轨**——把 `AudioEngine.renderOffline`
+  的离线混音(与视频导出 muxes 的是同一份,契约 #3)单独封装成音频文件 `Blob`。不渲染任何帧、
+  不走定步循环、不需要 GPU,是 `exportFrame`(单帧静图)的音频对偶。编码/封装 = `AudioExportSink`
+  seam:默认 `MediabunnyAudioExportSink` 声明**单音轨、无视频轨**的 `Output`,把混音喂给
+  `AudioBufferSource` → `BufferTarget` → `Blob`。`AudioExportOptions`:`format`
+  ('mp3' 默认 | 'm4a' | 'wav' | 'ogg' | 'webm')/ `codec`(各格式默认 mp3/aac/pcm-s16/opus)/
+  `bitrate`(默认 128k,`wav`(PCM)忽略)/ `range` / `sampleRate`。测试可注入假 sink。
 - **fork 导出(不打扰预览、不重复加载)**:导出会独占渲染循环。要让预览完全不受影响、
   **导出期间仍能正常播放**,消费者可**另起一个离屏 `Compositor` 专供导出**:
   - 通过 `CompositorOptions.textures` 共享预览的 `TextureManager`(从而共享已解码/上传的帧——
@@ -227,7 +234,9 @@ MSAA——于是带 Effect 的 Clip（如旋转的 `ColorEffect` 矩形）边缘
 - 校验:`tests/exporter.test.ts`(纯 `exportFrameTimes`;用假 compositor/audio/sink 断言
   **每帧 prepare→render→addFrame 的顺序**、帧时刻、progress 单调到 1、`audio:false` 跳过音频、
   `range` 覆盖时长、`cancel` 中止且不 finalize;`exportFrame` 断言 prepare→render→encode
-  单帧、不碰 movie sink/音频、`type`/`quality` 透传编码器)+ e2e `pnpm verify:export`——真实导出:
+  单帧、不碰 movie sink/音频、`type`/`quality` 透传编码器;`exportAudio` 断言 start→离线混音→
+  addAudio→finalize 顺序、不碰视频 sink、格式默认 mp3、按 format 推导默认编码器、`codec`/
+  `bitrate`/`range`/`sampleRate` 透传、失败时 `cancel` 且不 finalize)+ e2e `pnpm verify:export`——真实导出:
   ①视频-only 红 clip 到 MP4,解回断言帧数(8)、尺寸(160×120)、帧确实是红色(排除空画布抓取);
   ②音+画(排一段 440Hz 正弦进 `AudioEngine`)到 WebM(vp8/opus,挑能编码的),解回断言
   **视频轨 + 音频轨都在**。

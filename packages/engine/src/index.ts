@@ -143,7 +143,20 @@ export {
 } from './audio/scheduling';
 
 // ── Export ────────────────────────────────────────────────────────────────
-export { Exporter, type ExportOptions, type ExportFrameOptions, ExportCancelledError } from './export/exporter';
-export { type ExportSink, type ResolvedExportOptions } from './export/export-sink';
+export {
+  Exporter,
+  type ExportOptions,
+  type ExportFrameOptions,
+  type AudioExportOptions,
+  ExportCancelledError,
+} from './export/exporter';
+export {
+  type ExportSink,
+  type ResolvedExportOptions,
+  type AudioExportSink,
+  type AudioExportFormat,
+  type ResolvedAudioExportOptions,
+} from './export/export-sink';
 export { exportFrameTimes } from './export/frame-times';
 export { MediabunnyExportSink } from './export/mediabunny-export-sink';
+export { MediabunnyAudioExportSink } from './export/mediabunny-audio-export-sink';
