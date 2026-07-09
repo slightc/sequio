@@ -16,6 +16,30 @@
 
 `sequio render` / `renderBundleToFile` 走的就是这条 bundle（代码）路线，是本文档默认推荐的用法。
 
+## 信任边界与安全模型（务必先读）
+
+代码优先路线有一个**必须显式声明的前提**：渲染一份 bundle ＝ 在你的服务器进程里
+**执行任意 JS/TS**。`@sequio/runtime` 编译并原样运行合成代码——它能 `fetch` 任意 URL、
+读环境变量、跑任意逻辑。**runtime 目前不做沙箱**。所以：
+
+- **Route B（以及 Route A 的 `renderBundle`）只服务可信代码。** "可信"＝你自己的
+  一方代码：CI、后端产出、内部作者写的合成。把它当成"在服务器上 `node your-script.js`"
+  一样对待——你不会去跑陌生人提交的脚本，这里也一样。
+- **多租户 / 公网提交场景：不要收代码，收数据。** 让消费者提交**他们自定义的 JSON
+  spec**，由**你控制的 builder**（见 skill 的 "Bring your own spec" 一节 /
+  `docs/bring-your-own-spec.md`）把数据映射成引擎对象图。跨信任边界传输的是**数据而非
+  代码**——builder 只能 `new` 你允许的 clip/effect，租户无法注入可执行逻辑。这恰好也是
+  引擎不再提供官方 spec 的正当性：schema 与 builder 都该由消费者按自己的产品边界拥有。
+- **即便走"数据 + builder"，素材 URL 仍是 SSRF 面。** image/video/audio 的 `src` 由服务端
+  `fetch`，未经校验就是让租户借你的服务器去打内网。对租户提交的 URL 做**协议 + 域名
+  allowlist**（禁 `file:`/内网地址），或只接受你自己签发的素材句柄。
+- **确实需要跑不可信代码时**，后续给 `@sequio/runtime` 加**沙箱执行路径**
+  （QuickJS / isolated-vm / 锁死 globals 的 worker）——**当前未实现**，属待办。在它落地前，
+  "公网直接渲染用户提交的合成代码"就是一个 RCE/SSRF 洞，不要这么部署。
+
+一句话：**bundle（代码）路线是给可信来源的；面向公网/多租户请走"自定义 spec + 你的
+builder"的数据路线。**
+
 > **`TimelineSpec`（时间线 JSON 协议）** 是一种**可选的、声明式的序列化格式**，供"用 JSON 描述
 > 一条时间线、不想带运行时代码"的消费者使用（studio 的 “Server Render”、把时间线存进 DB 等场景）。
 > 它能表达的是引擎能力的**一个子集**（静态属性 + 关键帧 + 内置 clip/effect），自定义子类、GSAP 这类
