@@ -68,6 +68,35 @@ class ForkableBackend implements VideoDecoderBackend {
 }
 
 /**
+ * Backend with the reverse fast path: records `decode` vs `decodeRange` calls and
+ * yields a frame for each integer frame index in `[fromSec, toSec)` (CFR at 30fps).
+ */
+class RangeBackend implements VideoDecoderBackend {
+  decodeCalls: number[] = [];
+  rangeCalls: [number, number][] = [];
+  decodedIndices: number[] = [];
+  private readonly fps = META.fps!;
+  async load(): Promise<SourceMetadata> {
+    return META;
+  }
+  async decode(sec: number): Promise<DecodedFrame | null> {
+    this.decodeCalls.push(sec);
+    this.decodedIndices.push(Math.round(sec * this.fps));
+    return { timestamp: sec, image: {} as CanvasImageSource, close: vi.fn() };
+  }
+  async *decodeRange(fromSec: number, toSec: number): AsyncGenerator<DecodedFrame, void, unknown> {
+    this.rangeCalls.push([fromSec, toSec]);
+    const loI = Math.round(fromSec * this.fps);
+    const hiI = Math.floor(toSec * this.fps - 1e-9); // end exclusive
+    for (let i = loI; i <= hiI; i++) {
+      this.decodedIndices.push(i);
+      yield { timestamp: i / this.fps, image: {} as CanvasImageSource, close: vi.fn() };
+    }
+  }
+  dispose(): void {}
+}
+
+/**
  * Backend whose decodes block until explicitly released (per source-second).
  * `release` is order-independent: releasing a second before its decode is even
  * dispatched (VideoSource now serializes decodes, so dispatch lands a microtask
@@ -154,6 +183,51 @@ describe('VideoSource', () => {
     expect(has(backend.decodeCalls, 0.4)).toBe(true);
     expect(has(backend.decodeCalls, 11 / 30)).toBe(true); // idx 11
     expect(has(backend.decodeCalls, 10 / 30)).toBe(true); // idx 10
+  });
+
+  it('reverse playback: decodes a GOP batch forward once, serves it backward from cache', async () => {
+    // The 倒放 fix: playing backward must NOT re-seek + re-decode per frame
+    // (O(GOP²)). With a range-capable backend, a backward step fills a forward
+    // window into the cache and later backward steps are pure cache hits.
+    const backend = new RangeBackend();
+    const source = new VideoSource({
+      src: 'x',
+      backend,
+      textureManager: new TestTextureManager(),
+      cacheFrames: 4,
+      lookahead: 0,
+    });
+    await source.load();
+
+    await source.prepare(10 / 30); // idx 10, forward (first prepare) → single decode
+    expect(backend.decodeCalls).toEqual([10 / 30]);
+    expect(backend.rangeCalls).toHaveLength(0);
+
+    await source.prepare(9 / 30); // idx 9, backward → range-decode [6..9] forward once
+    expect(backend.rangeCalls).toHaveLength(1);
+    const [from, to] = backend.rangeCalls[0]!;
+    expect(Math.round(from * 30)).toBe(6); // batch = cacheFrames(4) → lo = 9-3
+    expect(to * 30).toBeCloseTo(9.5); // half a frame past idx (inclusive of 9)
+
+    // Frames 6..9 are now cached: getTextureAt hits, and stepping back to any of
+    // them triggers NO further decode.
+    for (const i of [9, 8, 7, 6]) expect(source.getTextureAt(i / 30)).not.toBeNull();
+    await source.prepare(8 / 30);
+    await source.prepare(7 / 30);
+    await source.prepare(6 / 30);
+    expect(backend.rangeCalls).toHaveLength(1); // still one batch — all cache hits
+    expect(backend.decodeCalls).toHaveLength(1); // never fell back to per-frame decode
+
+    // Dropping below the batch decodes the NEXT window forward, once.
+    await source.prepare(5 / 30); // idx 5 → range [2..5]
+    expect(backend.rangeCalls).toHaveLength(2);
+    expect(Math.round(backend.rangeCalls[1]![0] * 30)).toBe(2);
+
+    // Each frame decoded at most once across the whole reverse run (no O(GOP²)).
+    const counts = new Map<number, number>();
+    for (const i of backend.decodedIndices) counts.set(i, (counts.get(i) ?? 0) + 1);
+    expect([...counts.values()].every((c) => c === 1)).toBe(true);
+    expect(source.cachedFrameCount).toBeLessThanOrEqual(4); // batch bounded by budget
   });
 
   it('does not re-decode a frame already cached or in flight', async () => {

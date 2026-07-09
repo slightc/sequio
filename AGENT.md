@@ -267,6 +267,7 @@ pnpm verify:gsap    # Puppeteer e2e: clips driven by a real (paused, seeked) GSA
 pnpm verify:font    # Puppeteer e2e: custom/Google web-font renders in a TextClip
 pnpm verify:audio   # Puppeteer e2e: AudioEngine offline mix + AudioSource decode
 pnpm verify:reverse # Puppeteer e2e: 倒放 — reversed offline audio mix == forward flipped + reversed source-time map
+pnpm verify:reverse-decode # Puppeteer e2e: 倒放解码 — backward playback serves a forward-decoded GOP batch (marker order mirrors forward, one prepare fills a window)
 pnpm verify:effects # Puppeteer e2e: color/blur effect on a clip + crossfade blend
 pnpm verify:export  # Puppeteer e2e: Exporter → MP4/WebM, decoded back and checked
 pnpm verify:editor-export # Puppeteer e2e: editor's forked export (video+text+shape) → decoded back

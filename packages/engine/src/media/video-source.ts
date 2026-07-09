@@ -64,6 +64,8 @@ export class VideoSource extends VisualSource {
   private currentIdx = 0;
   /** How far a queued decode may fall behind the playhead before it's dropped. */
   private dropHorizon: number;
+  /** In-flight reverse batch decode, so a fast reverse scrub coalesces onto it. */
+  private reverseInFlight: Promise<void> | null = null;
 
   constructor(private readonly options: VideoSourceOptions) {
     super();
@@ -149,6 +151,15 @@ export class VideoSource extends VisualSource {
     this.lastSec = sourceTime;
     this.currentIdx = idx; // move the playhead so stale queued decodes shed themselves
 
+    // Reverse playback (倒放): decoding backward one frame at a time re-seeks to
+    // the GOP keyframe and re-decodes the prefix EVERY frame (O(GOP²), the source
+    // of the "倒放解码很慢" stutter). If the backend can range-decode, fill a whole
+    // cache batch by decoding a window FORWARD once and serve it in reverse.
+    if (dir < 0 && this.backend.decodeRange) {
+      await this.ensureReverseWindow(idx);
+      return;
+    }
+
     await this.ensure(idx, sourceTime);
 
     // Directional lookahead: fire-and-forget so preview never blocks on it.
@@ -156,6 +167,46 @@ export class VideoSource extends VisualSource {
       const j = idx + dir * i;
       if (j < 0) continue;
       void this.ensure(j, j / this.fps);
+    }
+  }
+
+  /**
+   * Ensure frame `idx` is cached for reverse playback. When it's missing we've
+   * dropped below the last decoded batch, so decode `[idx-batch+1 .. idx]`
+   * FORWARD in one sweep (each frame decoded once) and cache the lot; the next
+   * `batch-1` backward steps are then cache hits — the O(GOP²)→O(GOP) win.
+   * Concurrent callers (a fast reverse scrub) coalesce onto the running batch.
+   */
+  private async ensureReverseWindow(idx: number): Promise<void> {
+    if (this.cache.has(idx)) return;
+    if (this.reverseInFlight) {
+      await this.reverseInFlight;
+      return this.ensureReverseWindow(idx); // re-check for THIS idx post-batch
+    }
+    const p = this.decodeReverseBatch(idx).finally(() => {
+      this.reverseInFlight = null;
+    });
+    this.reverseInFlight = p;
+    return p;
+  }
+
+  /** Decode a forward window ending at `idx` into the cache (reverse batch fill). */
+  private async decodeReverseBatch(idx: number): Promise<void> {
+    const range = this.backend.decodeRange?.bind(this.backend);
+    if (!range) return this.ensure(idx, idx / this.fps); // no fast path → single frame
+    // Batch the whole cache budget: bigger batch → the per-GOP keyframe seek is
+    // amortised over more served frames. Bounded by the budget, so reverse holds
+    // no more decoder memory than forward (contract #4). Frames decoded here are
+    // fresher than any leftover, so an over-budget fill evicts the leftovers, not
+    // this batch (FrameCache is LRU-oldest-first).
+    const batch = Math.max(1, this.options.cacheFrames ?? 60);
+    const lo = Math.max(0, idx - batch + 1);
+    const fromSec = lo / this.fps;
+    const toSec = (idx + 0.5) / this.fps; // half a frame past idx (end is exclusive)
+    for await (const frame of range(fromSec, toSec)) {
+      const i = this.frameIndexAt(frame.timestamp);
+      if (this.cache.has(i)) frame.close();
+      else this.cache.put(i, frame);
     }
   }
 

@@ -28,6 +28,7 @@
     "verify:font": "pnpm -F @sequio/engine verify:font",
     "verify:audio": "pnpm -F @sequio/engine verify:audio",
     "verify:reverse": "pnpm -F @sequio/engine verify:reverse",
+    "verify:reverse-decode": "pnpm -F @sequio/engine verify:reverse-decode",
     "verify:effects": "pnpm -F @sequio/engine verify:effects",
     "verify:export": "pnpm -F @sequio/engine verify:export",
     "verify:origin": "pnpm -F @sequio/engine verify:origin",

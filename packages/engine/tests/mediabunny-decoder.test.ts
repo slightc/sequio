@@ -84,4 +84,58 @@ describe('MediabunnyVideoDecoder frame ownership', () => {
     frame?.close(); // eviction closes the OWNED frame, not the (already-closed) sample
     expect(ownedFrame.close).toHaveBeenCalledTimes(1);
   });
+
+  it('decodeRange sweeps a [from,to) window into owned frames (reverse fast path)', async () => {
+    // The 倒放 fast path: decode a whole window forward in one sweep so
+    // VideoSource can serve it backward. Each sample becomes an owned VideoFrame
+    // (same ownership as decode), and the range is forwarded to sink.samples.
+    const makeSample = (t: number) => {
+      const owned = { close: vi.fn() };
+      return { timestamp: t, toVideoFrame: () => owned, toCanvasImageSource: vi.fn(), close: vi.fn(), owned };
+    };
+    const samples = [makeSample(0), makeSample(1 / 30), makeSample(2 / 30)];
+
+    let sawArgs: unknown[] = [];
+    const track = {
+      displayWidth: 4,
+      displayHeight: 4,
+      computePacketStats: async () => ({ averagePacketRate: 30 }),
+    };
+    class FakeInput {
+      async getPrimaryVideoTrack() {
+        return track;
+      }
+      async getPrimaryAudioTrack() {
+        return null;
+      }
+      async computeDuration() {
+        return 1;
+      }
+    }
+    class FakeSink {
+      async *samples(from: number, to: number) {
+        sawArgs = [from, to];
+        for (const s of samples) yield s;
+      }
+    }
+    setMediabunnyModule({
+      Input: FakeInput,
+      VideoSampleSink: FakeSink,
+      ALL_FORMATS: [],
+      UrlSource: class {},
+      BufferSource: class {},
+      BlobSource: class {},
+    } as never);
+
+    const d = new MediabunnyVideoDecoder('x' as never);
+    await d.load();
+
+    const out = [];
+    for await (const f of d.decodeRange(0, 2.5 / 30)) out.push(f);
+
+    expect(sawArgs).toEqual([0, 2.5 / 30]); // window forwarded to sink.samples
+    expect(out).toHaveLength(3);
+    expect(out.map((f) => f.image)).toEqual(samples.map((s) => s.owned)); // owned frames
+    for (const s of samples) expect(s.close).toHaveBeenCalledTimes(1); // sample released
+  });
 });
