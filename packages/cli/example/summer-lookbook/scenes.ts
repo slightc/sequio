@@ -28,9 +28,8 @@ import {
   PHOTOS,
   S_DUO,
   S_ELEGANT,
-  S_HERO,
-  S_INTRO,
   S_NAIL,
+  S_OPEN,
   S_OUTRO,
   S_STYLES,
   SAND,
@@ -45,7 +44,7 @@ import {
   WHITE,
   imgUrl,
 } from './theme';
-import { arcText, bareImage, enter, framedPhoto, globe, loadImage, rect, text, win } from './kit';
+import { arcText, bareImage, enter, flowIn, framedPhoto, globe, loadImage, rect, slashReveal, text, win } from './kit';
 
 /** Letter-spaced wordmark — `TextClip` can't track type, so we space the glyphs. */
 const BRAND = 'B R A N D N A M E';
@@ -60,7 +59,6 @@ async function loadAll(): Promise<Record<string, Img>> {
   const reqs: Array<[string, string, number, number]> = [
     ['silkWarm', SILK_WARM, W, H],
     ['silkSoft', SILK_SOFT, W, H],
-    ['slash', PHOTOS.rocks, 300, 1180],
     ['hero', PHOTOS.stairs, 540, 780],
     ['stylesTop', PHOTOS.cream, 430, 300],
     ['stylesBot', PHOTOS.scarf, 430, 300],
@@ -99,8 +97,7 @@ export async function buildLookbook(bg: VisualTrack, content: VisualTrack, overl
   win(silk2, S_OUTRO.start - 0.2, S_OUTRO.end);
   bg.add(silk2);
 
-  intro(content, overlay, P);
-  hero(content, overlay, P);
+  opening(content, overlay, P);
   styles(content, overlay, P);
   elegant(content, overlay, P);
   nail(content, overlay, P);
@@ -108,70 +105,36 @@ export async function buildLookbook(bg: VisualTrack, content: VisualTrack, overl
   outro(overlay);
 }
 
-// ── 1. INTRO ────────────────────────────────────────────────────────────────
-function intro(content: VisualTrack, overlay: VisualTrack, P: Record<string, Img>): void {
-  const { start, end } = S_INTRO;
+// ── 1. OPENING (slash reveal → held hero + flowing titles) ────────────────────
+function opening(content: VisualTrack, overlay: VisualTrack, P: Record<string, Img>): void {
+  const { start, end } = S_OPEN;
 
-  // Diagonal photo band: a rotated strip whose height grows from the centre —
-  // reads as a slash opening across the silk.
-  const slash = bareImage(P.slash.source, P.slash.meta, 300);
-  const s = 300 / P.slash.meta.width;
-  slash.transform.position.setStatic([CX, H / 2]);
-  slash.transform.rotation.setStatic(-0.36);
-  slash.transform.scale.setKeyframes([
-    { time: start, value: [s, 0] },
-    { time: start + 0.9, value: [s, s], easing: easeOutCubic },
-  ]);
-  slash.opacity.setKeyframes([
-    { time: start, value: 0 },
-    { time: start + 0.4, value: 1 },
-  ]);
-  win(slash, start, end);
-  content.add(slash);
-
-  const y2023 = text('2023', SERIF, 30, INK);
-  win(y2023, start, end);
-  enter(y2023, CX, 72, { at: start + 0.15, rise: 14 });
-  overlay.add(y2023);
-
-  const coll = text('Collection', SCRIPT, 66, WHITE);
-  win(coll, start, end);
-  enter(coll, 520, 156, { at: start + 0.4, from: 70 });
-  overlay.add(coll);
-
-  const brand = text(BRAND, SERIF, 34, TERRA);
-  win(brand, start, end);
-  enter(brand, CX, 1188, { at: start + 0.6, rise: 16 });
-  overlay.add(brand);
-}
-
-// ── 2. HERO ─────────────────────────────────────────────────────────────────
-function hero(content: VisualTrack, overlay: VisualTrack, P: Record<string, Img>): void {
-  const { start, end } = S_HERO;
-
+  // The hero portrait IS the intro: it wipes open from a diagonal slit, rotates
+  // upright, and holds through the whole opening beat.
   const photo = framedPhoto(P.hero.source, P.hero.meta, { boxW: 540, boxH: 780, border: 16 });
   win(photo, start, end);
-  enter(photo, CX, 700, { at: start + 0.05, pop: 0.94, dur: 0.7 });
+  slashReveal(photo, CX, 700, { at: start + 0.05, dur: 0.75 });
   content.add(photo);
 
   const y2023 = text('2023', SERIF, 30, INK);
   win(y2023, start, end);
-  enter(y2023, CX, 104, { at: start + 0.1, rise: 12 });
+  enter(y2023, CX, 104, { at: start + 0.45, rise: 12 });
   overlay.add(y2023);
 
+  // The two script titles flow in glyph-by-glyph, like handwriting.
   const summer = text('Summer', SCRIPT, 92, TERRA);
   win(summer, start, end);
-  enter(summer, 275, 166, { at: start + 0.25, from: -60 });
+  flowIn(summer, 275, 166, { at: start + 0.6, each: 0.05 });
   overlay.add(summer);
 
   const coll = text('Collection', SCRIPT, 92, WHITE);
   win(coll, start, end);
-  enter(coll, 452, 232, { at: start + 0.45, from: 60 });
+  flowIn(coll, 452, 232, { at: start + 0.95, each: 0.05 });
   overlay.add(coll);
 
   const brand = text(BRAND, SERIF, 40, INK);
   win(brand, start, end);
-  enter(brand, CX, 1206, { at: start + 0.6, rise: 16 });
+  enter(brand, CX, 1206, { at: start + 0.7, rise: 16 });
   overlay.add(brand);
 }
 
@@ -234,20 +197,21 @@ function elegant(content: VisualTrack, overlay: VisualTrack, P: Record<string, I
   enter(brand, CX, 132, { at: start + 0.1, rise: 14 });
   overlay.add(brand);
 
-  // "unique / but / elegant" — a handwritten stack, terracotta accent in the middle.
+  // "unique / but / elegant" — a handwritten stack that flows in per glyph,
+  // terracotta accent in the middle.
   const l1 = text('unique', HAND, 70, INK);
   win(l1, start, end);
-  enter(l1, 300, 1058, { at: start + 0.35, rise: 18 });
+  flowIn(l1, 300, 1058, { at: start + 0.35, each: 0.05 });
   overlay.add(l1);
 
   const l2 = text('but', HAND, 70, TERRA);
   win(l2, start, end);
-  enter(l2, 372, 1112, { at: start + 0.5, rise: 18 });
+  flowIn(l2, 372, 1112, { at: start + 0.6, each: 0.06 });
   overlay.add(l2);
 
   const l3 = text('elegant', HAND, 70, INK);
   win(l3, start, end);
-  enter(l3, 344, 1170, { at: start + 0.65, rise: 18 });
+  flowIn(l3, 344, 1170, { at: start + 0.8, each: 0.05 });
   overlay.add(l3);
 }
 

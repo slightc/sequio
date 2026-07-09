@@ -13,8 +13,10 @@ import {
   ImageSource,
   ShapeClip,
   type SourceMetadata,
+  StaggerTextAnimator,
   TextClip,
   type VisualClip,
+  easeOutCubic,
   gsapClipAnimator,
 } from '@sequio/engine';
 import gsap from 'gsap';
@@ -198,5 +200,55 @@ export function enter(
     }
     tl.set(o, from, 0);
     tl.to(o, to, inAt);
+  });
+}
+
+/**
+ * The opening reveal: a photo enters as a thin diagonal slit — rotated steeply
+ * and squeezed to nothing across its short axis — that rotates upright while it
+ * widens (and settles from a slight over-height), landing as the resting frame.
+ * Scaling the local x-axis reveals perpendicular to the tilt, so the band looks
+ * like it's being wiped open along the diagonal.
+ */
+export function slashReveal(
+  target: VisualClip,
+  x: number,
+  y: number,
+  opts: { at: number; dur?: number; angle?: number },
+): void {
+  const dur = opts.dur ?? 0.7;
+  const angle = opts.angle ?? -1.05;
+  const inAt = Math.max(0, opts.at - target.start);
+  target.transform.position.setStatic([x, y]);
+  target.opacity.setStatic(1);
+  target.animator = gsapClipAnimator(gsap, (tl, o) => {
+    tl.set(o, { scaleX: 0.03, scaleY: 1.25, rotation: angle, alpha: 0 }, 0);
+    tl.to(o, { alpha: 1, duration: dur * 0.35, ease: 'power1.out' }, inAt);
+    tl.to(o, { scaleX: 1, scaleY: 1, rotation: 0, duration: dur, ease: 'power3.out' }, inAt);
+  });
+}
+
+/**
+ * Make a `TextClip` "flow" in glyph-by-glyph — split it into characters and
+ * stagger each from a small left/low offset while fading up, so a cursive title
+ * reads as if it's being written left-to-right. Position is static; the per-part
+ * stagger does the reveal (so don't also drive the whole clip's opacity).
+ */
+export function flowIn(
+  clip: TextClip,
+  x: number,
+  y: number,
+  opts: { at: number; each?: number; dur?: number },
+): void {
+  clip.transform.position.setStatic([x, y]);
+  clip.opacity.setStatic(1);
+  clip.split = 'char';
+  clip.textAnimator = new StaggerTextAnimator({
+    from: { x: -16, y: 8, alpha: 0 },
+    duration: opts.dur ?? 0.5,
+    stagger: opts.each ?? 0.045,
+    delay: Math.max(0, opts.at - clip.start),
+    order: 'forward',
+    easing: easeOutCubic,
   });
 }

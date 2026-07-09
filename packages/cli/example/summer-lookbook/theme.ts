@@ -52,8 +52,9 @@ export interface Scene {
   start: number;
   end: number;
 }
-export const S_INTRO: Scene = { start: 0.0, end: 2.7 };
-export const S_HERO: Scene = { start: 2.7, end: 5.3 };
+// The opening is one continuous beat: the hero photo reveals as a diagonal
+// slit that rotates upright while the script titles flow in, then holds.
+export const S_OPEN: Scene = { start: 0.0, end: 5.3 };
 export const S_STYLES: Scene = { start: 5.3, end: 7.9 };
 export const S_ELEGANT: Scene = { start: 7.9, end: 10.4 };
 export const S_NAIL: Scene = { start: 10.4, end: 12.9 };
