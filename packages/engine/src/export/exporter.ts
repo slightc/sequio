@@ -1,8 +1,15 @@
 import type { AudioEngine } from '../audio/audio-engine';
 import type { Compositor } from '../compositor/compositor';
 import { fonts } from '../text/font-manager';
-import type { ExportSink, ResolvedExportOptions } from './export-sink';
+import type {
+  AudioExportFormat,
+  AudioExportSink,
+  ExportSink,
+  ResolvedAudioExportOptions,
+  ResolvedExportOptions,
+} from './export-sink';
 import { exportFrameTimes } from './frame-times';
+import { MediabunnyAudioExportSink } from './mediabunny-audio-export-sink';
 import { MediabunnyExportSink } from './mediabunny-export-sink';
 
 export interface ExportOptions {
@@ -35,6 +42,32 @@ export interface ExportFrameOptions {
   quality?: number;
 }
 
+/** Options for {@link Exporter.exportAudio} (audio-only export). */
+export interface AudioExportOptions {
+  /** Audio container format. @default 'm4a' */
+  format?: AudioExportFormat;
+  /**
+   * Audio codec (Mediabunny name). Defaults per format: `aac` (m4a), `mp3`
+   * (mp3), `pcm-s16` (wav), `opus` (ogg / webm).
+   */
+  codec?: string;
+  /** Target audio bitrate, bits/sec. Ignored for `wav` (PCM). @default 128_000 */
+  bitrate?: number;
+  /** Optional `[start, end]` range in seconds. Defaults to the whole timeline. */
+  range?: [number, number];
+  /** Sample rate of the offline mix. Defaults to the {@link AudioEngine}'s. */
+  sampleRate?: number;
+}
+
+/** Default codec per audio container (matches what each format reliably muxes). */
+const DEFAULT_AUDIO_CODEC: Record<AudioExportFormat, string> = {
+  m4a: 'aac',
+  mp3: 'mp3',
+  wav: 'pcm-s16',
+  ogg: 'opus',
+  webm: 'opus',
+};
+
 /** Thrown by {@link Exporter.export} when {@link Exporter.cancel} was called. */
 export class ExportCancelledError extends Error {
   constructor() {
@@ -53,6 +86,15 @@ function resolveOptions(o: ExportOptions): ResolvedExportOptions {
     withAudio: o.audio ?? true,
     audioCodec: o.audioCodec ?? (container === 'webm' ? 'opus' : 'aac'),
     audioBitrate: o.audioBitrate ?? 128_000,
+  };
+}
+
+function resolveAudioOptions(o: AudioExportOptions): ResolvedAudioExportOptions {
+  const format = o.format ?? 'm4a';
+  return {
+    format,
+    codec: o.codec ?? DEFAULT_AUDIO_CODEC[format],
+    bitrate: o.bitrate ?? 128_000,
   };
 }
 
@@ -124,6 +166,30 @@ export class Exporter {
     return this.encodeFrame(this.compositor.view, options);
   }
 
+  /**
+   * Render just the audio track — the {@link AudioEngine} offline mix — to an
+   * audio-only file (`.m4a` / `.mp3` / `.wav` / `.ogg` / `.webm`). No frames are
+   * rendered, so this needs no GPU and skips the fixed-step loop entirely; it's
+   * the audio sibling of {@link exportFrame} (a single still). The mix is the same
+   * `AudioEngine.renderOffline` the video {@link export} muxes, so the exported
+   * audio matches the movie's soundtrack (contract #3).
+   */
+  async exportAudio(options: AudioExportOptions = {}): Promise<Blob> {
+    const opts = resolveAudioOptions(options);
+    const [start, end] = options.range ?? [0, this.timelineDuration()];
+
+    const sink = this.createAudioSink(opts);
+    await sink.start();
+    try {
+      const buffer = await this.audio.renderOffline(Math.max(0, end - start), options.sampleRate);
+      await sink.addAudio(buffer);
+      return await sink.finalize();
+    } catch (err) {
+      await sink.cancel().catch(() => {});
+      throw err;
+    }
+  }
+
   cancel(): void {
     this.cancelled = true;
   }
@@ -149,6 +215,11 @@ export class Exporter {
   /** Seam: build the encode/mux sink (default = Mediabunny). Overridden in tests. */
   protected createSink(opts: ResolvedExportOptions): ExportSink {
     return new MediabunnyExportSink(this.compositor.view, opts);
+  }
+
+  /** Seam: build the audio-only encode/mux sink (default = Mediabunny). Overridden in tests. */
+  protected createAudioSink(opts: ResolvedAudioExportOptions): AudioExportSink {
+    return new MediabunnyAudioExportSink(opts);
   }
 
   /**

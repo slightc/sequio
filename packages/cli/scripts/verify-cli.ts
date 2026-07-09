@@ -1,10 +1,11 @@
 /**
  * End-to-end verification for the `sequio` CLI (run: `pnpm verify:cli`).
  *
- * Exercises all three commands against the bundled `example/` composition:
+ * Exercises all four commands against the bundled `example/` composition:
  *  1. `render` → drives the headless render and asserts a valid MP4/WebM came out;
  *  2. `frame`  → exports a single frame at a time and asserts a valid PNG came out;
- *  3. `preview` → boots the dev server, points Chrome-for-Testing at the page and
+ *  3. `audio`  → exports the audio-only mix and asserts a valid audio file came out;
+ *  4. `preview` → boots the dev server, points Chrome-for-Testing at the page and
  *     asserts the composition ran in-browser (`window.__PREVIEW_TEST__.ok`).
  *
  * Needs:
@@ -19,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { runRender } from '../src/render';
 import { runFrame } from '../src/frame';
+import { runAudio } from '../src/audio';
 import { startPreviewServer } from '../src/preview';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -56,6 +58,23 @@ async function verifyFrame(): Promise<void> {
   }
 }
 
+async function verifyAudio(): Promise<void> {
+  const dir = mkdtempSync(join(tmpdir(), 'sequio-verify-'));
+  const out = join(dir, 'out.m4a');
+  try {
+    const code = await runAudio(EXAMPLE, { out });
+    if (code !== 0) throw new Error(`audio exited ${code}`);
+    const buf = readFileSync(out);
+    // An audio-only MP4 (m4a) still carries an `ftyp` box at bytes 4..8.
+    if (buf.length < 200 || buf.subarray(4, 8).toString('latin1') !== 'ftyp') {
+      throw new Error(`audio output is not a valid m4a (${buf.length} bytes)`);
+    }
+    console.log(`✅ audio: wrote a valid m4a (${buf.length} bytes)`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function verifyPreview(): Promise<void> {
   const { default: puppeteer } = await import('puppeteer');
   const server = await startPreviewServer(EXAMPLE, { port: 6184 });
@@ -87,6 +106,8 @@ async function main(): Promise<void> {
   await verifyRender();
   console.log('▸ verify:cli — frame');
   await verifyFrame();
+  console.log('▸ verify:cli — audio');
+  await verifyAudio();
   console.log('▸ verify:cli — preview');
   await verifyPreview();
   console.log('\n✅ verify:cli passed.');

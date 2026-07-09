@@ -22,3 +22,8 @@ export {
   type RenderFrameNodeOptions,
   type RenderFrameNodeResult,
 } from './frame-node';
+export {
+  exportBundleAudioToFile,
+  type ExportBundleAudioNodeOptions,
+  type ExportBundleAudioNodeResult,
+} from './audio-node';

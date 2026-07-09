@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AudioEngine } from '../src/audio/audio-engine';
 import type { Compositor } from '../src/compositor/compositor';
-import type { ExportSink } from '../src/export/export-sink';
+import type { AudioExportSink, ExportSink, ResolvedAudioExportOptions } from '../src/export/export-sink';
 import { Exporter, ExportCancelledError } from '../src/export/exporter';
 import { exportFrameTimes } from '../src/export/frame-times';
 
@@ -53,10 +53,25 @@ function harness() {
     }),
   } as unknown as AudioEngine;
 
+  const audioOpts: ResolvedAudioExportOptions[] = [];
+  const audioSink: AudioExportSink = {
+    start: vi.fn(async () => void log.push('audio:start')),
+    addAudio: vi.fn(async () => void log.push('audio:addAudio')),
+    finalize: vi.fn(async () => {
+      log.push('audio:finalize');
+      return new Blob(['a'], { type: 'audio/mp4' });
+    }),
+    cancel: vi.fn(async () => void log.push('audio:cancel')),
+  };
+
   const encoded: Array<{ type?: string; quality?: number }> = [];
   class TestExporter extends Exporter {
     protected override createSink(): ExportSink {
       return sink;
+    }
+    protected override createAudioSink(opts: ResolvedAudioExportOptions): AudioExportSink {
+      audioOpts.push(opts);
+      return audioSink;
     }
     protected override waitForAssets(): Promise<void> {
       return Promise.resolve();
@@ -70,7 +85,7 @@ function harness() {
       return Promise.resolve(new Blob(['img'], { type: options.type ?? 'image/png' }));
     }
   }
-  return { log, sink, encoded, compositor, audio, exporter: new TestExporter(compositor, audio) };
+  return { log, sink, audioSink, audioOpts, encoded, compositor, audio, exporter: new TestExporter(compositor, audio) };
 }
 
 describe('Exporter loop', () => {
@@ -125,6 +140,51 @@ describe('Exporter loop', () => {
     expect(sink.addFrame).toHaveBeenCalledTimes(1); // stopped at the next iteration
     expect(sink.cancel).toHaveBeenCalledTimes(1);
     expect(log).not.toContain('finalize');
+  });
+});
+
+describe('Exporter.exportAudio', () => {
+  it('starts the audio sink → renders the offline mix → adds it → finalizes (no video)', async () => {
+    const { log, sink, exporter } = harness();
+    const blob = await exporter.exportAudio(); // default range = timeline [0, 0.1)
+    expect(log).toEqual(['audio:start', 'offline@0.100', 'audio:addAudio', 'audio:finalize']);
+    expect(sink.start).not.toHaveBeenCalled(); // the video sink is untouched
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('audio/mp4');
+  });
+
+  it('defaults to m4a/aac and passes resolved options to the sink', async () => {
+    const { audioOpts, exporter } = harness();
+    await exporter.exportAudio();
+    expect(audioOpts).toEqual([{ format: 'm4a', codec: 'aac', bitrate: 128_000 }]);
+  });
+
+  it('resolves the default codec from the chosen format (webm → opus)', async () => {
+    const { audioOpts, exporter } = harness();
+    await exporter.exportAudio({ format: 'webm' });
+    expect(audioOpts[0]).toEqual({ format: 'webm', codec: 'opus', bitrate: 128_000 });
+  });
+
+  it('honors an explicit codec, bitrate and range', async () => {
+    const { audioOpts, audio, exporter } = harness();
+    await exporter.exportAudio({ format: 'wav', codec: 'pcm-f32', bitrate: 320_000, range: [1, 1.5] });
+    expect(audioOpts[0]).toEqual({ format: 'wav', codec: 'pcm-f32', bitrate: 320_000 });
+    // Offline mix duration = end - start.
+    expect(audio.renderOffline).toHaveBeenCalledWith(0.5, undefined);
+  });
+
+  it('forwards an explicit sampleRate to the offline mix', async () => {
+    const { audio, exporter } = harness();
+    await exporter.exportAudio({ sampleRate: 44_100 });
+    expect(audio.renderOffline).toHaveBeenCalledWith(0.1, 44_100);
+  });
+
+  it('tears the sink down and rethrows when the mix fails (no finalize)', async () => {
+    const { log, audioSink, audio, exporter } = harness();
+    (audio.renderOffline as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('boom'));
+    await expect(exporter.exportAudio()).rejects.toThrow('boom');
+    expect(audioSink.cancel).toHaveBeenCalledTimes(1);
+    expect(log).not.toContain('audio:finalize');
   });
 });
 

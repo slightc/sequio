@@ -123,6 +123,52 @@ describe('parseArgs', () => {
     });
   });
 
+  describe('audio', () => {
+    it('bare file → defaults (out/format/bitrate undefined)', () => {
+      expect(parseArgs(['audio', 'a.ts'])).toEqual({
+        kind: 'audio',
+        file: 'a.ts',
+        out: undefined,
+        format: undefined,
+        bitrate: undefined,
+      });
+    });
+
+    it('--out / -o, --format / -f and --bitrate / -b (order-independent)', () => {
+      expect(parseArgs(['audio', '-f', 'mp3', '-o', 'song.mp3', '-b', '192000', 'a.ts'])).toEqual({
+        kind: 'audio',
+        file: 'a.ts',
+        out: 'song.mp3',
+        format: 'mp3',
+        bitrate: 192000,
+      });
+      expect(parseArgs(['audio', 'a.ts', '--format', 'wav'])).toMatchObject({ format: 'wav' });
+    });
+
+    it('invalid format → error', () => {
+      expect(parseArgs(['audio', 'a.ts', '--format', 'flac'])).toMatchObject({ kind: 'error' });
+    });
+
+    it('invalid bitrate → error', () => {
+      expect(parseArgs(['audio', 'a.ts', '--bitrate', '0'])).toMatchObject({ kind: 'error' });
+      expect(parseArgs(['audio', 'a.ts', '-b', 'abc'])).toMatchObject({ kind: 'error' });
+    });
+
+    it('missing file → error', () => {
+      expect(parseArgs(['audio', '-f', 'mp3'])).toMatchObject({ kind: 'error' });
+    });
+
+    it('--out / --format without a value → error', () => {
+      expect(parseArgs(['audio', 'a.ts', '--out'])).toMatchObject({ kind: 'error' });
+      expect(parseArgs(['audio', 'a.ts', '--format'])).toMatchObject({ kind: 'error' });
+    });
+
+    it('unknown option / extra positional → error', () => {
+      expect(parseArgs(['audio', 'a.ts', '--nope'])).toMatchObject({ kind: 'error' });
+      expect(parseArgs(['audio', 'a.ts', 'b.ts'])).toMatchObject({ kind: 'error' });
+    });
+  });
+
   describe('preview', () => {
     it('defaults', () => {
       expect(parseArgs(['preview', 'a.ts'])).toEqual({

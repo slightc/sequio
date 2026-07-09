@@ -27,3 +27,30 @@ export interface ResolvedExportOptions {
   audioCodec: string;
   audioBitrate: number;
 }
+
+/**
+ * The audio-only encode/mux seam. The sibling of {@link ExportSink} for
+ * {@link Exporter}'s `exportAudio` path: no video track, no per-frame loop —
+ * just the mixed {@link AudioBuffer} muxed into an audio container. The default
+ * sink (Mediabunny + WebCodecs) is browser-only, so tests inject a fake.
+ */
+export interface AudioExportSink {
+  /** Set up the encoder/muxer and declare the audio track. */
+  start(): Promise<void>;
+  /** Encode the full mixed audio buffer (played from t=0). */
+  addAudio(buffer: AudioBuffer): Promise<void>;
+  /** Flush the encoder, finish the container, and return the file. */
+  finalize(): Promise<Blob>;
+  /** Abort: tear down the encoder/muxer without producing a file. */
+  cancel(): Promise<void>;
+}
+
+/** Audio-only container formats {@link Exporter.exportAudio} can write. */
+export type AudioExportFormat = 'm4a' | 'mp3' | 'wav' | 'ogg' | 'webm';
+
+/** Fully-resolved audio-export settings (defaults applied) handed to the sink. */
+export interface ResolvedAudioExportOptions {
+  format: AudioExportFormat;
+  codec: string;
+  bitrate: number;
+}

@@ -6,6 +6,7 @@
 import { parseArgs, USAGE, type CliCommand } from './args';
 import { runRender } from './render';
 import { runFrame } from './frame';
+import { runAudio } from './audio';
 import { startPreviewServer } from './preview';
 import { version } from './version';
 
@@ -31,6 +32,9 @@ async function main(argv: string[]): Promise<number> {
 
     case 'frame':
       return runFrame(command.file, { out: command.out, time: command.time, scale: command.scale });
+
+    case 'audio':
+      return runAudio(command.file, { out: command.out, format: command.format, bitrate: command.bitrate });
 
     case 'preview': {
       const server = await startPreviewServer(command.file, {
