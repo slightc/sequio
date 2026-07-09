@@ -57,8 +57,7 @@ export function strokeText(
     text: str,
     fontFamily: family,
     fontSize: size,
-    fill: color,
-    fillAlpha: 0,
+    fill: 'rgba(0,0,0,0)', // transparent interior → only the stroke shows
     stroke: { color, width: strokeWidth },
   });
   c.transform.anchor.setStatic(anchor);

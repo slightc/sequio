@@ -70,13 +70,12 @@ export interface TextStyleLike {
   fontFamily?: string;
   fontSize?: number;
   fill?: number | string;
-  /** Outline stroke drawn around the glyphs (e.g. hollow / outlined text). */
-  stroke?: { color: number | string; width: number };
   /**
-   * Fill opacity `0..1` (default `1`). Set to `0` for **hollow** text: nothing
-   * inside the glyphs, only the {@link stroke} outline shows through.
+   * Outline stroke drawn around the glyphs. For **hollow / outlined** text pair
+   * it with a transparent `fill` (a color string carrying alpha 0, e.g.
+   * `'rgba(255,255,255,0)'` or `'#ffffff00'`), so only the outline shows.
    */
-  fillAlpha?: number;
+  stroke?: { color: number | string; width: number };
 }
 
 /**
@@ -109,8 +108,6 @@ export class TextClip extends VisualClip {
   fill: number | string;
   /** Outline stroke around the glyphs (hollow / outlined text); `null` = none. */
   stroke: { color: number | string; width: number } | null;
-  /** Fill opacity `0..1`; `0` = hollow (only the {@link stroke} shows). */
-  fillAlpha: number;
   /** Break the text into per-unit objects for motion effects (default `'none'`). */
   split: TextSplit = 'none';
   /** Per-part animator, sampled at local time when {@link split} != `'none'`. */
@@ -130,22 +127,16 @@ export class TextClip extends VisualClip {
     this.fontSize.setStatic(style.fontSize ?? 32);
     this.fill = style.fill ?? 0xffffff;
     this.stroke = style.stroke ?? null;
-    this.fillAlpha = style.fillAlpha ?? 1;
-  }
-
-  /** The resolved fill for Pixi — an `{ color, alpha }` object when hollow. */
-  private fillInput(): number | string | { color: number | string; alpha: number } {
-    return this.fillAlpha < 1 ? { color: this.fill, alpha: this.fillAlpha } : this.fill;
   }
 
   /** The Pixi text-style options at font size `size` (fill + optional stroke). */
   private styleOptions(size: number): {
     fontFamily: string;
     fontSize: number;
-    fill: number | string | { color: number | string; alpha: number };
+    fill: number | string;
     stroke?: { color: number | string; width: number };
   } {
-    const opts = { fontFamily: this.fontFamily, fontSize: size, fill: this.fillInput() };
+    const opts = { fontFamily: this.fontFamily, fontSize: size, fill: this.fill };
     return this.stroke ? { ...opts, stroke: this.stroke } : opts;
   }
 
@@ -180,11 +171,7 @@ export class TextClip extends VisualClip {
       if (this.textObj.text !== this.text) this.textObj.text = this.text;
       const size = this.fontSize.valueAt(t);
       if (this.textObj.style.fontSize !== size) this.textObj.style.fontSize = size;
-      // Plain fill fast-path; skip when hollow/stroked (fill is an object set at
-      // mount and static — reassigning the raw colour would drop the alpha/stroke).
-      if (this.fillAlpha >= 1 && !this.stroke && this.textObj.style.fill !== this.fill) {
-        this.textObj.style.fill = this.fill;
-      }
+      if (this.textObj.style.fill !== this.fill) this.textObj.style.fill = this.fill;
       this.applyCommon(this.textObj, t);
       return;
     }
