@@ -1,16 +1,18 @@
 /**
  * Puppeteer verification for the reverse-decode fast path (倒放解码优化).
  *
- * Real browser, real WebCodecs:
+ * Real browser, real WebCodecs. Drives the `clip.reversed` flag (倒放 is set on
+ * the CLIP) end-to-end through prepare→decode→render:
  *   1. record a video whose white marker sweeps left→right by frame index, so
  *      each frame is visually ordered,
- *   2. decode it FORWARD sampling the marker X (baseline: X increases with time),
- *   3. decode it BACKWARD through VideoSource and assert the marker X *decreases*
- *      as time decreases — i.e. reverse serves the correct frames in order,
- *   4. assert the fast path engaged: a single backward `prepare` fills a whole
- *      cache batch (many frames resident from one call) instead of one frame at a
- *      time — the O(GOP²)→O(GOP) fix. A naive per-frame reverse would leave only
- *      ~1 frame resident per prepare and re-decode the GOP every step.
+ *   2. `reversed = false`: play the timeline forward, marker X increases (baseline),
+ *   3. `reversed = true`: play the timeline STILL FORWARD — the compositor must
+ *      decode + render the source in reverse, so the marker X *decreases*. This
+ *      proves the flag on the clip flows through the decode path (not a manual
+ *      backward seek), which only works because prepare uses `clip.sourceTimeAt`,
+ *   4. assert the fast path engaged: one reversed step fills a whole cache batch
+ *      (many frames resident from one prepare) — the O(GOP²)→O(GOP) fix. A naive
+ *      per-frame reverse would leave ~1 frame resident and re-decode the GOP each step.
  *
  * Result on `window.__REVERSE_DECODE_TEST__`.
  */
@@ -125,28 +127,29 @@ async function run(): Promise<void> {
   const times: number[] = [];
   for (let t = 0.1; t < dur - 0.05; t += 0.1) times.push(t);
 
-  // ── Forward baseline: marker X increases with time. ─────────────────────────
-  const fwd: number[] = [];
-  for (const t of times) {
+  const sampleAt = async (t: number): Promise<number> => {
     await compositor.prepare(t);
     compositor.renderSync(t);
-    fwd.push(markerX(compositor.view));
-  }
+    return markerX(compositor.view);
+  };
+
+  // ── Forward: a normal clip, timeline advancing → marker X increases. ─────────
+  clip.reversed = false;
+  const fwd: number[] = [];
+  for (const t of times) fwd.push(await sampleAt(t));
   const fwdIncreasing = monotonic(fwd, +1);
 
-  // ── Reverse: step time downward; marker X must decrease (correct frame order).
-  // Also capture how many frames one backward prepare made resident (batch fill).
+  // ── Reversed: `clip.reversed = true`, timeline still advancing FORWARD. The
+  // compositor must decode (and render) the source in reverse — so as the
+  // timeline moves forward the marker X *decreases*. This exercises the flag on
+  // the CLIP through prepare→decode→render (not a manual backward seek). Also
+  // capture the batch fill: one step should make many frames resident.
+  clip.reversed = true;
   const rev: number[] = [];
   let batchResident = 0;
-  const revTimes = [...times].reverse();
-  for (let k = 0; k < revTimes.length; k++) {
-    const t = revTimes[k]!;
-    await compositor.prepare(t);
-    compositor.renderSync(t);
-    rev.push(markerX(compositor.view));
-    // The first backward prepare (k===1, once direction is established) should
-    // have filled a whole window, not a single frame.
-    if (k === 1) batchResident = source.cachedFrameCount;
+  for (let k = 0; k < times.length; k++) {
+    rev.push(await sampleAt(times[k]!));
+    if (k === 1) batchResident = source.cachedFrameCount; // one step filled a window
   }
   const revDecreasing = monotonic(rev, -1);
 

@@ -33,6 +33,17 @@ export abstract class Clip {
   }
 
   /**
+   * The source time this clip shows at timeline time `t`, honouring `speed` and
+   * {@link reversed}. This is the **single source of truth** for both the render
+   * path (`VideoClip.update` reads the frame here) and the decode-prep path (the
+   * Compositor pre-decodes the frame here) — so a reversed / sped clip decodes
+   * exactly the frame it will display. Public wrapper over {@link mapToSource}.
+   */
+  sourceTimeAt(t: number): number {
+    return this.mapToSource(t);
+  }
+
+  /**
    * Map a timeline time to the corresponding source time. Forward playback walks
    * the source window `[sourceIn, sourceIn + (end-start)·speed]` up from
    * `sourceIn`; {@link reversed} playback walks the SAME window down to `sourceIn`
@@ -190,9 +201,5 @@ export class AudioClip extends Clip {
   /** Fade durations in seconds. */
   fadeIn = 0;
   fadeOut = 0;
-
-  /** Resolve the source time for the audio engine to schedule. */
-  sourceTimeAt(t: number): number {
-    return this.mapToSource(t);
-  }
+  // Source-time mapping (incl. `reversed` / `speed`) is `Clip.sourceTimeAt`.
 }

@@ -745,6 +745,31 @@ describe('Compositor', () => {
     expect(source.prepared).toContain(1);
   });
 
+  it('prepares the source time the clip will SHOW: honours reversed and speed', async () => {
+    // Regression: prepare (decode) must use the clip's own source-time mapping,
+    // not a forward-only `localT - start + sourceIn`. Otherwise a 倒放 / sped clip
+    // decodes a different frame than it renders → permanent cache miss.
+    const c = makeCompositor();
+    const rev = new SpySource();
+    const revClip = new SourceClip(rev);
+    revClip.start = 0;
+    revClip.end = 5;
+    revClip.reversed = true; // at timeline 1 it SHOWS source (end - 1) = 4
+    const fast = new SpySource();
+    const fastClip = new SourceClip(fast);
+    fastClip.start = 0;
+    fastClip.end = 5;
+    fastClip.speed = 2; // at timeline 1 it SHOWS source 1 * 2 = 2
+    const track = new VisualTrack();
+    track.add(revClip);
+    track.add(fastClip);
+    c.addTrack(track);
+
+    await c.prepare(1);
+    expect(rev.prepared).toContain(4); // reversed → decode end - t, not t
+    expect(fast.prepared).toContain(2); // speed → decode t * speed
+  });
+
   it('pre-warms clips upcoming within prewarmSeconds (at their first frame)', async () => {
     const c = new Compositor({
       width: 320,

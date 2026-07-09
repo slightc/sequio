@@ -160,10 +160,16 @@ MSAA——于是带 Effect 的 Clip（如旋转的 `ColorEffect` 矩形）边缘
 - **预览的过渡观感（非崩溃）**：跨到新 clip 的那一刻，新 clip 的源可能**还没解码好**，
   预览是尽力而为（fire-and-forget prepare + 立即 renderSync，契约 #1），故切换后的头几帧
   可能 miss → 短暂空白。**导出** `await prepare` 等齐、帧级精确、无此现象。
+- **解码时间 = 渲染时间（单一真相 `Clip.sourceTimeAt`）**：`prepare`（解码预热）与
+  `VideoClip.update`（渲染取帧）**必须**取同一个源时间，否则会永久 miss。二者都走
+  `clip.sourceTimeAt(t)`（`mapToSource` 的公开封装），故 `speed`/`reversed`（倒放）只在 clip 上
+  设一次就同时作用于两端——**不要**在 compositor 里另算 `localT - start + sourceIn`（那是只认正放、
+  丢掉 speed/reversed 的老写法，会让倒放/变速 clip 解错帧）。
 - **跨 clip 预热**：`prepare(t)` 除了预解码当前活跃 clip 的源，还会预解码**在
-  `t + prewarmSeconds` 内即将变活跃**的 clip 的**首帧**（`prepare(sourceIn)`），使切换首帧
-  在预览里也命中缓存。窗口 `Compositor.prewarmSeconds` 可配（默认 0.5s，`0` 关闭）、可运行时
-  调整；对 `GroupClip` 递归生效（活跃组按局部时间、即将上场的组按其起点 0 递归）。
+  `t + prewarmSeconds` 内即将变活跃**的 clip 的**首帧**（`prepare(clip.sourceTimeAt(clip.start))`
+  ——正放即 `sourceIn`、倒放即窗口末端），使切换首帧在预览里也命中缓存。窗口
+  `Compositor.prewarmSeconds` 可配（默认 0.5s，`0` 关闭）、可运行时调整；对 `GroupClip` 递归生效
+  （活跃组按局部时间、即将上场的组按其起点 0 递归）。
 - **边界值实践**：让 `clip2.start === clip1.end`（共用同一数值，别分别算）以免浮点 sub-epsilon
   的缝/叠；边界尽量用 `Timebase.toSeconds(frame)` 对齐到帧。
 
