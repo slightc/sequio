@@ -1,18 +1,51 @@
 {
   "name": "@sequio/cli",
-  "version": "0.0.0",
-  "description": "The sequio command-line: `sequio render <file>` encodes a composition to video (headless Chrome), `sequio preview <file>` serves a live in-browser preview (with --watch).",
+  "version": "0.1.0",
+  "description": "The sequio command-line: `sequio render <file>` encodes a composition to video (pure Node, PixiJS WebGPU), `sequio frame <file>` writes a single-frame PNG, and `sequio preview <file>` serves a live in-browser preview (with --watch).",
   "type": "module",
   "license": "MIT",
+  "author": "slightc",
+  "homepage": "https://sequio-demo.vercel.app/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slightc/sequio.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/slightc/sequio/issues"
+  },
   "bin": {
     "sequio": "./bin/sequio.js"
   },
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./externals": {
+      "types": "./dist/externals.d.ts",
+      "import": "./dist/externals.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bin",
+    "preview",
+    "!dist/**/*.map"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
+    "build": "vite build",
+    "prepublishOnly": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -26,9 +59,10 @@
     "pixijs"
   ],
   "dependencies": {
-    "@sequio/engine": "workspace:*",
-    "@sequio/runtime": "workspace:*",
-    "@sequio/server": "workspace:*",
-    "gsap": "^3.12.0"
+    "@sequio/engine": "workspace:^",
+    "@sequio/runtime": "workspace:^",
+    "@sequio/server": "workspace:^",
+    "gsap": "^3.12.0",
+    "vite": "^6.0.0"
   }
 }

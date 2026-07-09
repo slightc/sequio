@@ -1,0 +1,79 @@
+name: Release packages
+
+# Publish the non-engine publishable packages to npm:
+#   @sequio/runtime, @sequio/server, @sequio/cli, @sequio/skill
+#
+# (@sequio/engine has its own tag-driven workflow — see release.yml.)
+#
+# Runs manually (workflow_dispatch):
+#   • dry_run: true  → build + pack every package, publish nothing (default).
+#   • dry_run: false → build and `pnpm publish` each at the version currently in
+#     its package.json. Publishing is in dependency order (runtime → server →
+#     cli) so a package's `@sequio/*` deps already exist on npm; a package whose
+#     version is already published is skipped instead of failing the run.
+#
+# Requires a repository secret `NPM_TOKEN` — an npm automation token with publish
+# rights to the `@sequio` scope.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build + pack only (do not publish to npm)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build the three library packages (skill is docs-only, no build). The
+      # engine is a dependency of all three, so build it first. `--filter` runs
+      # these in topological order.
+      - name: Build packages
+        run: pnpm --filter @sequio/engine --filter @sequio/runtime --filter @sequio/server --filter @sequio/cli build
+
+      - name: Pack (dry run)
+        run: |
+          for pkg in @sequio/runtime @sequio/server @sequio/cli @sequio/skill; do
+            echo "::group::pack $pkg"
+            pnpm -F "$pkg" pack
+            echo "::endgroup::"
+          done
+
+      - name: Publish to npm
+        if: github.event.inputs.dry_run == 'false'
+        # Publish in dependency order. Skip any package whose exact version is
+        # already on npm so re-runs (e.g. after bumping only one package) don't
+        # fail the whole job.
+        # Provenance is intentionally not enabled: npm only accepts provenance
+        # from public source repositories, and this repo is private.
+        run: |
+          set -e
+          for pkg in @sequio/runtime @sequio/server @sequio/cli @sequio/skill; do
+            name=$(pnpm -F "$pkg" exec node -p "require('./package.json').name")
+            version=$(pnpm -F "$pkg" exec node -p "require('./package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "→ $name@$version already published, skipping"
+              continue
+            fi
+            echo "→ publishing $name@$version"
+            pnpm -F "$pkg" publish --no-git-checks --access public
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -215,6 +215,18 @@ tests assert the frontmatter is well-formed and no link dangles. See its
 - **Times are seconds at the API boundary**, quantized to frames internally via
   `Timebase`. Never thread raw float seconds through without quantizing.
 - Pure-logic modules (time, animation, caches) must have unit tests.
+- **Publishing.** `engine`, `runtime`, `server` and `cli` each build to `dist/`
+  (Vite lib + `vite-plugin-dts`) and publish to npm; `skill` is docs-only (ships
+  its markdown via `files`). Dev/test/typecheck still resolve `@sequio/*`
+  **straight from source** via the tsconfig `paths` + Vite aliases, so the
+  `dist`-pointing `exports` never affect in-repo work and no prior build is
+  needed. Cross-package deps use the `workspace:^` protocol (rewritten to a
+  concrete range by `pnpm publish`). Route B's Node-native bindings
+  (`@napi-rs/canvas`, `webgpu`, `jsdom`, …) are `optionalDependencies` of
+  `server` so `npm i @sequio/server` never fails on an unsupported platform.
+  Route A (headless Chrome) is a repo-internal verify harness — not published.
+  `engine` is released by `.github/workflows/release.yml`; the other four by
+  `.github/workflows/release-packages.yml`.
 
 ## Commands
 
@@ -228,6 +240,7 @@ pnpm test           # run vitest once across every package (pnpm -r test)
 pnpm test:watch     # engine watch mode
 pnpm typecheck      # tsc --noEmit across every package (pnpm -r typecheck)
 pnpm build          # build the engine library (ESM + CJS + d.ts)
+pnpm build:packages # build every publishable package (engine + runtime + server + cli) → dist/
 pnpm dev            # studio: vite dev server for the editor + Code Mode (dev:engine / dev:server / dev:runtime for the others)
 pnpm sequio render <file> [--out out.mp4] [--scale 2] [--verify]   # CLI: encode a composition to video (pure Node WebGPU; needs a GPU or Mesa lavapipe)
 pnpm sequio frame <file> [--time 2] [--out frame.png] [--scale 2]  # CLI: export a single frame at a time as a PNG (quick visual check; same Route B render core)
