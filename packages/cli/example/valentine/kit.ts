@@ -18,10 +18,19 @@ import {
   TextClip,
   type TextPart,
   type TextStyleLike,
-  easeInOutCubic,
+  cubicBezier,
   easeOutCubic,
 } from '@sequio/engine';
 import { CRIMSON, DISPLAY } from './theme';
+
+/**
+ * A soft "expo-out" curve (CSS `cubic-bezier(0.16, 1, 0.3, 1)`): quick to move,
+ * long gentle settle. Used for every entrance so nothing snaps into place —
+ * this is what keeps the motion from feeling stiff.
+ */
+export const SMOOTH: Easing = cubicBezier(0.16, 1, 0.3, 1);
+/** A tiny overshoot-and-settle, for pop-in accents. */
+export const SETTLE: Easing = cubicBezier(0.34, 1.56, 0.64, 1);
 
 /**
  * Active window for a builder's *inner* children (dots, echo copies, the masked
@@ -128,6 +137,8 @@ export function echoStack(
     /** `TextStyleLike.stroke` → hollow/outlined copies (e.g. SUPER). */
     stroke?: TextStyleLike['stroke'];
     family?: string;
+    /** Staggered cascade-in: each copy slides from `from` + fades, offset in time. */
+    enter?: { from?: [number, number]; delay?: number; stagger?: number; duration?: number };
   },
 ): GroupClip {
   const falloff = o.falloff ?? 0.62;
@@ -135,7 +146,9 @@ export function echoStack(
   const g = new GroupClip();
   g.transform.anchor.setStatic([0, 0]);
   g.transform.position.setStatic([o.x, o.y]);
+  const e = o.enter;
   for (let i = 0; i < o.count; i++) {
+    const target = Math.pow(falloff, i);
     const t = label(text, {
       x: 0,
       y: i * o.lineGap,
@@ -148,7 +161,22 @@ export function echoStack(
       fontFamily: o.family ?? DISPLAY,
       anchor,
     });
-    t.opacity.setStatic(Math.pow(falloff, i));
+    if (e) {
+      // Each copy cascades in a beat after the one before → a rolling reveal.
+      const t0 = (e.delay ?? 0) + i * (e.stagger ?? 0.08);
+      const dur = e.duration ?? 0.6;
+      const [dx, dy] = e.from ?? [0, 40];
+      t.opacity.setKeyframes([
+        { time: t0, value: 0 },
+        { time: t0 + dur, value: target, easing: SMOOTH },
+      ]);
+      t.transform.position.setKeyframes([
+        { time: t0, value: [dx, i * o.lineGap + dy] },
+        { time: t0 + dur, value: [0, i * o.lineGap], easing: SMOOTH },
+      ]);
+    } else {
+      t.opacity.setStatic(target);
+    }
     g.add(span(t));
   }
   return g;
@@ -260,11 +288,16 @@ export function arcLabel(
 
 // ── Entrance animation helpers ───────────────────────────────────────────────
 
-/** Keyframe a clip's opacity 0→1 over `[at, at+dur]` (local seconds). */
-export function fadeIn(clip: { opacity: { setKeyframes: (k: unknown[]) => void } }, at: number, dur = 0.4): void {
+/** Keyframe a clip's opacity 0→`to` over `[at, at+dur]` (local seconds). */
+export function fadeIn(
+  clip: { opacity: { setKeyframes: (k: unknown[]) => void } },
+  at: number,
+  dur = 0.5,
+  to = 1,
+): void {
   clip.opacity.setKeyframes([
     { time: at, value: 0 },
-    { time: at + dur, value: 1, easing: easeOutCubic },
+    { time: at + dur, value: to, easing: SMOOTH },
   ]);
 }
 
@@ -273,12 +306,29 @@ export function slideIn(
   clip: { transform: { position: { valueAt: (t: number) => [number, number]; setKeyframes: (k: unknown[]) => void } } },
   from: [number, number],
   at: number,
-  dur = 0.5,
-  easing: Easing = easeInOutCubic,
+  dur = 0.7,
+  easing: Easing = SMOOTH,
 ): void {
   const to = clip.transform.position.valueAt(0);
   clip.transform.position.setKeyframes([
     { time: at, value: [to[0] + from[0], to[1] + from[1]] },
     { time: at + dur, value: to, easing },
+  ]);
+}
+
+/**
+ * A slow Ken-Burns push on a clip: scale from `fromScale` to `toScale` across
+ * `[0, dur]`, so a still photo keeps drifting instead of sitting dead. Pivots on
+ * the clip's current anchor.
+ */
+export function kenBurns(
+  clip: { transform: { scale: { setKeyframes: (k: unknown[]) => void } } },
+  dur: number,
+  fromScale = 1.08,
+  toScale = 1,
+): void {
+  clip.transform.scale.setKeyframes([
+    { time: 0, value: [fromScale, fromScale] },
+    { time: dur, value: [toScale, toScale], easing: SMOOTH },
   ]);
 }
