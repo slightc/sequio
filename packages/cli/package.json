@@ -1,6 +1,6 @@
 {
   "name": "@sequio/cli",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "The sequio command-line: `sequio render <file>` encodes a composition to video (pure Node, PixiJS WebGPU), `sequio frame <file>` writes a single-frame PNG, and `sequio preview <file>` serves a live in-browser preview (with --watch).",
   "type": "module",
   "license": "MIT",

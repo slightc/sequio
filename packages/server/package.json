@@ -1,6 +1,6 @@
 {
   "name": "@sequio/server",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Server-side rendering for sequio: a serializable TimelineSpec protocol plus Route B — pure Node, PixiJS WebGPU. (Route A, headless Chrome, is a repo-internal harness and not part of the published package.)",
   "type": "module",
   "license": "MIT",

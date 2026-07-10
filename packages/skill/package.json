@@ -1,6 +1,6 @@
 {
   "name": "@sequio/skill",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "An installable AI Agent Skill (SKILL.md) + llms.txt that teach an AI assistant how to use sequio — build a Track/Clip/Effect object graph, preview, and export/render video.",
   "type": "module",
   "license": "MIT",
