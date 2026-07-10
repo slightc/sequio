@@ -60,6 +60,15 @@ export interface FrameCommand {
   scale: number;
 }
 
+/** `sequio check <file> [--json]`. */
+export interface CheckCommand {
+  kind: 'check';
+  /** Path to the entry composition file. */
+  file: string;
+  /** Emit machine-readable `Diagnostic[]` JSON instead of human-readable lines. */
+  json: boolean;
+}
+
 /** Show usage / version / a parse error and exit. */
 export interface MetaCommand {
   kind: 'help' | 'version' | 'error';
@@ -67,17 +76,27 @@ export interface MetaCommand {
   message?: string;
 }
 
-export type CliCommand = RenderCommand | PreviewCommand | FrameCommand | AudioCommand | MetaCommand;
+export type CliCommand =
+  | RenderCommand
+  | PreviewCommand
+  | FrameCommand
+  | AudioCommand
+  | CheckCommand
+  | MetaCommand;
 
 export const DEFAULT_PREVIEW_PORT = 6180;
 
 export const USAGE = `sequio — programmable-timeline CLI
 
 Usage:
+  sequio check <file> [options]      Statically validate a composition (no GPU, offline)
   sequio render <file> [options]     Encode a composition to a video file
   sequio frame <file> [options]      Export a single frame at a time as a PNG
   sequio audio <file> [options]      Export just the audio track to an audio file
   sequio preview <file> [options]    Serve a live in-browser preview
+
+Check options (no GPU, no network — the fast pre-flight before frame/render):
+      --json           Emit machine-readable Diagnostic[] JSON
 
 Render options (pure Node, PixiJS WebGPU — needs a GPU or Mesa lavapipe):
   -o, --out <path>     Output path (default: out.mp4)
@@ -119,12 +138,30 @@ export function parseArgs(argv: string[]): CliCommand {
   if (first === '-h' || first === '--help') return { kind: 'help' };
   if (first === '-v' || first === '--version') return { kind: 'version' };
 
+  if (first === 'check') return parseCheck(argv.slice(1));
   if (first === 'render') return parseRender(argv.slice(1));
   if (first === 'frame') return parseFrame(argv.slice(1));
   if (first === 'audio') return parseAudio(argv.slice(1));
   if (first === 'preview') return parsePreview(argv.slice(1));
 
   return { kind: 'error', message: `Unknown command: ${first}` };
+}
+
+function parseCheck(rest: string[]): CliCommand {
+  let file: string | undefined;
+  let json = false;
+
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '-h' || a === '--help') return { kind: 'help' };
+    else if (a === '--json') json = true;
+    else if (a.startsWith('-')) return { kind: 'error', message: `Unknown option: ${a}` };
+    else if (file === undefined) file = a;
+    else return { kind: 'error', message: `Unexpected argument: ${a}` };
+  }
+
+  if (file === undefined) return { kind: 'error', message: 'check needs a <file>' };
+  return { kind: 'check', file, json };
 }
 
 function parseRender(rest: string[]): CliCommand {

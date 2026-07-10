@@ -30,7 +30,7 @@ Pick the package that matches the task before writing code:
 |---|---|---|
 | Drive an object graph in an app you control | **engine** directly | `@sequio/engine` |
 | Author a self-contained composition file that previews **and** renders | **runtime** authoring API | `@sequio/engine` + `@sequio/runtime` |
-| Turn a composition file into an `.mp4`, a single-frame PNG, or a live preview from a terminal | **cli** | `sequio render` / `sequio frame` / `sequio preview` |
+| Turn a composition file into an `.mp4`, a single-frame PNG, or a live preview from a terminal | **cli** | `sequio check` / `sequio render` / `sequio frame` / `sequio preview` |
 | Render a composition to a file on a server (no browser) | **server** Route B | `@sequio/server/route-b` |
 
 For most "make me a video from code" tasks, author a **composition file** (runtime
@@ -100,6 +100,7 @@ export default defineComposition(async () => {
 Then, from the workspace root:
 
 ```bash
+sequio check   composition.ts                            # static validation — no GPU, offline (the pre-flight lint)
 sequio preview composition.ts --watch                    # live in-browser preview, reloads on edit
 sequio frame   composition.ts --time 2 --out shot.png     # export ONE frame at t=2s as a PNG (fast visual check)
 sequio audio   composition.ts --out track.mp3            # export ONLY the audio mix (mp3 default; also m4a/wav/ogg/webm)
@@ -112,22 +113,40 @@ sequio render  composition.ts --out out.mp4 --scale 2    # 2× resolution (sharp
 `export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`). Without one they
 throw a clear error.
 
-### Check your work fast: export a single frame
+### Verify loop: `check` → `frame` → `render`
 
-When iterating on a composition **without** a live browser (e.g. you're an agent
-editing code), don't render the whole video to see if it's right — export one
-frame and look at it:
+Tighten the loop from coarsest-and-cheapest to full render. As an agent editing
+code, run them in this order:
 
 ```bash
-sequio frame composition.ts --time 2.5 --out /tmp/check.png    # then open/view the PNG
+sequio check composition.ts                                   # 1. offline lint — no GPU, no browser, fast
+sequio frame composition.ts --time 2.5 --out /tmp/check.png    # 2. render ONE frame, then open/view the PNG
+sequio render composition.ts --out out.mp4                     # 3. encode the whole video
 ```
 
-`frame` runs the **same render core** as `render` (contract #3), so the PNG is
-exactly what the video would contain at that instant — the fast way to confirm
-layout, position, and color before committing to a full render. `--time` is
-clamped to `[0, duration]`; `--scale N` renders at N× like `render`. This is the
-recommended verify loop: edit → `sequio frame` at a few representative times →
-eyeball → then `sequio render` once it looks right.
+**1. `check` — does the code build a legal object graph?** It compiles + links +
+runs the builder with a **null renderer** (no WebGPU) and walks the graph for the
+mistakes that are cheap to catch offline: illegal clip times (`end ≤ start`), a
+keyframe outside its clip's interval (dead keyframe), a `TextClip.fontFamily` no
+`fonts.load(...)` registered (silent system-font fallback — breaks
+preview↔render), a transition whose two clips don't overlap, an `anchor` outside
+`0..1`, a missing local `loadAsset` file. Exits non-zero on any error;
+`--json` emits a machine-readable `Diagnostic[]`. A green `check` doesn't prove
+the picture is right — but a **red `check` means don't bother rendering yet**.
+It's GPU-free and offline, so run it after every edit.
+
+**2. `frame` — does the frame *look* right?** `frame` runs the **same render
+core** as `render` (contract #3), so the PNG is exactly what the video would
+contain at that instant — the way to confirm layout, position, and color.
+`--time` is clamped to `[0, duration]`; `--scale N` renders at N× like `render`.
+
+**3. `render`** once `check` is green and a couple of `frame`s look right.
+
+> `check` deliberately does **not** decode media, hit the network, or compile
+> shaders — those need a browser/GPU and are what `frame`/`render` are for. A
+> composition that fetches a remote image or decodes video *in its builder* gets
+> a `B4` **warning** from `check` (the code compiled fine; verify the picture
+> with `frame`), not a failure.
 
 ## Core building blocks
 

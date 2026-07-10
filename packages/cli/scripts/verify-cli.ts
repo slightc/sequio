@@ -1,11 +1,13 @@
 /**
  * End-to-end verification for the `sequio` CLI (run: `pnpm verify:cli`).
  *
- * Exercises all four commands against the bundled `example/` composition:
- *  1. `render` → drives the headless render and asserts a valid MP4/WebM came out;
- *  2. `frame`  → exports a single frame at a time and asserts a valid PNG came out;
- *  3. `audio`  → exports the audio-only mix and asserts a valid audio file came out;
- *  4. `preview` → boots the dev server, points Chrome-for-Testing at the page and
+ * Exercises all five commands against the bundled `example/` composition:
+ *  1. `check`  → statically validates the composition offline (no GPU) — asserts
+ *     the example passes and a deliberately-broken one fails with a non-zero exit;
+ *  2. `render` → drives the headless render and asserts a valid MP4/WebM came out;
+ *  3. `frame`  → exports a single frame at a time and asserts a valid PNG came out;
+ *  4. `audio`  → exports the audio-only mix and asserts a valid audio file came out;
+ *  5. `preview` → boots the dev server, points Chrome-for-Testing at the page and
  *     asserts the composition ran in-browser (`window.__PREVIEW_TEST__.ok`).
  *
  * Needs:
@@ -14,10 +16,11 @@
  *  - a WebCodecs-capable browser for `preview` (Puppeteer's Chrome-for-Testing):
  *    `pnpm exec puppeteer browsers install chrome`.
  */
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { runCheck } from '../src/check';
 import { runRender } from '../src/render';
 import { runFrame } from '../src/frame';
 import { runAudio } from '../src/audio';
@@ -25,6 +28,37 @@ import { startPreviewServer } from '../src/preview';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXAMPLE = resolve(HERE, '../example/index.ts');
+
+/** `check` is GPU-free — assert the example passes and a broken one fails. */
+async function verifyCheck(): Promise<void> {
+  const ok = await runCheck(EXAMPLE);
+  if (ok !== 0) throw new Error(`check on the example exited ${ok} (expected 0)`);
+
+  const dir = mkdtempSync(join(tmpdir(), 'sequio-verify-'));
+  const bad = join(dir, 'bad.ts');
+  try {
+    // end ≤ start (C1) → must be a non-zero exit.
+    writeFileSync(
+      bad,
+      `import { Compositor, VisualTrack, ShapeClip } from '@sequio/engine';
+       import { defineComposition } from '@sequio/runtime';
+       export default defineComposition(async (env) => {
+         const compositor = new Compositor({ width: 320, height: 240, ...env.compositorOptions });
+         await compositor.init();
+         const track = new VisualTrack();
+         const clip = new ShapeClip({ kind: 'rect', width: 10, height: 10 });
+         clip.start = 2; clip.end = 1; // illegal
+         track.add(clip); compositor.addTrack(track);
+         return { compositor, duration: 2 };
+       });`,
+    );
+    const failed = await runCheck(bad, { json: true });
+    if (failed === 0) throw new Error('check on a broken composition exited 0 (expected non-zero)');
+    console.log('✅ check: example clean, broken composition flagged');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 async function verifyRender(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'sequio-verify-'));
@@ -102,6 +136,8 @@ async function verifyPreview(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  console.log('▸ verify:cli — check');
+  await verifyCheck();
   console.log('▸ verify:cli — render');
   await verifyRender();
   console.log('▸ verify:cli — frame');

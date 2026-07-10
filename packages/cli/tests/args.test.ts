@@ -169,6 +169,35 @@ describe('parseArgs', () => {
     });
   });
 
+  describe('check', () => {
+    it('bare file → defaults (json false)', () => {
+      expect(parseArgs(['check', 'a.ts'])).toEqual({
+        kind: 'check',
+        file: 'a.ts',
+        json: false,
+      });
+    });
+
+    it('--json (order-independent)', () => {
+      expect(parseArgs(['check', '--json', 'a.ts'])).toEqual({
+        kind: 'check',
+        file: 'a.ts',
+        json: true,
+      });
+      expect(parseArgs(['check', 'a.ts', '--json'])).toMatchObject({ json: true });
+    });
+
+    it('missing file → error', () => {
+      expect(parseArgs(['check'])).toMatchObject({ kind: 'error' });
+      expect(parseArgs(['check', '--json'])).toMatchObject({ kind: 'error' });
+    });
+
+    it('unknown option / extra positional → error', () => {
+      expect(parseArgs(['check', 'a.ts', '--nope'])).toMatchObject({ kind: 'error' });
+      expect(parseArgs(['check', 'a.ts', 'b.ts'])).toMatchObject({ kind: 'error' });
+    });
+  });
+
   describe('preview', () => {
     it('defaults', () => {
       expect(parseArgs(['preview', 'a.ts'])).toEqual({

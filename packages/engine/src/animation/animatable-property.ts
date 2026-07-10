@@ -32,6 +32,16 @@ export class AnimatableProperty<T> {
   }
 
   /**
+   * Timeline times (seconds) of the keyframes, in sorted order (empty when the
+   * property is static). Exposed for **static validation** (`sequio check`) — a
+   * keyframe whose time falls outside its clip's `[start, end]` is a dead
+   * keyframe. Not part of the render path.
+   */
+  get keyframeTimes(): readonly number[] {
+    return this.keyframes.map((k) => k.time);
+  }
+
+  /**
    * Make the property a constant `value`. This also **clears any keyframes** —
    * a static value and keyframes are mutually exclusive, and `valueAt` prefers
    * keyframes, so a lingering keyframe set would otherwise shadow the static

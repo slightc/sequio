@@ -1,8 +1,11 @@
 /**
  * `@sequio/cli` — the `sequio` command line.
  *
- * Four commands, all thin front-ends over infrastructure the other packages
+ * Five commands, all thin front-ends over infrastructure the other packages
  * already own:
+ *  - `check <file>` → compile + link + build the object graph with a null
+ *    renderer and statically validate it — no GPU, no network (the fast
+ *    pre-flight in the `check → frame → render` loop).
  *  - `render <file>` → snapshot the composition into a {@link RuntimeBundle} and
  *    hand it to the server's Route B (pure Node, WebGPU) to encode a video.
  *  - `frame <file>` → the same Route B path, but seek to one time and write a
@@ -25,10 +28,19 @@ export {
   type RenderCommand,
   type FrameCommand,
   type AudioCommand,
+  type CheckCommand,
   type PreviewCommand,
   type MetaCommand,
 } from './args';
 export { readBundle } from './bundle';
+export {
+  runCheck,
+  checkBundle,
+  nullRenderer,
+  type Diagnostic,
+  type CheckOptions,
+  type CheckBundleOptions,
+} from './check';
 export { runRender, type RenderOptions } from './render';
 export { runFrame, type FrameOptions } from './frame';
 export { runAudio, type AudioOptions } from './audio';
