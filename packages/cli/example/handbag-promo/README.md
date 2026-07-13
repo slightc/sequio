@@ -1,11 +1,13 @@
 # handbag-promo — a retro fashion spot, recreated
 
 A 15-second vertical (9:16) **burnt-orange retro fashion promo**, rebuilt from
-the engine's own object graph. It's a faithful re-creation of a real social-media
-handbag ad — same four chapters, palette, kinetic typography, film/polaroid
-framing, sunburst backdrops and light-leak cuts — but with **entirely original,
-procedurally-drawn artwork** in place of the source's photography, so nothing
-copyrighted is reproduced and the whole piece is self-contained and reproducible.
+the engine's own object graph. It re-creates a real social-media handbag ad —
+same four chapters, palette, kinetic typography, film/polaroid framing, sunburst
+backdrops and light-leak cuts — over **real studio photography** referenced by
+URL (Pexels, free to use — see `photos.ts`) plus a few procedural design textures
+(the sunburst, stripes, film grain, light-leak). The photos are all from one
+burnt-orange studio shoot, so the model, the rust co-ord and the grey seamless
+read as a single campaign. Needs network access (the photos are fetched by URL).
 
 ```bash
 sequio preview example/handbag-promo/index.ts --watch
@@ -40,14 +42,17 @@ Everything is the engine's public surface — no bespoke renderer:
 - Each chapter is one `GroupClip` placed at its slice of the timeline, so its
   children read in chapter-**local** time (see the note below).
 
-### Assets (`assets/`)
+### Assets
 
-All drawn procedurally (flat vector + noise/grain), then optimized:
-
-`sunburst.png` · `bag-hero.png` · `model.png` · `bag1–4.png` · `stripes.png` ·
-`lightleak.png` · `grain.png`. Fonts (Anton display + Oswald condensed, Latin
-subsets) are embedded as `data:` URLs in `font.ts`, so the title renders
-identically in the browser preview and the Node render.
+- **Photos** — `photos.ts`: the hero bag shot, the full-body model, the waist /
+  portrait crops, the contact-sheet poses and the cycling mini-bags, all real
+  studio photography from Pexels (referenced by URL, free to use).
+- **Textures** — `assets/`: `sunburst.png`, `burst-torn.png` (the spinning
+  torn-paper cut), `stripes.png`, `lightleak.png`, `grain.png` — procedural
+  design graphics, drawn + optimized.
+- **Fonts** — Anton (display) + Oswald (condensed) Latin subsets embedded as
+  `data:` URLs in `font.ts`, so the title renders identically in the browser
+  preview and the Node render.
 
 ### A note on time (why chapters are groups)
 
