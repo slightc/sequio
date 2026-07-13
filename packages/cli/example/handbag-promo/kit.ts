@@ -10,6 +10,7 @@
  */
 import {
   BlurEffect,
+  BulgeEffect,
   ColorEffect,
   type Easing,
   GroupClip,
@@ -222,36 +223,43 @@ export function pulseHeadline(o: {
     anchor: [0.5, 0.5] as [number, number],
   };
 
-  // Hollow outline — always visible once entered.
-  const hollow = outline(o.text, { ...common, strokeColor: color, strokeWidth: 2.4 });
-  fadeIn(hollow, o.inAt, 0.5);
-  fadeOut(hollow, o.outAt, 0.35);
+  // Hollow outline — always visible once entered (the resting state).
+  const hollow = outline(o.text, { ...common, strokeColor: color, strokeWidth: 3 });
+  fadeIn(hollow, o.inAt, 0.35);
+  fadeOut(hollow, o.outAt, 0.3);
 
-  // Solid fill — cross-pulses to give the "breathing" solid↔hollow read.
+  // Solid fill — cross-pulses under the outline. The floor stays HIGH (≈0.55) so
+  // the word is always legible; it just breathes between solid and a lighter
+  // fill the way the source headline does.
   const solid = label(o.text, { ...common, fill: color });
   const pulses = o.pulses ?? 2;
   const kf: { time: number; value: number; easing?: Easing }[] = [{ time: o.inAt, value: 0 }];
-  const span = o.outAt - (o.inAt + 0.4);
+  const swing = o.outAt - (o.inAt + 0.3);
   for (let i = 0; i < pulses; i++) {
-    const t0 = o.inAt + 0.4 + (span / pulses) * i;
+    const t0 = o.inAt + 0.3 + (swing / pulses) * i;
     kf.push({ time: t0, value: 1, easing: SMOOTH });
-    kf.push({ time: t0 + span / pulses / 2, value: 0.15, easing: SMOOTH });
+    kf.push({ time: t0 + swing / pulses / 2, value: 0.55, easing: SMOOTH });
   }
   kf.push({ time: o.outAt, value: 1, easing: SMOOTH });
-  kf.push({ time: o.outAt + 0.35, value: 0, easing: SMOOTH });
+  kf.push({ time: o.outAt + 0.3, value: 0, easing: SMOOTH });
   solid.opacity.setKeyframes(kf);
+
+  // Motion-blur → sharp on entrance: the headline resolves out of a blur rather
+  // than simply fading, matching the source's "de-focus in" title.
+  blurIn(hollow, o.inAt, 0.3, 26);
+  blurIn(solid, o.inAt, 0.3, 26);
 
   g.add(span2(hollow));
   g.add(span2(solid));
-  // Scale: settle in on entrance, and (optionally) blow out horizontally on exit
-  // — the "letters spacing apart" read the source uses to leave the headline.
+  // Scale: settle in on entrance, and (optionally) blow the letters apart on exit
+  // — the letter-spacing spread the source uses to leave the headline.
   const scaleKf: { time: number; value: [number, number]; easing?: Easing }[] = [
-    { time: o.inAt, value: [1.14, 1.14] },
-    { time: o.inAt + 0.6, value: [1, 1], easing: SMOOTH },
+    { time: o.inAt, value: [1.16, 1.16] },
+    { time: o.inAt + 0.45, value: [1, 1], easing: SMOOTH },
   ];
   if (o.spreadExit) {
     scaleKf.push({ time: o.outAt, value: [1, 1] });
-    scaleKf.push({ time: o.outAt + 0.35, value: [1.9, 1.0], easing: SMOOTH });
+    scaleKf.push({ time: o.outAt + 0.3, value: [2.1, 1.0], easing: SMOOTH });
   }
   g.transform.scale.setKeyframes(scaleKf);
   return g;
@@ -329,6 +337,58 @@ export function blurBurst(clip: VisualClip, at: number, dur: number, peak = 24):
     { time: at + dur, value: 0, easing: SMOOTH },
   ]);
   clip.effects.push(fx);
+}
+
+/** Motion-blur → sharp: a clip resolves out of a blur over `[at, at+dur]`. */
+export function blurIn(clip: VisualClip, at: number, dur = 0.3, from = 26): void {
+  const fx = new BlurEffect();
+  fx.strength.setKeyframes([
+    { time: at, value: from },
+    { time: at + dur, value: 0, easing: SMOOTH },
+  ]);
+  clip.effects.push(fx);
+}
+
+/**
+ * A radial bulge/twist that ramps 0→peak over `[at, at+dur]` — the lens-warp the
+ * source uses right before every cut (pair it with a scale push for the "suck
+ * into the transition" read).
+ */
+export function bulgeWarp(clip: VisualClip, at: number, dur: number, peak = 0.9): void {
+  const fx = new BulgeEffect();
+  fx.radius.setStatic(0.75);
+  fx.strength.setKeyframes([
+    { time: at, value: 0 },
+    { time: at + dur, value: peak, easing: SMOOTH },
+  ]);
+  clip.effects.push(fx);
+}
+
+/**
+ * A fast **punch-in** entrance on a group: it slams in from `fromScale` (and an
+ * optional tilt) to its resting pose over a short `dur`, then — with `push` — keeps
+ * a slow Ken-Burns drift for the rest of `hold`. This is the source's signature
+ * "camera dives into the card" open, not a slow even scale.
+ */
+export function punchIn(
+  g: GroupClip,
+  o: { dur?: number; fromScale?: number; restScale?: number; tilt?: number; hold: number; push?: number },
+): void {
+  const dur = o.dur ?? 0.4;
+  const from = o.fromScale ?? 0.6; // small (whole tilted card visible) …
+  const rest = o.restScale ?? 1.12; // … dives in to fill the frame …
+  const push = o.push ?? rest * 1.15; // … then keeps a slow Ken-Burns drift.
+  g.transform.scale.setKeyframes([
+    { time: 0, value: [from, from] },
+    { time: dur, value: [rest, rest], easing: SMOOTH },
+    { time: o.hold, value: [push, push], easing: SMOOTH },
+  ]);
+  if (o.tilt) {
+    g.transform.rotation.setKeyframes([
+      { time: 0, value: o.tilt },
+      { time: dur, value: 0, easing: SMOOTH },
+    ]);
+  }
 }
 
 /** A gentle warm colour grade (used to unify the illustration panels). */
