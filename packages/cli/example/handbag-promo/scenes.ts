@@ -5,11 +5,11 @@
  *
  *   1. FASHIONABLE HANDBAG — a tilted product card PUNCHES in (fast zoom + de-tilt)
  *      then drifts; the headline resolves out of a blur and breathes solid↔hollow,
- *      then the letters blow apart while the card bulge-warps into the cut.
+ *      then the letters blow apart while the product twirls into a whirlpool at the cut.
  *   2. MINIMALIST · RETRO-STYLE — the film frame slides down from the top on a
  *      motion blur, settles, pushes in (feet crop out), then WHIP-SPINS out.
- *   3. LUXURIOUS — a contact-sheet grid whips in, pans + pushes, then bulge-warps
- *      + spreads apart into the cut.
+ *   3. LUXURIOUS — a contact-sheet grid whips in, pans + pushes, then twirls +
+ *      spreads apart into the cut.
  *   4. GET IT NOW — a split top/bottom layout (waist-with-bag over portrait) with
  *      the mini-bag cycling; the CTA breathes and the URL types on.
  *
@@ -26,7 +26,6 @@ import {
   SMOOTH,
   blurBurst,
   blurIn,
-  bulgeWarp,
   coverImage,
   coverSprite,
   fadeIn,
@@ -36,10 +35,10 @@ import {
   lightLeak,
   outline,
   pulseHeadline,
-  punchIn,
   rect,
   setLife,
   slideIn,
+  twirlOut,
   span,
 } from './kit';
 
@@ -62,8 +61,13 @@ export interface Assets {
 /** A chapter group placed at `[start, end]` on `stage`; children use local time. */
 function chapter(stage: VisualTrack, start: number, end: number): GroupClip {
   const g = new GroupClip();
-  g.transform.anchor.setStatic([0, 0]);
-  g.transform.position.setStatic([0, 0]);
+  // Centre-anchored at the frame centre: a chapter's content is laid out in
+  // absolute frame coords but stays centred even when a child (a punched-in /
+  // overfilled cover) overflows the frame — an edge-anchored group would take its
+  // pivot from the overflowing bounds and drift. The mask clips the overflow.
+  g.transform.anchor.setStatic([0.5, 0.5]);
+  g.transform.position.setStatic([W / 2, H / 2]);
+  g.maskShape = { kind: 'rect', width: W, height: H };
   g.start = start;
   g.end = end;
   stage.add(g);
@@ -86,27 +90,49 @@ export function scene1(stage: VisualTrack, A: Assets): void {
   const dur = S1.end - S1.start;
   const g = chapter(stage, S1.start, S1.end + 0.1);
 
-  // Sunburst backdrop, glimpsed before the card dives in over it.
+  // Sunburst backdrop, glimpsed before the product dives in over it.
   g.add(span(coverImage(A.sunburst, 0, 0, W, H)));
 
-  // The product card: a cream polaroid matting the hero product shot. It PUNCHES
-  // in from a small tilted pose (fast zoom + de-tilt), holds with a slow push,
-  // then bulge-warps + scales into the transition.
-  const card = new GroupClip();
-  card.transform.anchor.setStatic([0.5, 0.5]);
-  card.transform.position.setStatic([W / 2, H / 2]);
-  const cardW = 620;
-  const cardH = 920;
-  card.add(span(rect(-cardW / 2, -cardH / 2, cardW, cardH, { fill: CREAM, radius: 4 })));
-  const photo = panel(A.hero, [-cardW / 2 + 16, -cardH / 2 + 16, cardW - 32, cardH - 120], [0.5, 0.5], 1.02);
-  grade(coverSprite(photo), { saturation: 1.06, contrast: 1.05 });
-  span(photo);
-  card.add(photo);
-  card.add(span(label('FASHION · 01', { x: 0, y: cardH / 2 - 50, size: 22, fill: 0x8a6a4a, family: COND, letterSpacing: 3 })));
-  span(card);
-  punchIn(card, { dur: 0.4, fromScale: 0.58, restScale: 1.06, tilt: -0.16, hold: dur, push: 1.2 });
-  bulgeWarp(card, dur - 0.5, 0.5, 1.0);
-  g.add(card);
+  // The product, full-frame — a single ImageClip so its centre pivot is the
+  // sprite's own (stable), not derived from bounds. It PUNCHES in from a small
+  // tilted pose (fast zoom + de-tilt over the sunburst — the source's polaroid
+  // dive), holds with a slow push, then OVERFILLS + spins while a rotational
+  // twirl whirlpools it into the cut. A cream matte rides along for the first
+  // half-second (the polaroid read), fading once the product has filled.
+  const matte = rect(-2, -2, W + 4, H + 4, { fill: CREAM, anchor: [0.5, 0.5] });
+  matte.transform.position.setStatic([W / 2, H / 2]);
+  matte.opacity.setKeyframes([
+    { time: 0, value: 1 },
+    { time: 0.5, value: 1 },
+    { time: 0.72, value: 0, easing: SMOOTH },
+  ]);
+  matte.transform.scale.setKeyframes([
+    { time: 0, value: [0.52, 0.52] },
+    { time: 0.42, value: [1.0, 1.0], easing: SETTLE },
+  ]);
+  span(matte);
+  g.add(matte);
+
+  const cover = new ImageClip(A.hero.source);
+  cover.transform.anchor.setStatic([0.5, 0.5]);
+  cover.transform.position.setStatic([W / 2, H / 2]);
+  grade(cover, { saturation: 1.08, contrast: 1.05 });
+  const cs = Math.max(W / A.hero.w, H / A.hero.h);
+  cover.transform.scale.setKeyframes([
+    { time: 0, value: [cs * 0.5, cs * 0.5] },
+    { time: 0.42, value: [cs, cs], easing: SETTLE },
+    { time: dur - 0.5, value: [cs * 1.08, cs * 1.08], easing: SMOOTH },
+    { time: dur, value: [cs * 1.9, cs * 1.9], easing: SMOOTH }, // overfill for the swirl
+  ]);
+  cover.transform.rotation.setKeyframes([
+    { time: 0, value: -0.16 },
+    { time: 0.42, value: 0, easing: SETTLE },
+    { time: dur - 0.5, value: 0 },
+    { time: dur, value: 0.5, easing: SMOOTH }, // spin
+  ]);
+  twirlOut(cover, dur - 0.5, 0.5, 3.6, 0.9);
+  span(cover);
+  g.add(cover);
 
   // Headline — blur-resolve in, breathe solid↔hollow, spread apart on exit.
   const head = pulseHeadline({
@@ -237,15 +263,18 @@ export function scene3(stage: VisualTrack, A: Assets): void {
   sheet.transform.scale.setKeyframes([
     { time: 0, value: [1.35, 1.35] }, // whip-in overshoot
     { time: 0.35, value: [1.12, 1.12], easing: SMOOTH },
-    { time: dur, value: [1.24, 1.24], easing: SMOOTH },
+    { time: dur - 0.45, value: [1.24, 1.24], easing: SMOOTH },
+    { time: dur, value: [1.7, 1.7], easing: SMOOTH }, // overfill for the swirl
   ]);
   sheet.transform.rotation.setKeyframes([
     { time: 0, value: 0.5 }, // spins in from the chapter-2 whip
     { time: 0.35, value: 0.05, easing: SMOOTH },
+    { time: dur - 0.45, value: 0.05 },
+    { time: dur, value: 0.55, easing: SMOOTH }, // spin out
   ]);
   blurIn(sheet, 0, 0.3, 40);
   fadeIn(sheet, 0, 0.2);
-  bulgeWarp(sheet, dur - 0.4, 0.4, 1.1);
+  twirlOut(sheet, dur - 0.45, 0.45, 3.4, 0.9);
   g.add(sheet);
 
   // LUXURIOUS — hollow display flickering in, breathing, spreading on exit.

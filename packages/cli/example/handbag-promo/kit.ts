@@ -10,7 +10,6 @@
  */
 import {
   BlurEffect,
-  BulgeEffect,
   ColorEffect,
   type Easing,
   GroupClip,
@@ -19,6 +18,7 @@ import {
   ShapeClip,
   TextClip,
   type TextStyleLike,
+  TwirlEffect,
   type VisualClip,
   cubicBezier,
 } from '@sequio/engine';
@@ -350,13 +350,14 @@ export function blurIn(clip: VisualClip, at: number, dur = 0.3, from = 26): void
 }
 
 /**
- * A radial bulge/twist that ramps 0→peak over `[at, at+dur]` — the lens-warp the
- * source uses right before every cut (pair it with a scale push for the "suck
- * into the transition" read).
+ * A rotational **twirl/swirl** that ramps 0→peak radians over `[at, at+dur]` —
+ * the spin-into-a-whirlpool the source cuts on. Auto-centres on the clip and
+ * clamps edges, so a clip scaled to overfill the frame swirls edge-to-edge
+ * without leaking the background. `peak ≈ 3` ≈ a half-turn twist at the centre.
  */
-export function bulgeWarp(clip: VisualClip, at: number, dur: number, peak = 0.9): void {
-  const fx = new BulgeEffect();
-  fx.radius.setStatic(0.75);
+export function twirlOut(clip: VisualClip, at: number, dur: number, peak = 3.0, radius = 0.9): void {
+  const fx = new TwirlEffect();
+  fx.radius.setStatic(radius);
   fx.strength.setKeyframes([
     { time: at, value: 0 },
     { time: at + dur, value: peak, easing: SMOOTH },

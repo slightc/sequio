@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BulgeEffect } from '../src/effects/bulge-effect';
+import { TwirlEffect, twirlSourceUv } from '../src/effects/twirl-effect';
 import { DisplacementEffect } from '../src/effects/displacement-effect';
 import { PerspectiveEffect } from '../src/effects/perspective-effect';
 import { EffectRegistry } from '../src/effects/effect-registry';
@@ -177,5 +178,48 @@ describe('registerBuiltins (with warps)', () => {
     expect(reg.create('bulge')).toBeInstanceOf(BulgeEffect);
     expect(reg.create('perspective')).toBeInstanceOf(PerspectiveEffect);
     expect(reg.create('displacement')).toBeInstanceOf(DisplacementEffect);
+  });
+});
+
+describe('twirl', () => {
+  it('is identity at zero strength', () => {
+    for (const uv of [[0.2, 0.3], [0.5, 0.5], [0.9, 0.1]] as Array<[number, number]>) {
+      const out = twirlSourceUv(uv, [0.5, 0.5], 0.8, 0, 0.5625);
+      expect(out[0]).toBeCloseTo(uv[0]);
+      expect(out[1]).toBeCloseTo(uv[1]);
+    }
+  });
+
+  it('leaves the exact centre fixed', () => {
+    const out = twirlSourceUv([0.5, 0.5], [0.5, 0.5], 0.8, 3, 0.5625);
+    expect(out[0]).toBeCloseTo(0.5);
+    expect(out[1]).toBeCloseTo(0.5);
+  });
+
+  it('does not warp outside the radius', () => {
+    const out = twirlSourceUv([0.95, 0.95], [0.5, 0.5], 0.2, 3, 1);
+    expect(out[0]).toBeCloseTo(0.95);
+    expect(out[1]).toBeCloseTo(0.95);
+  });
+
+  it('rotates a sample about the centre (aspect 1) and preserves its radius', () => {
+    const center: [number, number] = [0.5, 0.5];
+    const uv: [number, number] = [0.7, 0.5]; // r = 0.2 along +x
+    const out = twirlSourceUv(uv, center, 0.8, 1.5, 1);
+    const r0 = Math.hypot(uv[0] - center[0], uv[1] - center[1]);
+    const r1 = Math.hypot(out[0] - center[0], out[1] - center[1]);
+    expect(r1).toBeCloseTo(r0); // rotation preserves distance
+    expect(out[1]).not.toBeCloseTo(uv[1]); // moved off the x-axis
+  });
+
+  it('exposes animatable params via valuesAt', () => {
+    const fx = new TwirlEffect();
+    fx.strength.setKeyframes([
+      { time: 0, value: 0 },
+      { time: 1, value: 3 },
+    ]);
+    expect(fx.valuesAt(0).strength).toBeCloseTo(0);
+    expect(fx.valuesAt(1).strength).toBeCloseTo(3);
+    expect(fx.valuesAt(0.5).center).toEqual([0.5, 0.5]);
   });
 });
