@@ -278,8 +278,8 @@ export function pulseHeadline(o: {
 
   // Motion-blur → sharp on entrance: the headline resolves out of a blur rather
   // than simply fading, matching the source's "de-focus in" title.
-  blurIn(hollow, o.inAt, 0.3, 26);
-  blurIn(solid, o.inAt, 0.3, 26);
+  blurIn(hollow, o.inAt, 0.45, 26);
+  blurIn(solid, o.inAt, 0.45, 26);
 
   g.add(span2(hollow));
   g.add(span2(solid));
@@ -287,11 +287,11 @@ export function pulseHeadline(o: {
   // — the letter-spacing spread the source uses to leave the headline.
   const scaleKf: { time: number; value: [number, number]; easing?: Easing }[] = [
     { time: o.inAt, value: [1.16, 1.16] },
-    { time: o.inAt + 0.45, value: [1, 1], easing: SMOOTH },
+    { time: o.inAt + 0.6, value: [1, 1], easing: SMOOTH },
   ];
   if (o.spreadExit) {
     scaleKf.push({ time: o.outAt, value: [1, 1] });
-    scaleKf.push({ time: o.outAt + 0.3, value: [2.1, 1.0], easing: SMOOTH });
+    scaleKf.push({ time: o.outAt + 0.42, value: [2.1, 1.0], easing: SMOOTH });
   }
   g.transform.scale.setKeyframes(scaleKf);
   return g;

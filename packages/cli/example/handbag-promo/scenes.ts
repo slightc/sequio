@@ -118,7 +118,7 @@ export function scene1(stage: VisualTrack, A: Assets): void {
   ]);
   matte.transform.scale.setKeyframes([
     { time: 0, value: [0.52, 0.52] },
-    { time: 0.42, value: [1.0, 1.0], easing: SETTLE },
+    { time: 0.6, value: [1.0, 1.0], easing: SETTLE },
   ]);
   span(matte);
   g.add(matte);
@@ -131,24 +131,24 @@ export function scene1(stage: VisualTrack, A: Assets): void {
   // shot (never sits static) — then overfills for the swirl.
   cover.transform.scale.setKeyframes([
     { time: 0, value: [cs * 0.5, cs * 0.5] },
-    { time: 0.42, value: [cs * 1.02, cs * 1.02], easing: SETTLE },
-    { time: dur - 0.55, value: [cs * 1.32, cs * 1.32], easing: SMOOTH }, // strong, steady push-in
+    { time: 0.6, value: [cs * 1.02, cs * 1.02], easing: SETTLE },
+    { time: dur - 0.75, value: [cs * 1.32, cs * 1.32], easing: SMOOTH }, // strong, steady push-in
     { time: dur, value: [cs * 2.0, cs * 2.0], easing: SMOOTH }, // overfill for the swirl
   ]);
   // …and a slow drift/pan across the product so the frame is always in motion.
   cover.transform.position.setKeyframes([
     { time: 0, value: [W / 2, H / 2] },
-    { time: 0.42, value: [W / 2 + 8, H / 2 - 6], easing: SETTLE },
-    { time: dur - 0.55, value: [W / 2 - 34, H / 2 + 54], easing: SMOOTH },
+    { time: 0.6, value: [W / 2 + 8, H / 2 - 6], easing: SETTLE },
+    { time: dur - 0.75, value: [W / 2 - 34, H / 2 + 54], easing: SMOOTH },
     { time: dur, value: [W / 2, H / 2], easing: SMOOTH }, // recentre into the swirl
   ]);
   cover.transform.rotation.setKeyframes([
     { time: 0, value: -0.16 },
-    { time: 0.42, value: 0, easing: SETTLE },
-    { time: dur - 0.55, value: 0.02, easing: SMOOTH }, // faint continuous tilt
+    { time: 0.6, value: 0, easing: SETTLE },
+    { time: dur - 0.75, value: 0.02, easing: SMOOTH }, // faint continuous tilt
     { time: dur, value: 0.5, easing: SMOOTH }, // spin
   ]);
-  twirlOut(cover, dur - 0.55, 0.55, 3.6, 0.9);
+  twirlOut(cover, dur - 0.75, 0.75, 3.6, 0.9);
   span(cover);
   g.add(cover);
 
@@ -191,55 +191,55 @@ export function scene2(stage: VisualTrack, A: Assets): void {
   const framePhoto = coverSprite(frame.children[1] as GroupClip);
   grade(framePhoto, { saturation: 1.02, contrast: 1.04 });
   span(frame);
-  setLife(frame, { inAt: 0, inDur: 0.28, outAt: dur - 0.12, outDur: 0.14 });
+  setLife(frame, { inAt: 0, inDur: 0.4, outAt: dur - 0.16, outDur: 0.18 });
   // Slide down from the top + settle, hold, then WHIP up-and-out on a spin. The
   // frame flies off rather than ballooning in place, so the cut stays crisp.
   frame.transform.position.setKeyframes([
     { time: 0, value: [W / 2 - 30, H / 2 - 240] },
-    { time: 0.42, value: [W / 2, H / 2 + 10], easing: SETTLE },
-    { time: dur - 0.2, value: [W / 2, H / 2 + 10] },
-    { time: dur + 0.1, value: [W / 2 - 360, H / 2 - 520], easing: SMOOTH },
+    { time: 0.6, value: [W / 2, H / 2 + 10], easing: SETTLE },
+    { time: dur - 0.32, value: [W / 2, H / 2 + 10] },
+    { time: dur + 0.14, value: [W / 2 - 360, H / 2 - 520], easing: SMOOTH },
   ]);
   // Gentle push-in through the shot (the whole framed photo grows — no top-left
   // crop artefact), then a modest whip scale.
   frame.transform.scale.setKeyframes([
     { time: 0, value: [1.06, 1.06] },
-    { time: 0.42, value: [1, 1], easing: SETTLE },
-    { time: dur - 0.2, value: [1.12, 1.12], easing: SMOOTH },
-    { time: dur + 0.1, value: [1.34, 1.34], easing: SMOOTH },
+    { time: 0.6, value: [1, 1], easing: SETTLE },
+    { time: dur - 0.32, value: [1.13, 1.13], easing: SMOOTH },
+    { time: dur + 0.14, value: [1.34, 1.34], easing: SMOOTH },
   ]);
   frame.transform.rotation.setKeyframes([
     { time: 0, value: -0.14 },
-    { time: 0.42, value: 0, easing: SETTLE },
-    { time: dur - 0.2, value: 0 },
-    { time: dur + 0.1, value: 1.3, easing: SMOOTH }, // hard whip-spin
+    { time: 0.6, value: 0, easing: SETTLE },
+    { time: dur - 0.32, value: 0 },
+    { time: dur + 0.14, value: 1.3, easing: SMOOTH }, // hard whip-spin
   ]);
-  blurIn(frame, 0, 0.28, 24);
-  blurBurst(frame, dur - 0.2, 0.3, 22);
+  blurIn(frame, 0, 0.4, 24);
+  blurBurst(frame, dur - 0.32, 0.42, 22);
   g.add(frame);
 
   // MINIMALIST (top) — resolves out of a blur, then holds steady.
-  const top = pulseHeadline({ text: 'MINIMALIST', x: W / 2, y: 226, size: 66, color: WHITE, inAt: 0.28, outAt: dur - 0.28, pulses: 1 });
+  const top = pulseHeadline({ text: 'MINIMALIST', x: W / 2, y: 226, size: 66, color: WHITE, inAt: 0.4, outAt: dur - 0.32, pulses: 1 });
   span(top);
-  slideIn(top, [0, -26], 0.28, 0.42);
+  slideIn(top, [0, -26], 0.4, 0.6);
   g.add(top);
 
   // RETRO-STYLE (bottom) — outline with a solid copy resolving under it.
   const outR = outline('RETRO-STYLE', { x: W / 2, y: H - 226, size: 64, strokeColor: WHITE, strokeWidth: 3, letterSpacing: 1 });
   span(outR);
-  setLife(outR, { inAt: 0.42, inDur: 0.32, outAt: dur - 0.22, outDur: 0.18 });
-  slideIn(outR, [0, 26], 0.42, 0.42);
-  blurIn(outR, 0.42, 0.28, 18);
+  setLife(outR, { inAt: 0.55, inDur: 0.45, outAt: dur - 0.28, outDur: 0.2 });
+  slideIn(outR, [0, 26], 0.55, 0.6);
+  blurIn(outR, 0.55, 0.4, 18);
   g.add(outR);
   const fillR = label('RETRO-STYLE', { x: W / 2, y: H - 226, size: 64, fill: WHITE, letterSpacing: 1 });
   span(fillR);
   fillR.opacity.setKeyframes([
-    { time: 0.75, value: 0 },
-    { time: 1.15, value: 1, easing: SMOOTH },
-    { time: dur - 0.28, value: 1 },
-    { time: dur - 0.08, value: 0, easing: SMOOTH },
+    { time: 0.95, value: 0 },
+    { time: 1.5, value: 1, easing: SMOOTH },
+    { time: dur - 0.32, value: 1 },
+    { time: dur - 0.1, value: 0, easing: SMOOTH },
   ]);
-  slideIn(fillR, [0, 26], 0.42, 0.42);
+  slideIn(fillR, [0, 26], 0.55, 0.6);
   g.add(fillR);
 }
 
@@ -281,21 +281,21 @@ export function scene3(stage: VisualTrack, A: Assets): void {
   ]);
   sheet.transform.scale.setKeyframes([
     { time: 0, value: [1.18, 1.18] }, // slight whip-in overshoot (kept small so it never washes to a plate)
-    { time: 0.28, value: [1.12, 1.12], easing: SMOOTH },
-    { time: dur - 0.45, value: [1.24, 1.24], easing: SMOOTH },
+    { time: 0.42, value: [1.12, 1.12], easing: SMOOTH },
+    { time: dur - 0.6, value: [1.24, 1.24], easing: SMOOTH },
     { time: dur, value: [1.7, 1.7], easing: SMOOTH }, // overfill for the swirl
   ]);
   sheet.transform.rotation.setKeyframes([
     { time: 0, value: 0.3 }, // spins in from the chapter-2 whip
-    { time: 0.28, value: 0.05, easing: SMOOTH },
-    { time: dur - 0.45, value: 0.05 },
+    { time: 0.42, value: 0.05, easing: SMOOTH },
+    { time: dur - 0.6, value: 0.05 },
     { time: dur, value: 0.55, easing: SMOOTH }, // spin out
   ]);
-  blurIn(sheet, 0, 0.16, 14); // light, quick — resolves before it reads as empty
+  blurIn(sheet, 0, 0.24, 14); // light — resolves before it reads as empty
   // NB: no fade-in — the grid is opaque from frame one so it covers the grey
   // chapter backdrop immediately (a fade would show the bare grey for a beat,
   // which read as an "empty plate" at the cut).
-  twirlOut(sheet, dur - 0.45, 0.45, 3.4, 0.9);
+  twirlOut(sheet, dur - 0.6, 0.6, 3.4, 0.9);
   g.add(sheet);
 
   // LUXURIOUS — hollow display flickering in, breathing, spreading on exit.
@@ -306,17 +306,17 @@ export function scene3(stage: VisualTrack, A: Assets): void {
     size: 72,
     spacing: 4,
     color: WHITE,
-    inAt: 0.25,
-    outAt: dur - 0.35,
+    inAt: 0.35,
+    outAt: dur - 0.45,
     pulses: 2,
     spreadExit: true,
   });
   span(lux);
   lux.opacity.setKeyframes([
-    { time: 0.25, value: 0 },
-    { time: 0.37, value: 1, easing: SMOOTH },
-    { time: 0.47, value: 0.25 },
-    { time: 0.6, value: 1, easing: SMOOTH },
+    { time: 0.35, value: 0 },
+    { time: 0.5, value: 1, easing: SMOOTH },
+    { time: 0.62, value: 0.25 },
+    { time: 0.8, value: 1, easing: SMOOTH },
   ]);
   g.add(lux);
 }
@@ -375,18 +375,18 @@ export function scene4(stage: VisualTrack, A: Assets): void {
   });
 
   // GET IT NOW — breathes solid↔hollow around the split line.
-  const cta = pulseHeadline({ text: 'GET IT NOW', x: W / 2, y: splitY - 30, size: 80, color: WHITE, inAt: 0.35, outAt: dur - 0.15, pulses: 3 });
+  const cta = pulseHeadline({ text: 'GET IT NOW', x: W / 2, y: splitY - 30, size: 80, color: WHITE, inAt: 0.5, outAt: dur - 0.2, pulses: 3 });
   span(cta);
-  slideIn(cta, [0, 22], 0.35, 0.42);
+  slideIn(cta, [0, 22], 0.5, 0.6);
   g.add(cta);
 
   // www.brandname.com — types on character by character beneath the CTA.
   const url = label('www.brandname.com', { x: W / 2, y: splitY + 28, size: 32, fill: WHITE, family: COND, letterSpacing: 1 });
   url.split = 'char';
-  url.textAnimator = new StaggerTextAnimator({ from: { alpha: 0 }, duration: 0.02, stagger: 0.05, delay: 0.9, order: 'forward' });
+  url.textAnimator = new StaggerTextAnimator({ from: { alpha: 0 }, duration: 0.03, stagger: 0.07, delay: 1.1, order: 'forward' });
   span(url);
   url.opacity.setKeyframes([
-    { time: 0.85, value: 1 },
+    { time: 1.05, value: 1 },
     { time: dur - 0.15, value: 1 },
     { time: dur, value: 0, easing: SMOOTH },
   ]);
@@ -410,22 +410,22 @@ export function transitions(overlay: VisualTrack, A: Assets): void {
     g.transform.anchor.setStatic([0.5, 0.5]);
     g.transform.position.setStatic([W / 2, H / 2]);
     g.add(span(coverImage(A.burstTorn, -W / 2, -H / 2, W, H)));
-    g.start = at - 0.28;
-    g.end = at + 0.4;
+    g.start = at - 0.42;
+    g.end = at + 0.58;
     g.transform.scale.setKeyframes([
-      { time: at - 0.28, value: [0.3, 0.3] },
-      { time: at - 0.08, value: [1.85, 1.85], easing: SMOOTH }, // fast pop to cover
-      { time: at + 0.4, value: [2.15, 2.15] },
+      { time: at - 0.42, value: [0.3, 0.3] },
+      { time: at - 0.1, value: [1.85, 1.85], easing: SMOOTH }, // pop to cover
+      { time: at + 0.58, value: [2.2, 2.2] },
     ]);
     g.transform.rotation.setKeyframes([
-      { time: at - 0.28, value: -0.7 },
-      { time: at + 0.4, value: 0.5, easing: SMOOTH }, // keeps spinning through
+      { time: at - 0.42, value: -0.7 },
+      { time: at + 0.58, value: 0.5, easing: SMOOTH }, // keeps spinning through
     ]);
     g.opacity.setKeyframes([
-      { time: at - 0.28, value: 0 },
-      { time: at - 0.12, value: 1, easing: SMOOTH },
-      { time: at + 0.14, value: 1 },
-      { time: at + 0.4, value: 0, easing: SMOOTH }, // dissolve → reveal next chapter
+      { time: at - 0.42, value: 0 },
+      { time: at - 0.18, value: 1, easing: SMOOTH },
+      { time: at + 0.24, value: 1 },
+      { time: at + 0.58, value: 0, easing: SMOOTH }, // dissolve → reveal next chapter
     ]);
     overlay.add(g);
   };

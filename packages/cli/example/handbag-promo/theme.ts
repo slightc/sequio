@@ -43,7 +43,7 @@ export interface Chapter {
   start: number;
   end: number;
 }
-export const S1: Chapter = { start: 0.0, end: 4.8 }; // FASHIONABLE HANDBAG
-export const S2: Chapter = { start: 4.8, end: 7.9 }; // MINIMALIST · RETRO-STYLE
-export const S3: Chapter = { start: 7.9, end: 10.5 }; // LUXURIOUS
-export const S4: Chapter = { start: 10.5, end: 15.0 }; // GET IT NOW
+export const S1: Chapter = { start: 0.0, end: 5.2 }; // FASHIONABLE HANDBAG
+export const S2: Chapter = { start: 5.2, end: 8.5 }; // MINIMALIST · RETRO-STYLE
+export const S3: Chapter = { start: 8.5, end: 11.2 }; // LUXURIOUS
+export const S4: Chapter = { start: 11.2, end: 15.0 }; // GET IT NOW
