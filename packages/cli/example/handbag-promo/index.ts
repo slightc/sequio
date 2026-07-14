@@ -1,15 +1,16 @@
-import { Compositor, ImageSource, VisualTrack, fonts } from '@sequio/engine';
-import { defineComposition } from '@sequio/runtime';
+import { Compositor, ImageSource, VideoSource, VisualTrack, fonts } from '@sequio/engine';
+import { defineComposition, loadAsset } from '@sequio/runtime';
 import { DURATION, FPS, H, INK, W } from './theme';
 import { COND_600_DATA_URL, COND_700_DATA_URL, COND_FAMILY, DISPLAY_DATA_URL, DISPLAY_FAMILY } from './font';
-import { type Assets, filmGrain, scene1, scene2, scene3, scene4, transitions } from './scenes';
+import { type Assets, type VidLoaded, filmGrain, scene1, scene2, scene3, scene4, transitions } from './scenes';
 import { type Loaded, loadImg } from './kit';
 import { PHOTOS, type Photo, loadPhoto } from './photos';
 
 /**
  * A recreation of a 15s vertical retro fashion spot (a burnt-orange handbag
- * promo), rebuilt from the engine's object graph over **real studio photography**
- * (Pexels, referenced by URL — see `photos.ts`) plus a few procedural design
+ * promo), rebuilt from the engine's object graph over **real footage** — short
+ * local video clips for the moving hero shots (chapters 1 & 4) plus studio
+ * photography (Pexels, by URL — see `photos.ts`) and a few procedural design
  * textures (sunburst, stripes, grain, light-leak). Same render core both ways
  * (contract #3):
  *
@@ -43,11 +44,18 @@ export default defineComposition(async () => {
   })();
   const ok = (p: Photo | null): Loaded => p ?? fallback;
 
+  // The moving hero shots — short local video clips (transcoded from free Pexels
+  // footage of the same burnt-orange shoot). Loaded once; each plays over its
+  // chapter so the hand / bag / model keep moving rather than sitting as a still.
+  const loadVid = async (path: string): Promise<VidLoaded> => {
+    const source = new VideoSource({ src: await loadAsset(path) });
+    const m = await source.load();
+    return { source, w: m.width, h: m.height };
+  };
+
   // Real photos (network) + procedural design textures (local files).
-  const [hero, modelFull, waist, portrait, ...rest] = await Promise.all([
-    loadPhoto(PHOTOS.hero),
+  const [modelFull, portrait, ...rest] = await Promise.all([
     loadPhoto(PHOTOS.modelFull),
-    loadPhoto(PHOTOS.waist),
     loadPhoto(PHOTOS.portrait),
     ...PHOTOS.grid.map(loadPhoto),
     ...PHOTOS.bags.map(loadPhoto),
@@ -61,9 +69,9 @@ export default defineComposition(async () => {
     stripes: await loadImg('./assets/stripes.png'),
     grain: await loadImg('./assets/grain.png'),
     leak: await loadImg('./assets/lightleak.png'),
-    hero: ok(hero),
+    heroVid: await loadVid('./assets/clip-model.mp4'),
+    waistVid: await loadVid('./assets/clip-hold.mp4'),
     modelFull: ok(modelFull),
-    waist: ok(waist),
     portrait: ok(portrait),
     grid,
     bags,

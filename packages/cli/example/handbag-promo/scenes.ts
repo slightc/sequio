@@ -18,7 +18,7 @@
  * swell mid-chapter — all in absolute time. Each chapter is one GroupClip placed
  * at its slice, so its children read in chapter-local time.
  */
-import { GroupClip, ImageClip, StaggerTextAnimator, VisualTrack } from '@sequio/engine';
+import { GroupClip, ImageClip, StaggerTextAnimator, type VideoSource, VideoClip, VisualTrack } from '@sequio/engine';
 import { COND, CREAM, GRAY, H, INK, S1, S2, S3, S4, W, WHITE } from './theme';
 import {
   type Loaded,
@@ -28,6 +28,8 @@ import {
   blurIn,
   coverImage,
   coverSprite,
+  coverVideo,
+  coverVideoSprite,
   fadeIn,
   filmFrame,
   grade,
@@ -42,6 +44,13 @@ import {
   span,
 } from './kit';
 
+/** A loaded video clip: its source + intrinsic size. */
+export interface VidLoaded {
+  source: VideoSource;
+  w: number;
+  h: number;
+}
+
 export interface Assets {
   // procedural design textures (local files)
   sunburst: Loaded;
@@ -49,10 +58,11 @@ export interface Assets {
   stripes: Loaded;
   grain: Loaded;
   leak: Loaded;
+  // real footage (local video clips) — the moving hero shots
+  heroVid: VidLoaded;
+  waistVid: VidLoaded;
   // real photography (network URLs)
-  hero: Loaded;
   modelFull: Loaded;
-  waist: Loaded;
   portrait: Loaded;
   grid: Loaded[];
   bags: Loaded[];
@@ -113,24 +123,32 @@ export function scene1(stage: VisualTrack, A: Assets): void {
   span(matte);
   g.add(matte);
 
-  const cover = new ImageClip(A.hero.source);
+  const cover = new VideoClip(A.heroVid.source);
   cover.transform.anchor.setStatic([0.5, 0.5]);
-  cover.transform.position.setStatic([W / 2, H / 2]);
-  grade(cover, { saturation: 1.08, contrast: 1.05 });
-  const cs = Math.max(W / A.hero.w, H / A.hero.h);
+  grade(cover, { saturation: 1.06, contrast: 1.04 });
+  const cs = Math.max(W / A.heroVid.w, H / A.heroVid.h);
+  // A CONTINUOUS Ken-Burns push — the product keeps zooming in through the whole
+  // shot (never sits static) — then overfills for the swirl.
   cover.transform.scale.setKeyframes([
     { time: 0, value: [cs * 0.5, cs * 0.5] },
-    { time: 0.42, value: [cs, cs], easing: SETTLE },
-    { time: dur - 0.5, value: [cs * 1.08, cs * 1.08], easing: SMOOTH },
-    { time: dur, value: [cs * 1.9, cs * 1.9], easing: SMOOTH }, // overfill for the swirl
+    { time: 0.42, value: [cs * 1.02, cs * 1.02], easing: SETTLE },
+    { time: dur - 0.55, value: [cs * 1.32, cs * 1.32], easing: SMOOTH }, // strong, steady push-in
+    { time: dur, value: [cs * 2.0, cs * 2.0], easing: SMOOTH }, // overfill for the swirl
+  ]);
+  // …and a slow drift/pan across the product so the frame is always in motion.
+  cover.transform.position.setKeyframes([
+    { time: 0, value: [W / 2, H / 2] },
+    { time: 0.42, value: [W / 2 + 8, H / 2 - 6], easing: SETTLE },
+    { time: dur - 0.55, value: [W / 2 - 34, H / 2 + 54], easing: SMOOTH },
+    { time: dur, value: [W / 2, H / 2], easing: SMOOTH }, // recentre into the swirl
   ]);
   cover.transform.rotation.setKeyframes([
     { time: 0, value: -0.16 },
     { time: 0.42, value: 0, easing: SETTLE },
-    { time: dur - 0.5, value: 0 },
+    { time: dur - 0.55, value: 0.02, easing: SMOOTH }, // faint continuous tilt
     { time: dur, value: 0.5, easing: SMOOTH }, // spin
   ]);
-  twirlOut(cover, dur - 0.5, 0.5, 3.6, 0.9);
+  twirlOut(cover, dur - 0.55, 0.55, 3.6, 0.9);
   span(cover);
   g.add(cover);
 
@@ -309,16 +327,15 @@ export function scene4(stage: VisualTrack, A: Assets): void {
   const g = chapter(stage, S4.start, S4.end);
   const splitY = H * 0.52;
 
-  // Split layout: TOP = the waist/midriff (bag held); BOTTOM = a portrait. Both push in.
-  const topPanel = panel(A.waist, [0, 0, W, splitY], [0.5, 0.5], 1.05);
-  grade(coverSprite(topPanel), { saturation: 0.95 });
+  // Split layout: TOP = a moving shot of the bag held at the waist (video);
+  // BOTTOM = a portrait still. The top plays live so the hand/bag keep moving.
+  const topPanel = coverVideo(A.waistVid, 0, 0, W, splitY);
+  const topSprite = coverVideoSprite(topPanel);
+  grade(topSprite, { saturation: 1.0, contrast: 1.03 });
+  const tvs = Math.max(W / A.waistVid.w, splitY / A.waistVid.h) * 1.12;
+  topSprite.transform.scale.setStatic([tvs, tvs]);
+  topSprite.transform.position.setStatic([(W - A.waistVid.w * tvs) / 2, splitY / 2 - A.waistVid.h * tvs * 0.46]);
   span(topPanel);
-  const topSprite = coverSprite(topPanel);
-  const ts = topSprite.transform.scale.valueAt(0);
-  topSprite.transform.scale.setKeyframes([
-    { time: 0, value: ts },
-    { time: dur, value: [ts[0] * 1.09, ts[1] * 1.09], easing: SMOOTH },
-  ]);
   fadeIn(topPanel, 0, 0.28);
   g.add(topPanel);
 

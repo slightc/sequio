@@ -19,6 +19,8 @@ import {
   TextClip,
   type TextStyleLike,
   TwirlEffect,
+  VideoClip,
+  type VideoSource,
   type VisualClip,
   cubicBezier,
 } from '@sequio/engine';
@@ -95,6 +97,36 @@ export function coverImage(img: Loaded, x: number, y: number, w: number, h: numb
 /** The inner `ImageClip` of a cover group, so a scene can push a Ken-Burns push. */
 export function coverSprite(g: GroupClip): ImageClip {
   return g.children[0] as ImageClip;
+}
+
+/**
+ * Like {@link coverImage}, but plays a **video** clip cropped to `[x,y,w,h]` — the
+ * moving hero shots. The wrapping group's `maskShape` clips the video to the box.
+ */
+export function coverVideo(
+  vid: { source: VideoSource; w: number; h: number },
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  radius = 0,
+): GroupClip {
+  const g = new GroupClip();
+  g.transform.anchor.setStatic([0, 0]);
+  g.transform.position.setStatic([x, y]);
+  g.maskShape = { kind: 'rect', width: w, height: h, radius: radius || undefined };
+  const scale = Math.max(w / vid.w, h / vid.h);
+  const sprite = new VideoClip(vid.source);
+  sprite.transform.anchor.setStatic([0, 0]);
+  sprite.transform.scale.setStatic([scale, scale]);
+  sprite.transform.position.setStatic([(w - vid.w * scale) / 2, (h - vid.h * scale) / 2]);
+  g.add(span(sprite));
+  return g;
+}
+
+/** The inner `VideoClip` of a {@link coverVideo} group. */
+export function coverVideoSprite(g: GroupClip): VideoClip {
+  return g.children[0] as VideoClip;
 }
 
 // ── Text ─────────────────────────────────────────────────────────────────────
