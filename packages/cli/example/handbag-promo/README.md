@@ -27,6 +27,11 @@ sequio frame   example/handbag-promo/index.ts --time 3 --out frame.png
 Between chapters a **sunburst iris** bursts open (1→2 and 3→4) and warm
 **light-leak flashes** cover the cuts.
 
+> **Making-of.** The methodology and reusable techniques behind this recreation —
+> how to read a reference video into a shot list, the time model, the anchor/pivot
+> pitfalls, kinetic type, the custom WebGL+WebGPU effect, and a problem→fix table —
+> are written up in [`docs/recreating-a-video.md`](../../../../docs/recreating-a-video.md).
+
 ## How it's built
 
 Everything is the engine's public surface — no bespoke renderer:
