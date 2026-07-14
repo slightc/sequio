@@ -110,7 +110,10 @@ export default defineComposition(async () => {
   // Soundtrack — an original upbeat retro-house instrumental (122 BPM), scheduled
   // onto the compositor's own audio engine. It fades in at the top and out under
   // the last beat; `sequio render` muxes the compositor's mix automatically.
-  const musicSource = new AudioSource({ src: await loadAsset('./assets/music.m4a') });
+  // Opus-in-WebM (royalty-free) so the browser preview decodes it via WebCodecs on
+  // ANY browser — AAC/m4a only decodes on Chrome/Edge builds that ship the licensed
+  // AAC decoder (open-source Chromium / Firefox throw a WebCodecs "Decoding error").
+  const musicSource = new AudioSource({ src: await loadAsset('./assets/music.webm') });
   await musicSource.load();
   const music = new AudioClip();
   music.start = 0;

@@ -193,7 +193,7 @@ sprite 则用原生 anchor，稳定。这条坑直接决定了两个设计：
 音乐**排到 compositor 自己的音频引擎**上，作曲不必自建 `AudioEngine`：
 
 ```ts
-const musicSource = new AudioSource({ src: await loadAsset('./assets/music.m4a') });
+const musicSource = new AudioSource({ src: await loadAsset('./assets/music.webm') });
 await musicSource.load();
 const music = new AudioClip();
 music.start = 0; music.end = DURATION;
@@ -205,8 +205,10 @@ return { compositor, duration: DURATION };
 
 `sequio render` 会自动把 `compositor.audioEngine` 的离线混音 mux 进视频（runtime
 的 `build()` 默认取 `compositor.audioEngine`，`hasClips` 为空则跳过 mux）。音乐本身
-是程序化合成的原创复古 house（numpy → WAV → AAC），几轮调过响度：太吵 → 降峰值 →
-去掉转场 riser 音效、整体调响到 `gain 0.72`。
+是程序化合成的原创复古 house，几轮调过响度：太吵 → 降峰值 → 去掉转场 riser 音效、
+整体调响到 `gain 0.72`。**编码用 Opus-in-WebM（免版税）**：浏览器预览经 WebCodecs
+`AudioDecoder` 解码，AAC/m4a 只在随附了授权 AAC 解码器的 Chrome/Edge 上能解，开源
+Chromium / Firefox 会抛 WebCodecs `Decoding error`——Opus 则处处可解。
 
 ---
 

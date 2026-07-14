@@ -54,8 +54,9 @@ Everything is the engine's public surface — no bespoke renderer:
   studio photography from Pexels (referenced by URL, free to use).
 - **Video** — `assets/clip-model.mp4`, `clip-hold.mp4`: short clips (transcoded
   from free Pexels footage of the same shoot) for the moving chapter 1 & 4 shots.
-- **Music** — `assets/music.m4a`: an original, procedurally-synthesized retro
-  house instrumental, muxed into the export via the composition's `AudioEngine`.
+- **Music** — `assets/music.webm`: an original, procedurally-synthesized retro
+  house instrumental (Opus, royalty-free so the browser preview decodes it via
+  WebCodecs on any browser), muxed into the export via the compositor's `AudioEngine`.
 - **Textures** — `assets/`: `sunburst.png`, `burst-torn.png` (the spinning
   torn-paper cut), `stripes.png`, `lightleak.png`, `grain.png` — procedural
   design graphics, drawn + optimized.
