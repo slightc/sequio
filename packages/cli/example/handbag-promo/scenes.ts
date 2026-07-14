@@ -197,7 +197,7 @@ export function scene2(stage: VisualTrack, A: Assets): void {
     { time: dur + 0.1, value: 1.3, easing: SMOOTH }, // hard whip-spin
   ]);
   blurIn(frame, 0, 0.28, 24);
-  blurBurst(frame, dur - 0.2, 0.32, 38);
+  blurBurst(frame, dur - 0.2, 0.3, 22);
   g.add(frame);
 
   // MINIMALIST (top) — resolves out of a blur, then holds steady.
@@ -262,19 +262,21 @@ export function scene3(stage: VisualTrack, A: Assets): void {
     { time: dur + 0.15, value: [W / 2, H / 2 + 110], easing: SMOOTH },
   ]);
   sheet.transform.scale.setKeyframes([
-    { time: 0, value: [1.35, 1.35] }, // whip-in overshoot
-    { time: 0.35, value: [1.12, 1.12], easing: SMOOTH },
+    { time: 0, value: [1.18, 1.18] }, // slight whip-in overshoot (kept small so it never washes to a plate)
+    { time: 0.28, value: [1.12, 1.12], easing: SMOOTH },
     { time: dur - 0.45, value: [1.24, 1.24], easing: SMOOTH },
     { time: dur, value: [1.7, 1.7], easing: SMOOTH }, // overfill for the swirl
   ]);
   sheet.transform.rotation.setKeyframes([
-    { time: 0, value: 0.5 }, // spins in from the chapter-2 whip
-    { time: 0.35, value: 0.05, easing: SMOOTH },
+    { time: 0, value: 0.3 }, // spins in from the chapter-2 whip
+    { time: 0.28, value: 0.05, easing: SMOOTH },
     { time: dur - 0.45, value: 0.05 },
     { time: dur, value: 0.55, easing: SMOOTH }, // spin out
   ]);
-  blurIn(sheet, 0, 0.3, 40);
-  fadeIn(sheet, 0, 0.2);
+  blurIn(sheet, 0, 0.16, 14); // light, quick — resolves before it reads as empty
+  // NB: no fade-in — the grid is opaque from frame one so it covers the grey
+  // chapter backdrop immediately (a fade would show the bare grey for a beat,
+  // which read as an "empty plate" at the cut).
   twirlOut(sheet, dur - 0.45, 0.45, 3.4, 0.9);
   g.add(sheet);
 
