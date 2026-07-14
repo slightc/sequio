@@ -118,16 +118,21 @@ export class Composer {
     const result = await this.link(fullEnv).build(fullEnv);
     const compositor = result.compositor;
     const duration = result.duration ?? deriveDuration(compositor);
-    // Exporter needs an AudioEngine; synthesize an empty one when the composition
-    // has no audio so audio-less compositions still export.
-    const audioEngine = result.audioEngine ?? new AudioEngine(new Timebase(30));
+    // The compositor owns an AudioEngine (schedule onto `compositor.audioEngine`);
+    // a builder may still return its own to override. The `?? new AudioEngine`
+    // tail keeps a stubbed compositor (tests) from throwing. `hasAudio` reflects
+    // whether the chosen engine actually has any scheduled clips.
+    const audioEngine =
+      result.audioEngine ?? compositor.audioEngine ?? new AudioEngine(new Timebase(30));
     return {
       compositor,
       audioEngine,
-      hasAudio: result.audioEngine !== undefined,
+      hasAudio: audioEngine.hasClips,
       duration,
       dispose() {
-        audioEngine.dispose();
+        // compositor.dispose() disposes its own engine; also dispose an overriding
+        // one. AudioEngine.dispose() is idempotent, so double-disposal is safe.
+        if (audioEngine !== compositor.audioEngine) audioEngine.dispose();
         compositor.dispose();
       },
     };

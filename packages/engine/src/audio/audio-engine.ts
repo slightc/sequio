@@ -49,6 +49,11 @@ export class AudioEngine implements Disposable {
     return this.playing;
   }
 
+  /** Whether any audio has been scheduled — lets a host skip muxing an empty mix. */
+  get hasClips(): boolean {
+    return this.entries.length > 0;
+  }
+
   /** Start (or restart) audio from timeline `playhead`, aligned to the clock. */
   play(playhead: number): void {
     this.stopNodes();
