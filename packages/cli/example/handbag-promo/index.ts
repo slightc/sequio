@@ -108,9 +108,9 @@ export default defineComposition(async () => {
   const music = new AudioClip();
   music.start = 0;
   music.end = DURATION;
-  music.fadeIn = 0.25;
-  music.fadeOut = 1.1;
-  music.gain.setStatic(0.9);
+  music.fadeIn = 0.3;
+  music.fadeOut = 1.2;
+  music.gain.setStatic(0.55);
   audioEngine.schedule(music, musicSource);
 
   return { compositor, duration: DURATION, audioEngine };
