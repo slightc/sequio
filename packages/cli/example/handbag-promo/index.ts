@@ -1,7 +1,6 @@
 import { AudioClip, AudioEngine, AudioSource, Compositor, ImageSource, Timebase, VideoSource, VisualTrack, fonts } from '@sequio/engine';
 import { defineComposition, loadAsset } from '@sequio/runtime';
 import { DURATION, FPS, H, INK, W } from './theme';
-import { COND_600_DATA_URL, COND_700_DATA_URL, COND_FAMILY, DISPLAY_DATA_URL, DISPLAY_FAMILY } from './font';
 import { type Assets, type VidLoaded, filmGrain, scene1, scene2, scene3, scene4, transitions } from './scenes';
 import { type Loaded, loadImg } from './kit';
 import { PHOTOS, type Photo, loadPhoto } from './photos';
@@ -31,10 +30,13 @@ export default defineComposition(async () => {
   const compositor = new Compositor({ width: W, height: H, fps: FPS, background: INK });
   await compositor.init();
 
-  // Fonts up front — embedded Anton (display) + Oswald (condensed) subsets.
-  await fonts.load({ family: DISPLAY_FAMILY, src: DISPLAY_DATA_URL });
-  await fonts.load({ family: COND_FAMILY, src: COND_600_DATA_URL, weight: '600' });
-  await fonts.load({ family: COND_FAMILY, src: COND_700_DATA_URL, weight: '700' });
+  // Fonts up front — Anton (display) + Oswald (condensed) from Google Fonts. Both
+  // the browser preview and the Node render fetch the woff2 over the network (the
+  // same call feeds document.fonts and Route B's @napi-rs/canvas bridge); failures
+  // degrade to the fallback stacks in theme.ts. Needs network access.
+  await fonts.loadGoogleFont({ family: 'Anton', weights: [400] });
+  await fonts.loadGoogleFont({ family: 'Oswald', weights: [600, 700] });
+  await fonts.ready();
 
   // A loaded grey stand-in for any photo that fails to fetch.
   const fallback: Loaded = await (async () => {

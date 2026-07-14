@@ -47,12 +47,16 @@ Everything is the engine's public surface — no bespoke renderer:
 - **Photos** — `photos.ts`: the hero bag shot, the full-body model, the waist /
   portrait crops, the contact-sheet poses and the cycling mini-bags, all real
   studio photography from Pexels (referenced by URL, free to use).
+- **Video** — `assets/clip-model.mp4`, `clip-hold.mp4`: short clips (transcoded
+  from free Pexels footage of the same shoot) for the moving chapter 1 & 4 shots.
+- **Music** — `assets/music.m4a`: an original, procedurally-synthesized retro
+  house instrumental, muxed into the export via the composition's `AudioEngine`.
 - **Textures** — `assets/`: `sunburst.png`, `burst-torn.png` (the spinning
   torn-paper cut), `stripes.png`, `lightleak.png`, `grain.png` — procedural
   design graphics, drawn + optimized.
-- **Fonts** — Anton (display) + Oswald (condensed) Latin subsets embedded as
-  `data:` URLs in `font.ts`, so the title renders identically in the browser
-  preview and the Node render.
+- **Fonts** — Anton (display) + Oswald (condensed) loaded from Google Fonts via
+  `fonts.loadGoogleFont` (browser preview + Node render both fetch the woff2),
+  falling back to the `theme.ts` stacks if the network is unavailable.
 
 ### A note on time (why chapters are groups)
 
