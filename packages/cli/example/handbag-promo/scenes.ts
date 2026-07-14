@@ -191,31 +191,32 @@ export function scene2(stage: VisualTrack, A: Assets): void {
   const framePhoto = coverSprite(frame.children[1] as GroupClip);
   grade(framePhoto, { saturation: 1.02, contrast: 1.04 });
   span(frame);
-  setLife(frame, { inAt: 0, inDur: 0.4, outAt: dur - 0.16, outDur: 0.18 });
-  // Slide down from the top + settle, hold, then WHIP up-and-out on a spin. The
-  // frame flies off rather than ballooning in place, so the cut stays crisp.
+  setLife(frame, { inAt: 0, inDur: 0.4, outAt: dur - 0.24, outDur: 0.24 });
+  // Slide down from the top + settle, hold, then spin out INTO the torn-paper cut
+  // (the burst covers the tail), so chapter 3 reveals under the same graphic the
+  // other cuts use — the scenes connect instead of hard-cutting on a whip.
   frame.transform.position.setKeyframes([
     { time: 0, value: [W / 2 - 30, H / 2 - 240] },
     { time: 0.6, value: [W / 2, H / 2 + 10], easing: SETTLE },
-    { time: dur - 0.32, value: [W / 2, H / 2 + 10] },
-    { time: dur + 0.14, value: [W / 2 - 360, H / 2 - 520], easing: SMOOTH },
+    { time: dur - 0.55, value: [W / 2, H / 2 + 10] },
+    { time: dur, value: [W / 2 - 180, H / 2 - 240], easing: SMOOTH },
   ]);
-  // Gentle push-in through the shot (the whole framed photo grows — no top-left
-  // crop artefact), then a modest whip scale.
+  // Gentle push-in through the shot, then a soft spin-out (blur kept low so it's
+  // not a mush — the burst does the covering, not the blur).
   frame.transform.scale.setKeyframes([
     { time: 0, value: [1.06, 1.06] },
     { time: 0.6, value: [1, 1], easing: SETTLE },
-    { time: dur - 0.32, value: [1.13, 1.13], easing: SMOOTH },
-    { time: dur + 0.14, value: [1.34, 1.34], easing: SMOOTH },
+    { time: dur - 0.55, value: [1.13, 1.13], easing: SMOOTH },
+    { time: dur, value: [1.42, 1.42], easing: SMOOTH },
   ]);
   frame.transform.rotation.setKeyframes([
     { time: 0, value: -0.14 },
     { time: 0.6, value: 0, easing: SETTLE },
-    { time: dur - 0.32, value: 0 },
-    { time: dur + 0.14, value: 1.3, easing: SMOOTH }, // hard whip-spin
+    { time: dur - 0.55, value: 0 },
+    { time: dur, value: 0.6, easing: SMOOTH }, // gentle spin-out
   ]);
   blurIn(frame, 0, 0.4, 24);
-  blurBurst(frame, dur - 0.32, 0.42, 22);
+  blurBurst(frame, dur - 0.55, 0.55, 14);
   g.add(frame);
 
   // MINIMALIST (top) — resolves out of a blur, then holds steady.
@@ -431,8 +432,8 @@ export function transitions(overlay: VisualTrack, A: Assets): void {
   };
 
   burst(S1.end); // chapter 1 → 2
-  leak(S2.start + (S2.end - S2.start) * 0.6, 0.6); // mid chapter-2 pink swell
-  leak(S2.end, 0.55); // a flash over the whip into chapter 3
+  leak(S2.start + (S2.end - S2.start) * 0.6, 0.55); // mid chapter-2 pink swell
+  burst(S2.end); // chapter 2 → 3 — same torn-paper cut as the others, so it connects
   burst(S3.end); // chapter 3 → 4
   leak(S4.start + (S4.end - S4.start) * 0.62, 0.6); // chapter-4 pink sweep
 }
