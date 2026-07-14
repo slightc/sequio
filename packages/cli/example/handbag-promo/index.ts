@@ -1,4 +1,4 @@
-import { Compositor, ImageSource, VideoSource, VisualTrack, fonts } from '@sequio/engine';
+import { AudioClip, AudioEngine, AudioSource, Compositor, ImageSource, Timebase, VideoSource, VisualTrack, fonts } from '@sequio/engine';
 import { defineComposition, loadAsset } from '@sequio/runtime';
 import { DURATION, FPS, H, INK, W } from './theme';
 import { COND_600_DATA_URL, COND_700_DATA_URL, COND_FAMILY, DISPLAY_DATA_URL, DISPLAY_FAMILY } from './font';
@@ -99,5 +99,19 @@ export default defineComposition(async () => {
   compositor.addTrack(overlay);
   compositor.addTrack(grainTrack);
 
-  return { compositor, duration: DURATION };
+  // Soundtrack — an original upbeat retro-house instrumental (122 BPM), rendered
+  // once and muxed into the export. It fades in at the top and out under the last
+  // beat. Returning the AudioEngine tells `sequio render` to mux the mix.
+  const audioEngine = new AudioEngine(new Timebase(FPS));
+  const musicSource = new AudioSource({ src: await loadAsset('./assets/music.m4a') });
+  await musicSource.load();
+  const music = new AudioClip();
+  music.start = 0;
+  music.end = DURATION;
+  music.fadeIn = 0.25;
+  music.fadeOut = 1.1;
+  music.gain.setStatic(0.9);
+  audioEngine.schedule(music, musicSource);
+
+  return { compositor, duration: DURATION, audioEngine };
 });

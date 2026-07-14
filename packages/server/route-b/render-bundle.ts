@@ -94,6 +94,8 @@ export async function renderBundleToFile(
       container: opts.container,
       videoCodec: opts.videoCodec,
       bitrate: opts.bitrate,
+      // Mux the composition's own audio mix (music / voice-over) when it has any.
+      audio: built.hasAudio ? { engine: built.audioEngine } : undefined,
       onProgress: opts.onProgress,
     });
   } finally {

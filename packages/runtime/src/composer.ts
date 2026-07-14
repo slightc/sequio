@@ -43,6 +43,9 @@ export interface RuntimeBundle {
 export interface BuiltComposition {
   compositor: Compositor;
   audioEngine: AudioEngine;
+  /** True when the composition supplied its own audio (vs. the synthesized empty
+   * engine) — lets a renderer decide whether to mux an audio track. */
+  hasAudio: boolean;
   /** Timeline duration in seconds (builder value, else derived from clip ends). */
   duration: number;
   /** Dispose the compositor and its audio engine. */
@@ -121,6 +124,7 @@ export class Composer {
     return {
       compositor,
       audioEngine,
+      hasAudio: result.audioEngine !== undefined,
       duration,
       dispose() {
         audioEngine.dispose();
