@@ -16,6 +16,7 @@ const DEMOS = [
   'example/custom-fx/index.ts',
   'example/yc-spot/index.ts',
   'example/valentine/index.ts',
+  'example/handbag-promo/index.ts',
   'example/summer-lookbook/index.ts',
   'example/media-network/index.ts',
   'example/media-local/index.ts',
@@ -27,7 +28,9 @@ describe('example demos link', () => {
       const bundle = readBundle(resolve(__dirname, '..', rel));
       const rt = new Runtime({
         ...bundle,
-        externals: { gsap: {} }, // yc-spot / index.ts import gsap at module load
+        // yc-spot imports gsap at module load; handbag-promo imports pixi.js
+        // (its custom TwirlEffect) — both are CLI-injected externals.
+        externals: { gsap: {}, 'pixi.js': {} },
         loadAsset: async () => new Blob([new Uint8Array([0])]),
       });
       const composition = rt.runToComposition();

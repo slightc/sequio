@@ -127,7 +127,9 @@ export default defineComposition(async () => {
 注意这段代码**和 `example/` 里的 demo 一字不差**——没有 `env`、没有 spread。环境差异
 （Node 的 WebGPU renderer、输出倍率）由 runtime **隐式注入**：见下节。返回值
 `{ compositor, audioEngine?, duration? }`，`duration` 省略时从各轨道 clip 的最大 `end` 推导
-（`deriveDuration`）。`defineComposition` 只给 builder 打个 tag，让 runtime 能区分「用户返回了
+（`deriveDuration`）。音频**默认排到 `compositor.audioEngine` 上**（每个 `Compositor` 自带一个，
+共用它的 `timebase`），builder 不必自己 `new AudioEngine` 或把它 return 出来——渲染/导出会自动取
+`compositor.audioEngine` 混音。`audioEngine` 返回值只在你要用**另一个**引擎覆盖时才需要。`defineComposition` 只给 builder 打个 tag，让 runtime 能区分「用户返回了
 一个 composition」和「返回了别的东西」，其余全靠 builder 本体。builder 仍可选地接收一个
 `env` 参数（`{ compositorOptions, target }`），需要按 preview/export/server 分支时才用。
 

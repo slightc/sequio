@@ -103,7 +103,10 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 
 ## Audio
 
-- `AudioEngine` — Web Audio live + OfflineAudioContext for export.
+- `AudioEngine` — Web Audio live + OfflineAudioContext for export. Every
+  `Compositor` owns one (`compositor.audioEngine`, sharing its `timebase`);
+  schedule onto it with `compositor.audioEngine.schedule(clip, source)` and
+  preview/export mix it automatically — no need to `new AudioEngine` yourself.
 - Scheduling helpers: `clipPlaybackAt`, `effectiveGain`, `fadeFactor`,
   `gainEventsAt`; types `ClipPlayback`, `GainEvent`.
 
@@ -130,7 +133,8 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 ## Runtime authoring API (`@sequio/runtime`)
 
 - `defineComposition(builder)` — default-export a builder that returns
-  `{ compositor, audioEngine?, duration? }`.
+  `{ compositor, audioEngine?, duration? }`. Audio defaults to
+  `compositor.audioEngine`; return `audioEngine` only to override with another.
 - `loadAsset('./path')` — fetch a local media file as a `Blob` (host-provided).
 - `Runtime`, `Composer` — compile+link+run files → a `Composer` that previews,
   exports (client), or `toBundle()`s source for server render.

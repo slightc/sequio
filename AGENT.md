@@ -166,7 +166,12 @@ example/        a sample composition (index.ts + scene.ts + font.ts: embedded da
                 DropInTextAnimator (TextAnimator); index.ts shows each as a labelled chapter —
                 effect on a shape, transition between two images, animation on a shape, per-char text);
                 yc-spot/ (editorial 15s poster) + valentine/ (vertical 9:16 "Valentine's Day
-                Sale" reel: echo-stack/arc/outline text + arch-masked network photos) showcases;
+                Sale" reel: echo-stack/arc/outline text + arch-masked network photos) +
+                handbag-promo/ (vertical 9:16 15s retro fashion spot recreated from a real ad:
+                four chapters — FASHIONABLE HANDBAG · MINIMALIST/RETRO-STYLE · LUXURIOUS ·
+                GET IT NOW — pulsing solid↔hollow display type, punch-in/push-in camera moves,
+                film/polaroid framing, torn-paper sunburst + whip-spin + light-leak cuts, over
+                real studio photography referenced by URL + procedural textures) showcases;
                 media-network/ (image+video from URLs) + media-local/ (loadAsset('./video.mp4'),
                 git-ignored media) demos — neither commits any media asset
 tests/          args + bundle + check + example-demos (link every demo) unit tests

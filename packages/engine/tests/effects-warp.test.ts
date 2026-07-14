@@ -179,3 +179,4 @@ describe('registerBuiltins (with warps)', () => {
     expect(reg.create('displacement')).toBeInstanceOf(DisplacementEffect);
   });
 });
+

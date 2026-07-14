@@ -9,6 +9,7 @@ import { GroupClip } from './group-clip';
 import { VisualSource } from '../media/media-source';
 import { VisualTrack } from './track';
 import { TextureManager } from '../texture/texture-manager';
+import { AudioEngine } from '../audio/audio-engine';
 
 /** A source that can adopt the compositor's shared GPU texture pool. */
 interface TextureManagerAware {
@@ -149,6 +150,13 @@ export class Compositor implements Disposable {
   readonly origin: readonly [number, number];
   /** Resolved frame reference (from `options.timebase`, else `options.fps`, else 30fps). */
   readonly timebase: Timebase;
+  /**
+   * The compositor's own audio engine — one per compositor, sharing its
+   * {@link timebase}. Schedule audio onto it (`compositor.audioEngine.schedule(
+   * clip, source)`); preview drives it alongside the visual clock and export
+   * muxes its offline mix, so a composition never has to create or thread its own.
+   */
+  readonly audioEngine: AudioEngine;
   private renderer: Renderer | null = null;
   private initPromise: Promise<void> | null = null;
   private dirty = true;
@@ -167,6 +175,7 @@ export class Compositor implements Disposable {
     // Resolve the frame reference: explicit timebase wins, else the fps shortcut,
     // else 30fps — so `new Compositor({ width, height })` works with no time setup.
     this.timebase = options.timebase ?? new Timebase(options.fps ?? 30);
+    this.audioEngine = new AudioEngine(this.timebase);
     this.resolution = options.resolution ?? (globalThis.devicePixelRatio || 1);
     this.antialias = options.antialias ?? true;
     this.prewarmSeconds = options.prewarmSeconds ?? 0.5;
@@ -456,6 +465,7 @@ export class Compositor implements Disposable {
     this.attachedEffects.clear();
     this.reconciler.clear(this.stage);
     this.tracks.length = 0;
+    this.audioEngine.dispose();
     if (this.ownsTextures) this.textures.dispose(); // keep a shared/injected pool alive
     this.renderer?.destroy();
     this.renderer = null;
