@@ -1,10 +1,11 @@
 /**
- * Shared shader scaffolding for the custom warp filters (bulge / perspective /
- * twirl). {@link makeGlFilter} is WebGL-only; {@link makeFilter} additionally
- * carries a WGSL `gpuProgram` so the warp also runs on the WebGPU path (Route B
- * server render).
+ * Shared GLSL scaffolding for the custom warp filters (bulge / perspective).
+ *
+ * These are WebGL-only (`glProgram`) — the compositor runs WebGL (contract #3
+ * uses one render core) and the e2e verifies on WebGL. WGSL variants for the
+ * WebGPU path are a follow-up (see `todo/07`).
  */
-import { Filter, GlProgram, GpuProgram, UniformGroup } from 'pixi.js';
+import { Filter, GlProgram, UniformGroup } from 'pixi.js';
 
 /**
  * PixiJS's default filter vertex shader, inlined (it is not a public export).
@@ -47,30 +48,5 @@ export function makeGlFilter(name: string, fragment: string, uniforms: UniformGr
   return new Filter({
     glProgram: GlProgram.from({ vertex: DEFAULT_FILTER_VERT, fragment, name }),
     resources: { warpUniforms: uniforms },
-  });
-}
-
-/**
- * Build a warp {@link Filter} with **both** a WebGL `glProgram` (from `fragment`)
- * and a WebGPU `gpuProgram` (from `wgsl`, entry points `mainVertex` /
- * `mainFragment`), so the same effect runs on the browser preview and the pure
- * Node (WebGPU) server render. `resourceKey` must match the WGSL uniform var name
- * bound at `@group(1) @binding(0)`.
- */
-export function makeFilter(
-  name: string,
-  fragment: string,
-  wgsl: string,
-  uniforms: UniformGroup,
-  resourceKey: string,
-): Filter {
-  return new Filter({
-    glProgram: GlProgram.from({ vertex: DEFAULT_FILTER_VERT, fragment, name }),
-    gpuProgram: GpuProgram.from({
-      vertex: { source: wgsl, entryPoint: 'mainVertex' },
-      fragment: { source: wgsl, entryPoint: 'mainFragment' },
-      name,
-    }),
-    resources: { [resourceKey]: uniforms },
   });
 }

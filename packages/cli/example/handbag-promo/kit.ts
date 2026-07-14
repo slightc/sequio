@@ -18,13 +18,13 @@ import {
   ShapeClip,
   TextClip,
   type TextStyleLike,
-  TwirlEffect,
   VideoClip,
   type VideoSource,
   type VisualClip,
   cubicBezier,
 } from '@sequio/engine';
 import { loadAsset } from '@sequio/runtime';
+import { TwirlEffect } from './twirl';
 import { COND, DISPLAY, HOLLOW, INK, WHITE } from './theme';
 
 // ── Easings ──────────────────────────────────────────────────────────────────

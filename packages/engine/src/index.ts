@@ -116,7 +116,6 @@ export { BlurEffect } from './effects/blur-effect';
 export { BulgeEffect } from './effects/bulge-effect';
 export { PerspectiveEffect } from './effects/perspective-effect';
 export { DisplacementEffect, type DisplacementEffectOptions } from './effects/displacement-effect';
-export { TwirlEffect, twirlSourceUv } from './effects/twirl-effect';
 export {
   type Mat3,
   type Quad,
