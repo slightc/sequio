@@ -173,30 +173,31 @@ export function scene2(stage: VisualTrack, A: Assets): void {
   const framePhoto = coverSprite(frame.children[1] as GroupClip);
   grade(framePhoto, { saturation: 1.02, contrast: 1.04 });
   span(frame);
-  setLife(frame, { inAt: 0, inDur: 0.28, outAt: dur - 0.08, outDur: 0.18 });
+  setLife(frame, { inAt: 0, inDur: 0.28, outAt: dur - 0.12, outDur: 0.14 });
+  // Slide down from the top + settle, hold, then WHIP up-and-out on a spin. The
+  // frame flies off rather than ballooning in place, so the cut stays crisp.
   frame.transform.position.setKeyframes([
     { time: 0, value: [W / 2 - 30, H / 2 - 240] },
     { time: 0.42, value: [W / 2, H / 2 + 10], easing: SETTLE },
+    { time: dur - 0.2, value: [W / 2, H / 2 + 10] },
+    { time: dur + 0.1, value: [W / 2 - 360, H / 2 - 520], easing: SMOOTH },
   ]);
+  // Gentle push-in through the shot (the whole framed photo grows — no top-left
+  // crop artefact), then a modest whip scale.
   frame.transform.scale.setKeyframes([
     { time: 0, value: [1.06, 1.06] },
     { time: 0.42, value: [1, 1], easing: SETTLE },
-    { time: dur - 0.22, value: [1, 1] },
-    { time: dur + 0.12, value: [1.9, 1.9], easing: SMOOTH }, // whip out
+    { time: dur - 0.2, value: [1.12, 1.12], easing: SMOOTH },
+    { time: dur + 0.1, value: [1.34, 1.34], easing: SMOOTH },
   ]);
   frame.transform.rotation.setKeyframes([
     { time: 0, value: -0.14 },
     { time: 0.42, value: 0, easing: SETTLE },
-    { time: dur - 0.22, value: 0 },
-    { time: dur + 0.12, value: 1.2, easing: SMOOTH }, // hard whip-spin
+    { time: dur - 0.2, value: 0 },
+    { time: dur + 0.1, value: 1.3, easing: SMOOTH }, // hard whip-spin
   ]);
   blurIn(frame, 0, 0.28, 24);
-  blurBurst(frame, dur - 0.22, 0.4, 55);
-  const fps0 = framePhoto.transform.scale.valueAt(0);
-  framePhoto.transform.scale.setKeyframes([
-    { time: 0, value: fps0 },
-    { time: dur, value: [fps0[0] * 1.3, fps0[1] * 1.3], easing: SMOOTH }, // push-in, feet crop
-  ]);
+  blurBurst(frame, dur - 0.2, 0.32, 38);
   g.add(frame);
 
   // MINIMALIST (top) — resolves out of a blur, then holds steady.
