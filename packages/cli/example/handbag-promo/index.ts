@@ -22,9 +22,15 @@ import { PHOTOS, type Photo, loadPhoto } from './photos';
  * whip-spin cuts. Needs network access (the photos are fetched by URL).
  */
 
-/** A 4×4 grey placeholder so a failed photo fetch degrades instead of crashing. */
+/**
+ * A 2×2 studio-grey placeholder so a failed photo fetch degrades instead of
+ * crashing. This exact PNG is verified to decode via the browser's
+ * `createImageBitmap` (the preview path) — an earlier base64 here decoded in
+ * Node but was rejected by Chrome ("source image could not be decoded"), which
+ * silently broke `sequio preview` while `sequio render` still worked.
+ */
 const FALLBACK =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAEUlEQVR42mNkYGD4z0AEYBxVSFQFAG3vBABFxvJ+AAAAAElFTkSuQmCC';
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGPcvGYZAwMDEwMDAwMDAwAYcwIJ/XiVjQAAAABJRU5ErkJggg==';
 
 export default defineComposition(async () => {
   const compositor = new Compositor({ width: W, height: H, fps: FPS, background: INK });
