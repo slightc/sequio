@@ -93,6 +93,13 @@ export {
 
 // ── Compositor graph ─────────────────────────────────────────────────────────
 export { Compositor, type CompositorOptions } from './compositor/compositor';
+
+// ── Engine environment (out-of-browser defaults) ─────────────────────────────
+export {
+  type EngineEnv,
+  setDefaultEngineEnv,
+  getDefaultEngineEnv,
+} from './env';
 export { Track, VisualTrack, AudioTrack } from './compositor/track';
 export { Clip, VisualClip, AudioClip, type MaskSpec } from './compositor/clip';
 export {

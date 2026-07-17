@@ -1,4 +1,5 @@
 import { autoDetectRenderer, type AutoDetectOptions, Container, type Renderer, RenderTexture } from 'pixi.js';
+import { ensureEngineEnvSetup, getDefaultEngineEnv } from '../env';
 import type { Disposable } from '../core/disposable';
 import type { Effect } from '../effects/effect';
 import { Timebase } from '../time/timebase';
@@ -176,7 +177,10 @@ export class Compositor implements Disposable {
     // else 30fps — so `new Compositor({ width, height })` works with no time setup.
     this.timebase = options.timebase ?? new Timebase(options.fps ?? 30);
     this.audioEngine = new AudioEngine(this.timebase);
-    this.resolution = options.resolution ?? (globalThis.devicePixelRatio || 1);
+    // Resolution: explicit option wins, else the engine env default (a server's
+    // output scale), else the device pixel ratio.
+    this.resolution =
+      options.resolution ?? getDefaultEngineEnv().resolution ?? (globalThis.devicePixelRatio || 1);
     this.antialias = options.antialias ?? true;
     this.prewarmSeconds = options.prewarmSeconds ?? 0.5;
     this.holdLastFrameAtEnd = options.holdLastFrameAtEnd ?? true;
@@ -214,11 +218,16 @@ export class Compositor implements Disposable {
       antialias: this.antialias,
       autoDensity: true,
     };
-    // A custom factory (e.g. server-side WebGPU in Node) can replace autoDetect.
-    const create = this.options.createRenderer ?? autoDetectRenderer;
-    this.initPromise = create(options).then((renderer) => {
-      this.renderer = renderer;
-    });
+    this.initPromise = (async () => {
+      // Run the engine env's one-time host bootstrap (e.g. a server installing
+      // WebGPU/globals) before creating the renderer.
+      await ensureEngineEnvSetup();
+      // Renderer factory: an explicit per-compositor `createRenderer` wins, else
+      // the engine env default (server-side WebGPU in Node), else autoDetect
+      // (WebGPU preferred, WebGL fallback) in a browser.
+      const create = this.options.createRenderer ?? getDefaultEngineEnv().createRenderer ?? autoDetectRenderer;
+      this.renderer = await create(options);
+    })();
     return this.initPromise;
   }
 

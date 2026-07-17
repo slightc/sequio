@@ -175,13 +175,17 @@ export const browserEnv: RuntimeEnv = { name: 'browser', target: 'preview' };
   裸模块（**显式 `RuntimeOptions.externals` 覆盖 env 的**），`env.loadAsset` 作为 loader 兜底。
 - **消费**：`Composer.build()` 先跑 `env.setup()`（缓存，多次 build 仅一次）→ `resolveCompositorOptions()`
   折进该次 build 的 `compositorOptions`；显式 `build({compositorOptions})` 覆盖仍生效。无 env 时行为不变。
+- **renderer 默认落在 engine 层**：renderer / codec 这些引擎自己的东西由 **engine 层的 `EngineEnv` +
+  `setDefaultEngineEnv()`** 设进程默认（`Compositor` 消费，显式 `CompositorOptions` 覆盖），而不是 runtime 往
+  每个 build 折 `compositorOptions`——因为 DAG 是 `engine ← runtime`，engine 不能引用 runtime 的类型。
 - **具体 env 由宿主提供**——「server 提供一套 server env」：`@sequio/server/route-b` 的
-  **`nodeServerEnv()`** 把 Node WebGPU 引导 + renderer 工厂 + 输出倍率打包成一个 `RuntimeEnv`，并把创建出
-  的 renderer 暴露成 `env.renderer` 供 GPU 读帧。`render` / `frame` / `audio` 三处入口因此塌缩成
+  **`nodeServerEnv()`**（一个 `RuntimeEnv`）在 `setup()` 里做 Node 引导并
+  **`setDefaultEngineEnv({ createRenderer, resolution })` 把 renderer 注册到 engine 层**，把创建出的 renderer
+  暴露成 `env.renderer` 供 GPU 读帧。`render` / `frame` / `audio` 三处入口因此塌缩成
   `new Runtime({ ...bundle, env: nodeServerEnv({ scale, externals, loadAsset }) }).run()` → `build()`。
 
-沙箱执行、headless 宿主、iframe/RPC 都是这套环境模型的延伸，见
-[`environments-and-rpc.md`](environments-and-rpc.md)。
+engine 层 `EngineEnv` 与 runtime 层 `RuntimeEnv` 的分层、沙箱执行、headless 宿主、iframe/RPC 都是这套环境
+模型的延伸，见 [`environments-and-rpc.md`](environments-and-rpc.md)。
 
 ### `Composer`：一处产出、三处消费
 

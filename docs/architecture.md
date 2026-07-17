@@ -303,6 +303,12 @@ source)` 即可，预览驱动、导出混音都自动取它——无需自己 `
   注入 seam**(`Compositor.init` 默认仍 `autoDetectRenderer`,Node 传入 WebGPU 工厂),其余引擎
   (reconcile/renderSync/renderToTexture/转场)renderer 无关、零改动。代码在 `packages/server/route-b/`,校验
   `pnpm verify:ssr-node`;完整踩坑与 shim 见 `docs/server-side-rendering.md`。
+- **引擎级环境默认(`EngineEnv` / `setDefaultEngineEnv`)**:上面这些「引擎跑在浏览器之外」的 seam
+  (`createRenderer`、`setMediabunnyModule`、`setFrameImageExtractor`、输出倍率)由 `src/env.ts` 的
+  **`EngineEnv`** 收成**一个进程级默认**,`setDefaultEngineEnv(env)` 一次设好;`Compositor` 构造/`init`
+  时消费(**显式 `CompositorOptions` 永远覆盖默认**,并发/隔离仍逐个传 renderer)。服务端的 `nodeServerEnv()`
+  在其 `setup()` 里调 `setDefaultEngineEnv` 注册 Node WebGPU renderer——所以用户 bundle 里普通的
+  `new Compositor(...)` 在 Node 也拿到 renderer。设计见 [`environments-and-rpc.md`](environments-and-rpc.md) §A。
 
 ### 文字与字体加载（TextClip / FontManager）
 

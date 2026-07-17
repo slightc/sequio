@@ -12,7 +12,7 @@
  * Requires a WebGPU-capable host (a real GPU or Mesa lavapipe); `setup()` throws
  * a clear message if none is found. See `docs/environments-and-rpc.md`.
  */
-import type { Renderer } from '@sequio/engine';
+import { type Renderer, setDefaultEngineEnv } from '@sequio/engine';
 import type { AssetLoader, Externals, RuntimeEnv } from '@sequio/runtime';
 import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { bridgeFontManagerToNode } from './fonts-node';
@@ -54,11 +54,15 @@ export function nodeServerEnv(opts: NodeServerEnvOptions = {}): NodeServerEnv {
       // renders with the same web font the browser preview uses (contract #3).
       await setupNodeEnvironment();
       bridgeFontManagerToNode();
+      // Register the WebGPU renderer + output scale at the **engine layer** as the
+      // process-wide default, so the composition's plain `new Compositor(...)` picks
+      // them up with no per-build option plumbing (an explicit CompositorOptions
+      // value still wins). The created renderer is captured for GPU frame readback.
+      setDefaultEngineEnv({
+        resolution: scale,
+        createRenderer: async (o) => (renderer = await createNodeWebGPURenderer(o)),
+      });
     },
-    resolveCompositorOptions: () => ({
-      resolution: scale,
-      createRenderer: async (o) => (renderer = await createNodeWebGPURenderer(o)),
-    }),
     get renderer() {
       return renderer;
     },

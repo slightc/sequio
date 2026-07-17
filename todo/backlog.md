@@ -26,10 +26,12 @@
       让 SDK 与 `@mediabunny/server` 用同一 mediabunny 实例（破 dual-package hazard）；`setFrameImageExtractor()`
       让 Node 用 `sample.copyTo` 取视频帧像素；`createImageBitmap` polyfill 走 `@napi-rs/canvas`。
       `pnpm verify:ssr-node-media` 实测视频+图片纯 Node 解码合成。
-- [x] 统一环境模型 `RuntimeEnv` + `setEnv`：`packages/runtime/src/env.ts` 定义可注入的环境对象
-      （`setup` / `externals` / `loadAsset` / `resolveCompositorOptions`），`Runtime.setEnv()` 安装、
-      `Composer.build()` 消费（setup 缓存仅跑一次）；server 提供 `nodeServerEnv()` 把 Route B 引导
-      打包成一个 env，`render`/`frame`/`audio` 三处入口去重。见
+- [x] 统一环境模型（两层）：**engine 层** `EngineEnv` + `setDefaultEngineEnv()`
+      （`packages/engine/src/env.ts`：renderer/resolution/mediabunny/frameImageExtractor/setup 的进程级默认，
+      `Compositor` 消费、显式 `CompositorOptions` 覆盖）+ **runtime 层** `RuntimeEnv` + `setEnv`
+      （`packages/runtime/src/env.ts`：externals/loadAsset/setup/可选 compositorOptions，`Composer.build` 消费）。
+      server 的 `nodeServerEnv()` 在 `setup()` 里 `setDefaultEngineEnv({createRenderer,resolution})` 把 renderer
+      注册到 engine 层，`render`/`frame`/`audio` 三处入口去重。见
       [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §A、[`docs/runtime.md`](../docs/runtime.md)。
 - [ ] VM 沙箱执行路径（`RuntimeEnv` 的 evaluator 维度）：`ModuleRuntime` 抽出 `ModuleEvaluator` 接缝，
       Node 用 `node:vm` 白名单 globals、浏览器用 iframe/Worker；配素材 URL allowlist 挡 SSRF。设计见

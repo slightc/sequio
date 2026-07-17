@@ -72,6 +72,7 @@ src/
   effects/     Effect, EffectRegistry, Transition            🚧 color/blur + warp (bulge/perspective/displacement) + crossfade done, chroma/LUT/wipe TODO
   audio/       AudioEngine + scheduling                      ✅ implemented (Web Audio + OfflineAudioContext)
   export/      Exporter (FixedStep loop + Mediabunny mux)     ✅ implemented (MP4/WebM video+audio, single-frame image, audio-only mux; golden-frame diff is a follow-up)
+  env.ts       EngineEnv + setDefaultEngineEnv: process-wide out-of-browser defaults (renderer/resolution/mediabunny/frameImageExtractor/setup) — Compositor consumes them, explicit CompositorOptions win  ✅ implemented
   index.ts     public barrel
 tests/         vitest unit tests (pure-logic modules)
 example/       demos + browser e2e verify pages (verify:* harness)
@@ -85,8 +86,9 @@ route-a/        Route A: headless Chrome — renders a TimelineSpec *or* a runti
                 (ssr-render.html/.ts exposes render(spec)/renderBundle(bundle) + ssr-render.cjs worker)
 route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, server-env.ts, export-node.ts,
                 fonts-node.ts, render-bundle.ts, frame-node.ts, audio-node.ts + verify-*); index.ts =
-                (server-env.ts: nodeServerEnv() packages the Node bootstrap + WebGPU renderer + scale
-                into one injectable RuntimeEnv — the render/frame/audio entries all inject it)
+                (server-env.ts: nodeServerEnv() packages the Node bootstrap into one injectable RuntimeEnv
+                whose setup() registers the WebGPU renderer + scale at the engine layer via
+                setDefaultEngineEnv — the render/frame/audio entries all inject it)
                 @sequio/server/route-b node-only barrel (renderTimelineToFile / renderBundleToFile —
                 the latter powers `sequio render`; renderBundleFrameToFile → `sequio frame`;
                 exportBundleAudioToFile → `sequio audio`)
