@@ -13,10 +13,9 @@
  * WebGPU-capable host is required (real GPU or Mesa lavapipe), same as the other
  * Route B paths; {@link setupNodeEnvironment} throws a clear message if none.
  */
-import { type AudioExportFormat, Exporter, type Renderer } from '@sequio/engine';
+import { type AudioExportFormat, Exporter } from '@sequio/engine';
 import { type AssetLoader, type Externals, Runtime, type RuntimeBundle } from '@sequio/runtime';
-import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
-import { bridgeFontManagerToNode } from './fonts-node';
+import { nodeServerEnv } from './server-env';
 
 export interface ExportBundleAudioNodeOptions {
   /** Output file path. The extension is corrected to match the audio format. */
@@ -68,26 +67,16 @@ export async function exportBundleAudioToFile(
   bundle: RuntimeBundle,
   opts: ExportBundleAudioNodeOptions,
 ): Promise<ExportBundleAudioNodeResult> {
-  await setupNodeEnvironment();
-  // The composition's builder may call `fonts.load(...)` (browser `FontFace`),
-  // which is undefined in Node — reroute it to @napi-rs/canvas even though this
-  // audio-only path renders no text, so the builder runs without crashing.
-  bridgeFontManagerToNode();
-
   const format = opts.format ?? 'mp3';
   const codec = opts.codec ?? DEFAULT_CODEC[format];
-  let renderer: Renderer | null = null;
 
-  const composer = await new Runtime({ ...bundle, externals: opts.externals, loadAsset: opts.loadAsset }).run();
-  const built = await composer.build({
-    target: 'server',
-    compositorOptions: {
-      createRenderer: async (o) => {
-        renderer = await createNodeWebGPURenderer(o);
-        return renderer;
-      },
-    },
-  });
+  // The same injectable server env as the video/frame paths. This audio-only path
+  // renders no frames, but building still `init()`s the compositor (which needs a
+  // renderer in Node) and its `setup()` bridges the builder's `fonts.load(...)` so
+  // it runs without crashing — even though no text is drawn. See {@link renderBundleToFile}.
+  const env = nodeServerEnv({ externals: opts.externals, loadAsset: opts.loadAsset });
+  const composer = await new Runtime({ ...bundle, env }).run();
+  const built = await composer.build();
 
   try {
     const exporter = new Exporter(built.compositor, built.audioEngine);

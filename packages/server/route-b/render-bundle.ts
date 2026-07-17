@@ -12,11 +12,9 @@
  * Requires a WebGPU-capable host: a real GPU, or a software Vulkan driver (Mesa
  * lavapipe). {@link setupNodeEnvironment} throws a clear message if none is found.
  */
-import type { Renderer } from '@sequio/engine';
 import { type AssetLoader, Runtime, type Externals, type RuntimeBundle } from '@sequio/runtime';
-import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { renderTimelineToFile } from './export-node';
-import { bridgeFontManagerToNode } from './fonts-node';
+import { nodeServerEnv } from './server-env';
 
 export interface RenderBundleNodeOptions {
   /** Output file path. The extension is corrected to match the encoded container. */
@@ -62,32 +60,17 @@ export async function renderBundleToFile(
   bundle: RuntimeBundle,
   opts: RenderBundleNodeOptions,
 ): Promise<RenderBundleNodeResult> {
-  await setupNodeEnvironment();
-  // Make the composition's own `fonts.load*` calls (run inside its builder)
-  // register with @napi-rs/canvas, so text renders with the same web font the
-  // browser preview uses instead of the Node default (contract #3).
-  bridgeFontManagerToNode();
-
-  const scale = Math.max(1, opts.scale ?? 1);
-  let renderer: Renderer | null = null;
-
-  const composer = await new Runtime({ ...bundle, externals: opts.externals, loadAsset: opts.loadAsset }).run();
-  // The environment's renderer + scale are injected implicitly into the user's
-  // `new Compositor(...)` (runtime engineForEnv folds compositorOptions in).
-  const built = await composer.build({
-    target: 'server',
-    compositorOptions: {
-      createRenderer: async (o) => {
-        renderer = await createNodeWebGPURenderer(o);
-        return renderer;
-      },
-      resolution: scale,
-    },
-  });
+  // One injectable server env packages the Node bootstrap (globals, font bridge,
+  // mediabunny pinning) + the WebGPU renderer factory + output scale. `build()`
+  // runs its `setup()` once and folds `compositorOptions` into the user's
+  // `new Compositor(...)` implicitly (contract #3), so the code reads like a demo.
+  const env = nodeServerEnv({ scale: opts.scale, externals: opts.externals, loadAsset: opts.loadAsset });
+  const composer = await new Runtime({ ...bundle, env }).run();
+  const built = await composer.build();
 
   try {
     const fps = built.compositor.timebase.fps;
-    return await renderTimelineToFile(built.compositor, renderer!, {
+    return await renderTimelineToFile(built.compositor, env.renderer!, {
       fps,
       range: [0, built.duration],
       out: opts.out,

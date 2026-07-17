@@ -30,6 +30,7 @@ import {
   type CompositionEnv,
   deriveDuration,
 } from './composition';
+import type { RuntimeEnv } from './env';
 
 /** A portable snapshot of the program: its source files and entry path. */
 export interface RuntimeBundle {
@@ -77,10 +78,21 @@ const DEFAULT_ENV: CompositionEnv = { compositorOptions: {}, target: 'export' };
 export type CompositionLinker = (env: CompositionEnv) => Composition;
 
 export class Composer {
+  /** Cached `env.setup()` — runs once per Composer, shared across every build. */
+  private setupPromise: Promise<void> | undefined;
+
   constructor(
     private readonly link: CompositionLinker,
     private readonly bundle: RuntimeBundle,
+    /** The installed {@link RuntimeEnv}, if any (browser default: none). */
+    private readonly env?: RuntimeEnv,
   ) {}
+
+  /** Run the env's one-time `setup()` at most once per Composer. */
+  private ensureSetup(): Promise<void> {
+    if (!this.env?.setup) return Promise.resolve();
+    return (this.setupPromise ??= Promise.resolve(this.env.setup()));
+  }
 
   /** The entry module path the program ran from. */
   get entry(): string {
@@ -111,8 +123,25 @@ export class Composer {
    * must {@link BuiltComposition.dispose} it. `env` lets a host inject a renderer
    * (Node) or an output scale; it defaults to the browser (`{}`).
    */
-  async build(env: Partial<CompositionEnv> = {}): Promise<BuiltComposition> {
-    const fullEnv: CompositionEnv = { ...DEFAULT_ENV, ...env };
+  async build(overrides: Partial<CompositionEnv> = {}): Promise<BuiltComposition> {
+    // Fold the installed RuntimeEnv (if any) into the build environment: run its
+    // one-time setup, then resolve its per-build compositor overrides (injected
+    // renderer / output scale). Explicit `overrides` win over the env — so the
+    // internal `preview({target:'preview'})` / `export({target:'export'})` calls,
+    // and any caller-supplied options, still take precedence.
+    let base: CompositionEnv = DEFAULT_ENV;
+    if (this.env) {
+      await this.ensureSetup();
+      const compositorOptions = (await this.env.resolveCompositorOptions?.()) ?? {};
+      base = { target: this.env.target ?? DEFAULT_ENV.target, compositorOptions };
+    }
+    const fullEnv: CompositionEnv = {
+      ...base,
+      ...overrides,
+      // One-level merge so `overrides.compositorOptions` layers over the env's
+      // rather than replacing it wholesale.
+      compositorOptions: { ...base.compositorOptions, ...overrides.compositorOptions },
+    };
     // Re-link per build so the graph is fresh AND its Compositor already carries
     // this environment's options (see CompositionLinker).
     const result = await this.link(fullEnv).build(fullEnv);

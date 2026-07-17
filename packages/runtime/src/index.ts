@@ -59,6 +59,9 @@ export {
   type CompositionResult,
 } from './composition';
 
+// ── Host environment ────────────────────────────────────────────────────────
+export { browserEnv, type RuntimeEnv } from './env';
+
 // ── Runtime & Composer ──────────────────────────────────────────────────────
 export {
   Runtime,

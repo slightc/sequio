@@ -34,8 +34,9 @@
   `fetch`，未经校验就是让租户借你的服务器去打内网。对租户提交的 URL 做**协议 + 域名
   allowlist**（禁 `file:`/内网地址），或只接受你自己签发的素材句柄。
 - **确实需要跑不可信代码时**，后续给 `@sequio/runtime` 加**沙箱执行路径**
-  （QuickJS / isolated-vm / 锁死 globals 的 worker）——**当前未实现**，属待办。在它落地前，
-  "公网直接渲染用户提交的合成代码"就是一个 RCE/SSRF 洞，不要这么部署。
+  （`node:vm` / isolated-vm / iframe-worker）——**当前未实现**，属待办；设计见
+  [`environments-and-rpc.md`](environments-and-rpc.md) §B（`ModuleEvaluator` 接缝 + 隔离强度对比）。
+  在它落地前，"公网直接渲染用户提交的合成代码"就是一个 RCE/SSRF 洞，不要这么部署。
 
 一句话：**bundle（代码）路线是给可信来源的；面向公网/多租户请走"自定义 spec + 你的
 builder"的数据路线。**
@@ -230,8 +231,12 @@ packages/server/route-b/export-node.ts  GPU 读帧导出：renderToTexture → c
 packages/server/route-b/fonts-node.ts   Node 字体加载：自托管 URL + Google 字体（css2→文件→GlobalFonts.register）
                                  + bridgeFontManagerToNode（把引擎 FontManager 的 load 钩子改接 loadFontsNode，
                                  让代码/bundle 路线里作曲的 fonts.load(...) 在 Node 也注册进 GlobalFonts）
-packages/server/route-b/render-bundle.ts renderBundleToFile：读 RuntimeBundle（命令式代码）→ Runtime→Composer→build
-                                 →renderTimelineToFile（`sequio render` 与 worker `--bundle` 都走它）
+packages/server/route-b/server-env.ts   nodeServerEnv()：把 setupNodeEnvironment + bridgeFontManagerToNode +
+                                 WebGPU renderer 工厂 + 输出倍率打包成一个可注入的 RuntimeEnv（「server 提供一套
+                                 server env」）；build 后经 env.renderer 暴露创建出的 renderer 供 GPU 读帧。
+                                 render/frame/audio 三处入口都注入它，见 docs/environments-and-rpc.md
+packages/server/route-b/render-bundle.ts renderBundleToFile：读 RuntimeBundle（命令式代码）→ Runtime(env=nodeServerEnv)
+                                 →Composer→build →renderTimelineToFile（`sequio render` 与 worker `--bundle` 都走它）
 packages/server/route-b/frame-node.ts   renderBundleFrameToFile：读 RuntimeBundle → build → seek 一帧 → renderFrameRGBA
                                  → @napi-rs/canvas 编码 PNG 写盘（`sequio frame` 走它；与 render 同一渲染核心）
 packages/server/route-b/audio-node.ts   exportBundleAudioToFile：读 RuntimeBundle → build → Exporter.exportAudio（只导

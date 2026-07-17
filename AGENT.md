@@ -83,8 +83,10 @@ example/       demos + browser e2e verify pages (verify:* harness)
 src/            TimelineSpec protocol + buildTimeline (the serializable JSON contract; barrel = src/index.ts)
 route-a/        Route A: headless Chrome — renders a TimelineSpec *or* a runtime code bundle
                 (ssr-render.html/.ts exposes render(spec)/renderBundle(bundle) + ssr-render.cjs worker)
-route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, export-node.ts, fonts-node.ts,
-                render-bundle.ts, frame-node.ts, audio-node.ts + verify-*); index.ts =
+route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, server-env.ts, export-node.ts,
+                fonts-node.ts, render-bundle.ts, frame-node.ts, audio-node.ts + verify-*); index.ts =
+                (server-env.ts: nodeServerEnv() packages the Node bootstrap + WebGPU renderer + scale
+                into one injectable RuntimeEnv — the render/frame/audio entries all inject it)
                 @sequio/server/route-b node-only barrel (renderTimelineToFile / renderBundleToFile —
                 the latter powers `sequio render`; renderBundleFrameToFile → `sequio frame`;
                 exportBundleAudioToFile → `sequio audio`)
@@ -101,6 +103,7 @@ src/
   module-runtime.ts  tiny CJS linker: resolve relative imports + externals      ✅ implemented
   assets.ts          local-media contract: loadAsset hook + resolveAssetPath     ✅ implemented
   composition.ts     defineComposition(builder) authoring API (imperative)      ✅ implemented
+  env.ts             RuntimeEnv: one injectable host env (setup/externals/loadAsset/compositorOptions) + setEnv  ✅ implemented
   composer.ts        Composer: preview / export (client) + toBundle (server)    ✅ implemented
   runtime.ts         Runtime.run() → compile+link+run the entry → Composer      ✅ implemented
   index.ts           public barrel (browser-safe; node-fs is a subpath export)

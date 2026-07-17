@@ -10,6 +10,7 @@
  * lavapipe). See `docs/server-side-rendering.md`.
  */
 export { setupNodeEnvironment, createNodeWebGPURenderer, getMediabunny } from './env';
+export { nodeServerEnv, type NodeServerEnv, type NodeServerEnvOptions } from './server-env';
 export { renderTimelineToFile, renderFrameRGBA, type NodeExportOptions } from './export-node';
 export { loadFontsNode, bridgeFontManagerToNode } from './fonts-node';
 export {

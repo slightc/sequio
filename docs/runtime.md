@@ -152,6 +152,37 @@ class RuntimeCompositor extends Compositor {
 重新 link 还带来一个好处：**每次 build 是独立的模块状态**（预览与导出互不串），转译结果按
 文件缓存，所以重复 link 只是重跑一遍很轻的模块体。
 
+### 统一环境模型（`RuntimeEnv` / `setEnv`）
+
+上一节的 `env.compositorOptions` 只是「环境」的一部分。真正的宿主差异还包括：一次性引导
+（装浏览器 globals、钉 mediabunny 实例、桥接字体）、额外 `externals`（gsap…）、`loadAsset`。过去这些
+散落在每个服务端入口里逐字重复。`src/env.ts` 的 **`RuntimeEnv`** 把它们收进一个可注入对象：
+
+```ts
+export interface RuntimeEnv {
+  readonly name?: string;
+  readonly target?: 'preview' | 'export' | 'server';
+  setup?(): Promise<void> | void;                         // 一次性宿主引导（Composer 缓存，仅跑一次）
+  readonly externals?: Externals;
+  readonly loadAsset?: AssetLoader;
+  resolveCompositorOptions?(): Promise<Partial<CompositorOptions>> | Partial<CompositorOptions>;
+  dispose?(): Promise<void> | void;
+}
+export const browserEnv: RuntimeEnv = { name: 'browser', target: 'preview' };
+```
+
+- **安装**：`new Runtime({ files, env })` 或 `runtime.setEnv(env)`（可链式）。`env.externals` 折进注入的
+  裸模块（**显式 `RuntimeOptions.externals` 覆盖 env 的**），`env.loadAsset` 作为 loader 兜底。
+- **消费**：`Composer.build()` 先跑 `env.setup()`（缓存，多次 build 仅一次）→ `resolveCompositorOptions()`
+  折进该次 build 的 `compositorOptions`；显式 `build({compositorOptions})` 覆盖仍生效。无 env 时行为不变。
+- **具体 env 由宿主提供**——「server 提供一套 server env」：`@sequio/server/route-b` 的
+  **`nodeServerEnv()`** 把 Node WebGPU 引导 + renderer 工厂 + 输出倍率打包成一个 `RuntimeEnv`，并把创建出
+  的 renderer 暴露成 `env.renderer` 供 GPU 读帧。`render` / `frame` / `audio` 三处入口因此塌缩成
+  `new Runtime({ ...bundle, env: nodeServerEnv({ scale, externals, loadAsset }) }).run()` → `build()`。
+
+沙箱执行、headless 宿主、iframe/RPC 都是这套环境模型的延伸，见
+[`environments-and-rpc.md`](environments-and-rpc.md)。
+
 ### `Composer`：一处产出、三处消费
 
 `Runtime.run()` 编译+运行入口，把 builder 规整成 `Composer`。同一个 `Composer`：

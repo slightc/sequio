@@ -26,6 +26,20 @@
       让 SDK 与 `@mediabunny/server` 用同一 mediabunny 实例（破 dual-package hazard）；`setFrameImageExtractor()`
       让 Node 用 `sample.copyTo` 取视频帧像素；`createImageBitmap` polyfill 走 `@napi-rs/canvas`。
       `pnpm verify:ssr-node-media` 实测视频+图片纯 Node 解码合成。
+- [x] 统一环境模型 `RuntimeEnv` + `setEnv`：`packages/runtime/src/env.ts` 定义可注入的环境对象
+      （`setup` / `externals` / `loadAsset` / `resolveCompositorOptions`），`Runtime.setEnv()` 安装、
+      `Composer.build()` 消费（setup 缓存仅跑一次）；server 提供 `nodeServerEnv()` 把 Route B 引导
+      打包成一个 env，`render`/`frame`/`audio` 三处入口去重。见
+      [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §A、[`docs/runtime.md`](../docs/runtime.md)。
+- [ ] VM 沙箱执行路径（`RuntimeEnv` 的 evaluator 维度）：`ModuleRuntime` 抽出 `ModuleEvaluator` 接缝，
+      Node 用 `node:vm` 白名单 globals、浏览器用 iframe/Worker；配素材 URL allowlist 挡 SSRF。设计见
+      [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §B。
+- [ ] `packages/headless` 包：把 Route A（无头 Chrome，`packages/server/route-a/*`）抽离成独立包
+      `@sequio/headless`，DAG `engine ← runtime ← {server, headless}`；对称暴露 `headlessEnv()`。设计见
+      [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §C。
+- [ ] RPC 协议：transport-agnostic 的 `RenderService` + `Endpoint` 抽象，同时服务无头浏览器（Puppeteer/CDP
+      桥）与 iframe/Worker（postMessage + Transferable，取代 base64）；Comlink vs 自研信封见
+      [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §D。
 - [ ] 路线 B 精修（续）：`writeTexture` 上传的色彩空间（sRGB）校正细化；软件光栅化性能基线；
       带音频的视频源在 Route B 的音轨解码（AudioSource 走同一实例，理论已通，待补 e2e）。
 - [ ] SSR 大文件回传：base64 换成页面 `fetch` POST 流式回传 / CDP `ArrayBuffer`（当前 demo 走 base64）。
