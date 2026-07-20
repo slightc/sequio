@@ -15,7 +15,7 @@
  */
 import { type AudioExportFormat, Exporter } from '@sequio/engine';
 import { type AssetLoader, type Externals, Runtime, type RuntimeBundle } from '@sequio/runtime';
-import { nodeServerEnv } from './server-env';
+import { serverEnv } from '@sequio/server';
 
 export interface ExportBundleAudioNodeOptions {
   /** Output file path. The extension is corrected to match the audio format. */
@@ -70,12 +70,13 @@ export async function exportBundleAudioToFile(
   const format = opts.format ?? 'mp3';
   const codec = opts.codec ?? DEFAULT_CODEC[format];
 
-  // The same injectable server env as the video/frame paths. This audio-only path
+  // The same server env setup as the video/frame paths. This audio-only path
   // renders no frames, but building still `init()`s the compositor (which needs a
-  // renderer in Node) and its `setup()` bridges the builder's `fonts.load(...)` so
-  // it runs without crashing — even though no text is drawn. See {@link renderBundleToFile}.
-  const env = nodeServerEnv({ externals: opts.externals, loadAsset: opts.loadAsset });
-  const composer = await new Runtime({ ...bundle, env }).run();
+  // renderer in Node) and the env bridges the builder's `fonts.load(...)` so it
+  // runs without crashing — even though no text is drawn. See {@link renderBundleToFile}.
+  const env = serverEnv();
+  await env.setup();
+  const composer = await new Runtime({ ...bundle, externals: opts.externals, loadAsset: opts.loadAsset }).run();
   const built = await composer.build();
 
   try {

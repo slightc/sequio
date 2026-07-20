@@ -13,8 +13,8 @@
  * lavapipe). {@link setupNodeEnvironment} throws a clear message if none is found.
  */
 import { type AssetLoader, Runtime, type Externals, type RuntimeBundle } from '@sequio/runtime';
+import { serverEnv } from '@sequio/server';
 import { renderTimelineToFile } from './export-node';
-import { nodeServerEnv } from './server-env';
 
 export interface RenderBundleNodeOptions {
   /** Output file path. The extension is corrected to match the encoded container. */
@@ -60,12 +60,14 @@ export async function renderBundleToFile(
   bundle: RuntimeBundle,
   opts: RenderBundleNodeOptions,
 ): Promise<RenderBundleNodeResult> {
-  // One injectable server env packages the Node bootstrap (globals, font bridge,
-  // mediabunny pinning) + the WebGPU renderer factory + output scale. `build()`
-  // runs its `setup()` once and folds `compositorOptions` into the user's
-  // `new Compositor(...)` implicitly (contract #3), so the code reads like a demo.
-  const env = nodeServerEnv({ scale: opts.scale, externals: opts.externals, loadAsset: opts.loadAsset });
-  const composer = await new Runtime({ ...bundle, env }).run();
+  // Set up the server render env (Node bootstrap + WebGPU renderer + scale,
+  // registered at the engine layer), then run the runtime and get the Compositor.
+  // The env stays out of the runtime: externals / loadAsset go straight to Runtime,
+  // and the renderer is folded into `new Compositor(...)` via the engine default
+  // (contract #3), so the composition code reads like a browser demo.
+  const env = serverEnv({ scale: opts.scale });
+  await env.setup();
+  const composer = await new Runtime({ ...bundle, externals: opts.externals, loadAsset: opts.loadAsset }).run();
   const built = await composer.build();
 
   try {

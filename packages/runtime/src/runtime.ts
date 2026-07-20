@@ -75,9 +75,10 @@ export interface RuntimeOptions {
    * The host {@link RuntimeEnv} — one object bundling this runtime's one-time
    * `setup()`, its extra `externals`, its `loadAsset`, and the `compositorOptions`
    * folded into each build (an injected renderer, an output scale). Left unset,
-   * the runtime runs in the plain browser default. A concrete server env comes
-   * from `@sequio/server/route-b`'s `nodeServerEnv()`. Explicit `externals` /
-   * `loadAsset` above win over the env's. See [`env.ts`](./env.ts).
+   * the runtime runs in the plain browser default. Server-side rendering does not
+   * use this seam — `@sequio/server`'s `serverEnv().setup()` bootstraps at the
+   * engine layer, and the host passes `externals` / `loadAsset` directly (below).
+   * Explicit `externals` / `loadAsset` win over the env's. See [`env.ts`](./env.ts).
    */
   env?: RuntimeEnv;
 }

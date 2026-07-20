@@ -45,7 +45,7 @@ import {
   VisualTrack,
 } from '@sequio/engine';
 import { exportTimeline, videoCacheSettings } from './editor-export';
-import type { ClipSpec, TimelineSpec, TrackSpec } from '@sequio/server';
+import type { ClipSpec, TimelineSpec, TrackSpec } from '@sequio/headless';
 
 const W = 640;
 const H = 360;

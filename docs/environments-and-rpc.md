@@ -6,7 +6,7 @@
 
 ## 动机
 
-三处渲染入口（`sequio render` / `frame` / `audio`，即 `packages/server/route-b/{render-bundle,
+三处渲染入口（`sequio render` / `frame` / `audio`，即 `packages/cli/src/route-b/{render-bundle,
 frame-node,audio-node}.ts`）过去**逐字重复**同一段环境引导：
 `setupNodeEnvironment()` → `bridgeFontManagerToNode()` → `new Runtime({ externals, loadAsset })` →
 `composer.build({ target:'server', compositorOptions:{ createRenderer, resolution } })`。
@@ -50,25 +50,27 @@ export function getDefaultEngineEnv(): EngineEnv;
   devicePixelRatio`；`init()` 先 `ensureEngineEnvSetup()`（跑一次 `setup`）再
   `create = options.createRenderer ?? getDefaultEngineEnv().createRenderer ?? autoDetectRenderer`。
   **显式 options 永远优先**，无默认时行为与过去逐字一致。
-- **「server 变成提供一套 server env」**：`@sequio/server/route-b` 的 `nodeServerEnv()`
-  （`route-b/server-env.ts`，一个 `RuntimeEnv`）在它的 `setup()` 里做 Node 引导（globals、字体桥接、
-  mediabunny 钉实例）**并 `setDefaultEngineEnv({ createRenderer, resolution })` 把 renderer 注册到
-  engine 层**，把创建出的 renderer 暴露成 `env.renderer` 供 GPU 读帧。于是 `render`/`frame`/`audio`
-  三处入口塌缩成：
+- **「server 只提供一套 server env」**：`@sequio/server` 的 `serverEnv()`
+  （`packages/server/src/server-env.ts`）**不依赖 `@sequio/runtime`**——它的 `setup()` 只做 Node 引导
+  （globals、字体桥接、mediabunny 钉实例）**并 `setDefaultEngineEnv({ createRenderer, resolution })` 把
+  renderer 注册到 engine 层**，把创建出的 renderer 暴露成 `env.renderer` 供 GPU 读帧。层次清晰：
+  **setup engine → setup server env → run runtime → get compositor**。于是 CLI 的 `render`/`frame`/`audio`
+  三处入口是：
 
   ```ts
-  const env = nodeServerEnv({ scale, externals, loadAsset });   // RuntimeEnv；setup 里 setDefaultEngineEnv
-  const composer = await new Runtime({ ...bundle, env }).run();
-  const built = await composer.build();                          // build 先跑 env.setup → 注册 engine 默认
+  const env = serverEnv({ scale });        // 只做 engine 层引导，不碰 runtime
+  await env.setup();                        // setup engine + server env
+  const composer = await new Runtime({ ...bundle, externals, loadAsset }).run();  // run runtime
+  const built = await composer.build();     // get compositor
   await renderTimelineToFile(built.compositor, env.renderer!, { … });
   ```
 
   用户 bundle 里普通的 `new Compositor({ width, height })` 因此在 Node 里也拿到 WebGPU renderer——
-  renderer 的默认落在 **engine 层**，不再靠 runtime 往每个 build 折 `compositorOptions`（契约 #3）。
+  renderer 的默认落在 **engine 层**，externals/loadAsset 直接交给 `Runtime`，两层互不引用（契约 #3）。
 
-engine 层 `EngineEnv` 是 renderer/codecs 的进程默认；runtime 层 `RuntimeEnv`（`browserEnv` /
-`nodeServerEnv` / 未来 `sandboxEnv`§B / `headlessEnv`§C）是代码运行时的 externals/loadAsset/setup 收口，
-其 `setup()` 负责把 engine 层默认装好。
+engine 层 `EngineEnv` 是 renderer/codecs 的进程默认；runtime 层 `RuntimeEnv`（`browserEnv` / 未来
+`sandboxEnv`§B / `headlessEnv`§C）是代码运行时的 externals/loadAsset/setup 收口。服务端渲染不走
+`RuntimeEnv`——`serverEnv().setup()` 在 engine 层装好默认，externals/loadAsset 由 CLI 直接传给 `Runtime`。
 
 ---
 
@@ -98,7 +100,7 @@ export interface ModuleEvaluator {
   经 §D 的 RPC 驱动。iframe 的 `sandbox` 属性 + CSP 锁死网络/存储，是浏览器天然的隔离边界。
 
 作为 `RuntimeEnv` 的一个维度：`sandboxEnv({ evaluator: 'node-vm', allowlist })` 或在 env 上加
-`evaluator` 字段，与 `nodeServerEnv` 组合（服务端沙箱渲染 = Node WebGPU env + VM evaluator）。
+`evaluator` 字段，与 `serverEnv().setup()`（engine 层引导）组合（服务端沙箱渲染 = server env 引导 + VM evaluator）。
 
 ### 隔离强度对比
 
@@ -129,12 +131,13 @@ packages/headless/
   package.json          private（不发布）、vite.config.ts（仅 dev server，无 build）、tsconfig.json
 ```
 
-- **DAG**：`engine ← runtime ← {server, headless}`；`headless` 依赖 `@sequio/server`（复用
-  `TimelineSpec` / `buildTimeline` / `sampleTimeline`）+ `@sequio/runtime`（页面里跑 bundle）+
-  `@sequio/engine`。server 因此只拥有协议 + Route B，不再背 Route A。
-- **迁移**：`packages/server/route-a/*` → `packages/headless/`（`git mv` 保留历史）；`verify:ssr` /
-  `ssr:render` 脚本 + 那份 `verify-page.cjs` 一并迁入；根 `package.json` 的 `verify:ssr`/`ssr:render`
-  改指 `-F @sequio/headless`；页面 import 从 `../src/timeline` 改成 `@sequio/server`。
+- **DAG**：`engine ← runtime ← headless`；`headless` 依赖 `@sequio/runtime`（页面里跑 bundle）+
+  `@sequio/engine`，并**自己拥有** `TimelineSpec` / `buildTimeline` / `sampleTimeline` + RPC（`src/`）。
+  `server` 因此只剩 `serverEnv`（Route B 的 Node 渲染环境）；Route B 的渲染实现在 `@sequio/cli`。
+- **迁移**：Spec/RPC/render-service（`packages/server/src/*`）→ `packages/headless/src/`；Route B 渲染
+  实现（`packages/server/route-b/{export-node,render-bundle,frame-node,audio-node}.ts`）→
+  `packages/cli/src/route-b/`；env（`env.ts`/`server-env.ts`/`fonts-node.ts`）留在 `packages/server/src/`
+  （`git mv` 保留历史）；页面 import 从 `@sequio/server` 改成本包 `./src`。
 - **不发布**（`private: true`、无 `vite build`）：Route A 是仓库内 verify harness——全保真、复用浏览器
   渲染核心（契约 #3），代价是每任务一个 Chrome 进程。Puppeteer 仍是**根 devDependency**。
 - **后续**：把 worker 的 `page.evaluate(...)→base64` 换成 §D 的 transport-agnostic RPC，并对称暴露一个
@@ -145,10 +148,10 @@ packages/headless/
 ## §D. RPC 协议：无头浏览器 + iframe 通用（已实现）
 
 过去的传输是临时的：`page.evaluate((s) => window.__SSR__.render(s), spec)` 返回 base64——无接口契约、
-只服务 Puppeteer、iframe 无法复用。现已换成**一套 transport-agnostic 的 RPC**（`@sequio/server`
+只服务 Puppeteer、iframe 无法复用。现已换成**一套 transport-agnostic 的 RPC**（`@sequio/headless`
 的 `src/rpc.ts`，零依赖、浏览器安全），一处 `expose`/`wrap`，两种传输通用。
 
-### 接口契约（`@sequio/server`）
+### 接口契约（`@sequio/headless`）
 ```ts
 // 通用 RPC 核心（rpc.ts）——Comlink 兼容形态的 Endpoint
 export interface Endpoint {
@@ -182,8 +185,8 @@ export interface RenderService {
   （见下「取舍」）。页面 `expose(service, …)`，worker `wrap<RenderService>(…)`。
 
 ### 落地位置
-- `packages/server/src/rpc.ts`（通用核心）+ `src/render-service.ts`（`RenderService`/`RenderResult`）——
-  浏览器安全、从 `@sequio/server` barrel 导出，headless 与 studio 都能引用。
+- `packages/headless/src/rpc.ts`（通用核心）+ `src/render-service.ts`（`RenderService`/`RenderResult`）——
+  浏览器安全、从 `@sequio/headless` barrel 导出，SSR 页面/worker 与 studio 都能引用。
 - `packages/headless/ssr-render.ts`（页面 `expose`）+ `ssr-worker.ts`（tsx worker `wrap`，取代旧
   `ssr-render.cjs`；`page.evaluate(window.__SSR__…)` + base64 的老路彻底移除）。
 

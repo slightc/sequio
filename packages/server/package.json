@@ -1,7 +1,7 @@
 {
   "name": "@sequio/server",
   "version": "0.1.2",
-  "description": "Server-side rendering for sequio: a serializable TimelineSpec protocol plus Route B — pure Node, PixiJS WebGPU. (Route A, headless Chrome, lives in the @sequio/headless package — a repo-internal harness, not published.)",
+  "description": "The server-side render environment for sequio: `serverEnv`, a pure-Node (PixiJS WebGPU / Dawn) bootstrap that runs the engine's render core outside a browser. The TimelineSpec protocol + RPC live in @sequio/headless; the code-bundle render helpers live in @sequio/cli.",
   "type": "module",
   "license": "MIT",
   "author": "slightc",
@@ -21,10 +21,6 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./route-b": {
-      "types": "./dist/route-b/index.d.ts",
-      "import": "./dist/route-b.js"
     }
   },
   "files": [
@@ -44,12 +40,7 @@
     "prepublishOnly": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "verify:ssr-node": "tsx route-b/render.ts --verify --out .ssr-out/node-demo.mp4",
-    "verify:ssr-node-audio": "tsx route-b/verify-audio.ts",
-    "verify:ssr-node-font": "tsx route-b/verify-font.ts",
-    "verify:ssr-node-media": "tsx route-b/verify-media.ts",
-    "ssr:render-node": "tsx route-b/render.ts"
+    "test:watch": "vitest"
   },
   "keywords": [
     "server-side-rendering",
@@ -60,7 +51,6 @@
   ],
   "dependencies": {
     "@sequio/engine": "workspace:^",
-    "@sequio/runtime": "workspace:^",
     "mediabunny": "^1.49.0",
     "pixi.js": "^8.6.0"
   },

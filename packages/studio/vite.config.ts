@@ -3,8 +3,9 @@ import { defineConfig } from 'vite';
 
 // Studio app: `pnpm dev` serves the editor (index.html → src/main.ts) and the
 // code-mode page (code.html → src/code-mode.ts). It resolves the engine, the
-// server's TimelineSpec protocol and the runtime straight from source, so the
-// editor and its tests run without a prior `pnpm build` of the other packages.
+// headless package's TimelineSpec protocol (for "Server Render") and the runtime
+// straight from source, so the editor and its tests run without a prior
+// `pnpm build` of the other packages.
 export default defineConfig({
   server: {
     port: 6173,
@@ -12,7 +13,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@sequio/engine': resolve(__dirname, '../engine/src/index.ts'),
-      '@sequio/server': resolve(__dirname, '../server/src/index.ts'),
+      '@sequio/headless': resolve(__dirname, '../headless/src/index.ts'),
       '@sequio/runtime': resolve(__dirname, '../runtime/src/index.ts'),
     },
   },

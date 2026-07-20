@@ -229,13 +229,14 @@ Snapshot a composition's files into a bundle and hand it to Route B:
 
 ```bash
 pnpm sequio render composition.ts --out out.mp4 --scale 2
-# or, from a RuntimeBundle programmatically:
-#   import { renderBundleToFile } from '@sequio/server/route-b';
-#   await renderBundleToFile(bundle, { out: 'out.mp4', scale: 2 });
+# or programmatically, from the CLI's public API:
+#   import { runRender } from '@sequio/cli';
+#   await runRender('composition.ts', { out: 'out.mp4', scale: 2 });
 ```
 
-Route B is pure Node + PixiJS WebGPU (Dawn); it needs a GPU or the Mesa lavapipe
-software driver.
+Route B is pure Node + PixiJS WebGPU (Dawn), running under `@sequio/server`'s
+`serverEnv`; it needs a GPU or the Mesa lavapipe software driver. (The render
+helpers live inside `@sequio/cli`; `@sequio/server` provides only the environment.)
 
 ## 10. Quick visual check — export a single frame (no full render)
 
@@ -254,8 +255,7 @@ sequio frame composition.ts --time 0    --out /tmp/start.png --scale 2
 
 Recommended iterate loop for an agent: edit the composition → `sequio frame` at a
 few representative times → look at the PNGs → only `sequio render` once it's right.
-Programmatically it's `renderBundleFrameToFile(bundle, { out, time, scale })` from
-`@sequio/server/route-b`, or `runFrame(file, { out, time, scale })` from `@sequio/cli`.
+Programmatically it's `runFrame(file, { out, time, scale })` from `@sequio/cli`.
 
 ## 11. Export just the audio (no video)
 
@@ -271,8 +271,7 @@ sequio audio composition.ts --out track.wav --bitrate 192000
 - `--format` is `mp3` (default) `| m4a | wav | ogg | webm`; when omitted it's
   inferred from `--out`'s extension. `--bitrate` is ignored for `wav` (PCM).
 - Same Route B path as `render`, so it needs a WebGPU host (GPU or Mesa lavapipe).
-- Programmatically it's `exportBundleAudioToFile(bundle, { out, format, bitrate })`
-  from `@sequio/server/route-b`, or `runAudio(file, { out, format, bitrate })` from
+- Programmatically it's `runAudio(file, { out, format, bitrate })` from
   `@sequio/cli`; in-app it's `Exporter.exportAudio(...)` (recipe 8).
 
 ## 12. Bring your own spec (JSON → object graph)

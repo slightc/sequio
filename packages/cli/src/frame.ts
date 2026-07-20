@@ -38,7 +38,7 @@ export async function runFrame(entryFile: string, options: FrameOptions = {}): P
 
   // Import Route B lazily: it pulls Node-only deps (WebGPU, canvas, codecs), only
   // needed when actually rendering.
-  const { renderBundleFrameToFile } = await import('@sequio/server/route-b');
+  const { renderBundleFrameToFile } = await import('./route-b');
 
   try {
     const out = options.out ?? 'frame.png';

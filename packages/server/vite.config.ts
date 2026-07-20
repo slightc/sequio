@@ -3,21 +3,20 @@ import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
 
 // Server package. Two jobs:
-//   • the dev server (`pnpm dev:server`) + vitest run the headless
-//     timeline-protocol unit tests;
+//   • the dev server (`pnpm dev:server`) + vitest run the pure-logic unit tests;
 //   • `vite build` produces the published library — ESM with type declarations —
-//     with two entries: the browser-safe protocol barrel (`.`, imports only the
-//     engine) and the Node-only `./route-b` render route.
+//     a single entry: `serverEnv`, the pure-Node (PixiJS WebGPU) render
+//     environment (`src/index.ts`).
 //
-// Route B pulls the engine, runtime, PixiJS, mediabunny and the Node-native
-// bindings (jsdom / @napi-rs/canvas / webgpu / node-web-audio-api /
-// @mediabunny/server) — all kept external so its dynamic `import()`/`require()`
-// resolve one instance of each on the host. Output is ESM only: route-b uses
-// `import.meta.url` + `createRequire` to pin a single mediabunny instance.
+// The env pulls the engine, PixiJS, mediabunny and the Node-native bindings
+// (jsdom / @napi-rs/canvas / webgpu / node-web-audio-api / @mediabunny/server) —
+// all kept external so its dynamic `import()`/`require()` resolve one instance of
+// each on the host. Output is ESM only: the env uses `import.meta.url` +
+// `createRequire` to pin a single mediabunny instance.
 //
-// Route A (headless Chrome) now lives in the `@sequio/headless` package. Dev/test
-// resolve the engine and runtime straight from source (aliases below) so no prior
-// `pnpm build` is needed.
+// The TimelineSpec protocol + RPC now live in `@sequio/headless`, and the
+// code-bundle render helpers in `@sequio/cli`. Dev/test resolve the engine and
+// runtime straight from source (aliases below) so no prior `pnpm build` is needed.
 export default defineConfig({
   server: {
     port: 6175,
@@ -25,13 +24,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@sequio/engine': resolve(__dirname, '../engine/src/index.ts'),
-      '@sequio/runtime': resolve(__dirname, '../runtime/src/index.ts'),
     },
   },
   plugins: [
     dts({
-      include: ['src', 'route-b'],
-      exclude: ['tests', 'route-b/verify-*.ts', 'route-b/render.ts'],
+      include: ['src'],
+      exclude: ['tests'],
       entryRoot: __dirname,
       aliasesExclude: [/^@sequio\//],
     }),
@@ -40,7 +38,6 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, 'src/index.ts'),
-        'route-b': resolve(__dirname, 'route-b/index.ts'),
       },
       formats: ['es'],
       fileName: (_format, name) => `${name}.js`,
@@ -48,8 +45,6 @@ export default defineConfig({
     rollupOptions: {
       external: [
         '@sequio/engine',
-        '@sequio/runtime',
-        '@sequio/runtime/node-fs',
         'pixi.js',
         'mediabunny',
         '@mediabunny/server',

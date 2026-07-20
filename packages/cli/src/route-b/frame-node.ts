@@ -14,8 +14,8 @@
  * {@link setupNodeEnvironment} throws a clear message if none is found.
  */
 import { type AssetLoader, Runtime, type Externals, type RuntimeBundle } from '@sequio/runtime';
+import { serverEnv } from '@sequio/server';
 import { renderFrameRGBA } from './export-node';
-import { nodeServerEnv } from './server-env';
 
 export interface RenderFrameNodeOptions {
   /** Output image path. The extension is corrected to `.png`. */
@@ -67,10 +67,11 @@ export async function renderBundleFrameToFile(
   bundle: RuntimeBundle,
   opts: RenderFrameNodeOptions,
 ): Promise<RenderFrameNodeResult> {
-  // One injectable server env (Node bootstrap + WebGPU renderer + scale); the
-  // created renderer comes back as `env.renderer`. See {@link renderBundleToFile}.
-  const env = nodeServerEnv({ scale: opts.scale, externals: opts.externals, loadAsset: opts.loadAsset });
-  const composer = await new Runtime({ ...bundle, env }).run();
+  // Set up the server render env, run the runtime, get the Compositor; the created
+  // renderer comes back as `env.renderer`. See {@link renderBundleToFile}.
+  const env = serverEnv({ scale: opts.scale });
+  await env.setup();
+  const composer = await new Runtime({ ...bundle, externals: opts.externals, loadAsset: opts.loadAsset }).run();
   const built = await composer.build();
 
   try {

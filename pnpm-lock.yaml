@@ -53,6 +53,10 @@ importers:
       vite:
         specifier: ^6.0.0
         version: 6.4.3(@types/node@26.1.0)(tsx@4.23.0)
+    optionalDependencies:
+      '@napi-rs/canvas':
+        specifier: ^1.0.2
+        version: 1.0.2
 
   packages/engine:
     dependencies:
@@ -75,9 +79,6 @@ importers:
       '@sequio/runtime':
         specifier: workspace:^
         version: link:../runtime
-      '@sequio/server':
-        specifier: workspace:^
-        version: link:../server
 
   packages/runtime:
     dependencies:
@@ -93,9 +94,6 @@ importers:
       '@sequio/engine':
         specifier: workspace:^
         version: link:../engine
-      '@sequio/runtime':
-        specifier: workspace:^
-        version: link:../runtime
       mediabunny:
         specifier: ^1.49.0
         version: 1.50.6
@@ -126,12 +124,12 @@ importers:
       '@sequio/engine':
         specifier: workspace:*
         version: link:../engine
+      '@sequio/headless':
+        specifier: workspace:*
+        version: link:../headless
       '@sequio/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@sequio/server':
-        specifier: workspace:*
-        version: link:../server
       mediabunny:
         specifier: ^1.49.0
         version: 1.50.6

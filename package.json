@@ -39,12 +39,7 @@
     "verify:editor-export": "pnpm -F @sequio/studio verify:editor-export",
     "verify:editor-audio": "pnpm -F @sequio/studio verify:editor-audio",
     "verify:ssr": "pnpm -F @sequio/headless verify:ssr",
-    "verify:ssr-node": "pnpm -F @sequio/server verify:ssr-node",
-    "verify:ssr-node-audio": "pnpm -F @sequio/server verify:ssr-node-audio",
-    "verify:ssr-node-font": "pnpm -F @sequio/server verify:ssr-node-font",
-    "verify:ssr-node-media": "pnpm -F @sequio/server verify:ssr-node-media",
     "ssr:render": "pnpm -F @sequio/headless ssr:render",
-    "ssr:render-node": "pnpm -F @sequio/server ssr:render-node",
     "verify:runtime": "pnpm -F @sequio/runtime verify:runtime"
   },
   "keywords": [

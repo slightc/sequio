@@ -1,8 +1,9 @@
 /**
  * Server-side render entry (Route A: headless Chrome). This page runs inside a
  * headless browser — which has WebGL, WebCodecs and Web Audio — and **exposes a
- * typed {@link RenderService} over the transport-agnostic RPC** (`@sequio/server`'s
- * {@link expose}). The Node worker (`ssr-worker.ts`) `wrap`s it and calls:
+ * typed {@link RenderService} over the transport-agnostic RPC** (this package's
+ * own {@link expose}, from `./src`). The Node worker (`ssr-worker.ts`) `wrap`s it
+ * and calls:
  *  - `render(spec)` — rebuild the SDK object graph from a {@link TimelineSpec},
  *    run the normal {@link Exporter}, return the encoded video as base64;
  *  - `renderBundle(bundle)` — the **code** path: a {@link RuntimeBundle} (an
@@ -25,7 +26,7 @@ import {
   type RenderService,
   sampleTimeline,
   type TimelineSpec,
-} from '@sequio/server';
+} from './src';
 
 /**
  * Pick a container + codec the browser can actually encode, preferring what the
