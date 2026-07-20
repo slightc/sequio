@@ -50,9 +50,6 @@ export default defineConfig({
         '@sequio/runtime',
         '@sequio/runtime/node-fs',
         '@sequio/server',
-        // Route B's Node-native binding (single-frame PNG encode); dynamically
-        // imported, kept external so the host resolves one instance.
-        '@napi-rs/canvas',
         'gsap',
         'vite',
         /^node:/,

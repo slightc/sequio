@@ -30,11 +30,12 @@
 > **Monorepo**：本仓库是 pnpm workspace，分五个包——`packages/engine`
 > （`@sequio/engine`，即本 SDK）、`packages/runtime`
 > （`@sequio/runtime`，编译并运行 TS/JS 代码得到一个 `Composer`，仅依赖
-> engine）、`packages/server`（`@sequio/server`，服务端渲染环境 `serverEnv`，依赖
-> engine + runtime）、`packages/studio`（`@sequio/studio`，参考编辑器）、
+> engine）、`packages/server`（`@sequio/server`，服务端渲染环境 `serverEnv`，仅依赖
+> engine）、`packages/studio`（`@sequio/studio`，参考编辑器）、
 > `packages/cli`（`@sequio/cli`，`sequio` 命令行：render + preview，依赖
 > engine + runtime + server，见 [`cli.md`](cli.md)）。
-> DAG：`engine ← runtime ← server ← studio`，`engine ← {server, studio, cli}`。除非另有
+> DAG：`engine ← runtime`、`engine ← server`（server 不依赖 runtime）、
+> `engine ← runtime ← headless ← studio`、`cli ← {runtime, server}`。除非另有
 > `packages/…` 前缀，本文提到的 `src/`、`tests/`、`example/` 路径均相对
 > **`packages/engine/`**；消费包以 `@sequio/engine` 从源码直接引用引擎。
 > 代码运行时（虚拟文件系统 + 编译 + 命令式 Composer）见 [`runtime.md`](runtime.md)。
@@ -304,7 +305,7 @@ source)` 即可，预览驱动、导出混音都自动取它——无需自己 `
   `copyTextureToBuffer` 从 GPU 读回(BGRA→RGBA)再编码。SDK 侧仅新增 **`CompositorOptions.createRenderer`
   注入 seam**(`Compositor.init` 默认仍 `autoDetectRenderer`,Node 传入 WebGPU 工厂),其余引擎
   (reconcile/renderSync/renderToTexture/转场)renderer 无关、零改动。环境（`serverEnv`）在
-  `packages/server/src/`,渲染实现（`renderBundleToFile` 等）在 `packages/cli/src/route-b/`,校验
+  `packages/server/src/`,渲染实现（`renderBundleToFile` 等）在 `packages/cli/src/node-render/`,校验
   `pnpm verify:cli`;完整踩坑与 shim 见 `docs/server-side-rendering.md`。
 - **引擎级环境默认(`EngineEnv` / `setDefaultEngineEnv`)**:上面这些「引擎跑在浏览器之外」的 seam
   (`createRenderer`、`setMediabunnyModule`、`setFrameImageExtractor`、输出倍率)由 `src/env.ts` 的

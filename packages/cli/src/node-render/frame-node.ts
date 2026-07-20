@@ -14,7 +14,7 @@
  * {@link setupNodeEnvironment} throws a clear message if none is found.
  */
 import { type AssetLoader, Runtime, type Externals, type RuntimeBundle } from '@sequio/runtime';
-import { serverEnv } from '@sequio/server';
+import { encodeRGBAToPng, serverEnv } from '@sequio/server';
 import { renderFrameRGBA } from './export-node';
 
 export interface RenderFrameNodeOptions {
@@ -40,18 +40,14 @@ export interface RenderFrameNodeResult {
   bytes: number;
 }
 
-/** Encode tightly-packed straight-alpha RGBA to a PNG on disk via @napi-rs/canvas. */
+/** Encode tightly-packed straight-alpha RGBA to a PNG on disk. The PNG encode
+ *  goes through `@sequio/server` (which owns @napi-rs/canvas); the CLI just writes
+ *  the returned bytes. */
 async function writePng(out: string, rgba: Uint8Array, width: number, height: number): Promise<number> {
-  const { createCanvas } = await import('@napi-rs/canvas');
   const fs = await import('node:fs');
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-  const image = ctx.createImageData(width, height);
-  image.data.set(rgba);
-  ctx.putImageData(image, 0, 0);
-  const buf = await canvas.encode('png');
-  fs.writeFileSync(out, buf);
-  return buf.length;
+  const png = await encodeRGBAToPng(rgba, width, height);
+  fs.writeFileSync(out, png);
+  return png.length;
 }
 
 /** Force a `.png` extension on the output path. */

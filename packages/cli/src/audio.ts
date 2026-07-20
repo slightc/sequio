@@ -50,7 +50,7 @@ export async function runAudio(entryFile: string, options: AudioOptions = {}): P
 
   // Import Route B lazily: it pulls Node-only deps (WebGPU, canvas, codecs), only
   // needed when actually exporting.
-  const { exportBundleAudioToFile } = await import('./route-b');
+  const { exportBundleAudioToFile } = await import('./node-render');
 
   try {
     const out = options.out ?? `out.${format}`;

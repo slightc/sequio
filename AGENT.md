@@ -93,6 +93,8 @@ src/            The pure-Node (PixiJS WebGPU / Dawn) render environment, and not
                 scale at the engine layer via setDefaultEngineEnv, and captures the renderer for GPU
                 frame readback. Flow: setup engine → serverEnv().setup() → run runtime → get compositor   ✅
   fonts-node.ts loadFontsNode + bridgeFontManagerToNode (self-hosted + Google fonts → GlobalFonts) + NodeFontSpec  ✅
+  image-node.ts encodeRGBAToPng (RGBA → PNG via @napi-rs/canvas; the CLI's `sequio frame` calls it, so the
+                @napi-rs/canvas dep stays in server only)  ✅
   index.ts      public barrel — the whole `@sequio/server` surface is `serverEnv` + its Node primitives
 tests/          parseGoogleFontUrls unit test
 ```
@@ -192,7 +194,7 @@ src/
   render.ts     `render <file>` → video, pure Node WebGPU (Route B) ✅ implemented
   frame.ts      `frame <file> [--time t]` → single-frame PNG (Route B)     ✅ implemented
   audio.ts      `audio <file> [--format mp3]` → audio-only file (Route B)  ✅ implemented
-  route-b/      the Route B code-bundle render helpers (Node-only; run under @sequio/server's serverEnv):
+  node-render/  the Route B code-bundle render helpers (Node-only; run under @sequio/server's serverEnv):
                 export-node.ts (renderTimelineToFile/renderFrameRGBA — the GPU-readback frame loop) +
                 render-bundle.ts (renderBundleToFile → `sequio render`) + frame-node.ts
                 (renderBundleFrameToFile → `sequio frame`) + audio-node.ts (exportBundleAudioToFile →
@@ -226,7 +228,7 @@ the `check → frame → render` verify loop, catching illegal clip times, dead
 keyframes, unregistered fonts, non-overlapping transitions, out-of-range anchors
 and missing local assets before any render; `render` snapshots the composition
 into a {@link RuntimeBundle} and hands it to
-the CLI's own **Route B** `renderBundleToFile` (`src/route-b/`, running under
+the CLI's own **Route B** `renderBundleToFile` (`src/node-render/`, running under
 `@sequio/server`'s `serverEnv`) — pure Node, PixiJS WebGPU, no browser (needs a
 GPU or Mesa lavapipe); `frame` runs the
 same Route B path but seeks to one time and writes a single PNG
@@ -288,10 +290,11 @@ tests assert the frontmatter is well-formed and no link dangles. See its
   needed. Cross-package deps use the `workspace:^` protocol (rewritten to a
   concrete range by `pnpm publish`). The `serverEnv` Node-native bindings
   (`@napi-rs/canvas`, `webgpu`, `jsdom`, …) are `optionalDependencies` of
-  `server` (and `cli` re-declares `@napi-rs/canvas` for its Route B PNG encode)
-  so `npm i @sequio/server` / `@sequio/cli` never fails on an unsupported
-  platform. Route A (headless Chrome) + the Spec/RPC protocol live in the
-  repo-internal `headless` harness — not published.
+  `server` alone — including the single-frame PNG encode (`encodeRGBAToPng`), so
+  `cli` needs no native binding of its own and `npm i @sequio/server` /
+  `@sequio/cli` never fails on an unsupported platform. Route A (headless Chrome)
+  + the Spec/RPC protocol live in the repo-internal `headless` harness — not
+  published.
   `engine` is released by `.github/workflows/release.yml`; the other four by
   `.github/workflows/release-packages.yml`.
 
@@ -352,7 +355,7 @@ that package, asserts a page's `window.*` result).
 routes: **A) headless Chrome** — the `@sequio/headless` package's `ssr-worker.ts`
 `wrap`s the `RenderService` the `ssr-render.html` page `expose`s over headless's
 own RPC (full fidelity, reuses the verify path);
-and **B) pure Node** — the CLI's `packages/cli/src/route-b/` renders via PixiJS
+and **B) pure Node** — the CLI's `packages/cli/src/node-render/` renders via PixiJS
 WebGPU (Dawn) with **filters** and **media sources** (video/image decode), no
 browser (needs a GPU or Mesa lavapipe), running under `@sequio/server`'s
 `serverEnv`. Route A owns the serializable timeline protocol

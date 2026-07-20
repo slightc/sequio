@@ -6,7 +6,7 @@
 
 ## 动机
 
-三处渲染入口（`sequio render` / `frame` / `audio`，即 `packages/cli/src/route-b/{render-bundle,
+三处渲染入口（`sequio render` / `frame` / `audio`，即 `packages/cli/src/node-render/{render-bundle,
 frame-node,audio-node}.ts`）过去**逐字重复**同一段环境引导：
 `setupNodeEnvironment()` → `bridgeFontManagerToNode()` → `new Runtime({ externals, loadAsset })` →
 `composer.build({ target:'server', compositorOptions:{ createRenderer, resolution } })`。
@@ -136,7 +136,7 @@ packages/headless/
   `server` 因此只剩 `serverEnv`（Route B 的 Node 渲染环境）；Route B 的渲染实现在 `@sequio/cli`。
 - **迁移**：Spec/RPC/render-service（`packages/server/src/*`）→ `packages/headless/src/`；Route B 渲染
   实现（`packages/server/route-b/{export-node,render-bundle,frame-node,audio-node}.ts`）→
-  `packages/cli/src/route-b/`；env（`env.ts`/`server-env.ts`/`fonts-node.ts`）留在 `packages/server/src/`
+  `packages/cli/src/node-render/`；env（`env.ts`/`server-env.ts`/`fonts-node.ts`）留在 `packages/server/src/`
   （`git mv` 保留历史）；页面 import 从 `@sequio/server` 改成本包 `./src`。
 - **不发布**（`private: true`、无 `vite build`）：Route A 是仓库内 verify harness——全保真、复用浏览器
   渲染核心（契约 #3），代价是每任务一个 Chrome 进程。Puppeteer 仍是**根 devDependency**。

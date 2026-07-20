@@ -236,7 +236,7 @@ Canvas 2D，它没有 filter）。方案是 **PixiJS 的 WebGPU 渲染器 + Dawn
 ### 组成
 
 职责拆分：**`@sequio/server` 只提供 `serverEnv`**（Node 渲染环境），**Route B 的渲染实现搬进
-`@sequio/cli`**（`src/route-b/`），**`TimelineSpec` 协议 + RPC 归 `@sequio/headless`**。
+`@sequio/cli`**（`src/node-render/`），**`TimelineSpec` 协议 + RPC 归 `@sequio/headless`**。
 
 ```
 src/compositor/compositor.ts     新增 CompositorOptions.createRenderer 注入 seam（唯一的 SDK 改动）
@@ -253,19 +253,22 @@ packages/server/src/server-env.ts   serverEnv()：不依赖 @sequio/runtime。se
                                  注册到 engine 层（「server 只提供一套 server env」）；setup 后经 env.renderer
                                  暴露创建出的 renderer 供 GPU 读帧。流程：setup engine → serverEnv().setup()
                                  → run runtime → get compositor，见 docs/environments-and-rpc.md
+packages/server/src/image-node.ts   encodeRGBAToPng：RGBA → PNG（@napi-rs/canvas）；CLI 的 `sequio frame` 调它，
+                                 所以 @napi-rs/canvas 依赖只留在 server
 
 # ── @sequio/cli —— Route B 的渲染实现（跑在 serverEnv 上，Node-only 惰性 import） ──
-packages/cli/src/route-b/export-node.ts  GPU 读帧导出：renderToTexture → copyTextureToBuffer → BGRA→RGBA
+packages/cli/src/node-render/export-node.ts  GPU 读帧导出：renderToTexture → copyTextureToBuffer → BGRA→RGBA
                                  → VideoSample → VideoSampleSource → Output + FilePathTarget（写盘）
                                  + 音频轨（AudioEngine.renderOffline → AudioBufferSource）
                                  + renderFrameRGBA（单帧读回，供单帧导出复用）；getMediabunny 来自 @sequio/server
-packages/cli/src/route-b/render-bundle.ts renderBundleToFile：serverEnv().setup() → Runtime({...bundle,
+packages/cli/src/node-render/render-bundle.ts renderBundleToFile：serverEnv().setup() → Runtime({...bundle,
                                  externals,loadAsset}).run() → Composer.build → renderTimelineToFile（`sequio render` 走它）
-packages/cli/src/route-b/frame-node.ts   renderBundleFrameToFile：读 RuntimeBundle → build → seek 一帧 → renderFrameRGBA
-                                 → @napi-rs/canvas 编码 PNG 写盘（`sequio frame` 走它；与 render 同一渲染核心）
-packages/cli/src/route-b/audio-node.ts   exportBundleAudioToFile：读 RuntimeBundle → build → Exporter.exportAudio（只导
+packages/cli/src/node-render/frame-node.ts   renderBundleFrameToFile：读 RuntimeBundle → build → seek 一帧 → renderFrameRGBA
+                                 → @sequio/server 的 encodeRGBAToPng 编码 PNG 写盘（napi 依赖只在 server；
+                                 `sequio frame` 走它，与 render 同一渲染核心）
+packages/cli/src/node-render/audio-node.ts   exportBundleAudioToFile：读 RuntimeBundle → build → Exporter.exportAudio（只导
                                  AudioEngine 离线混音，不渲染帧）→ 写 m4a/mp3/wav/ogg/webm（`sequio audio` 走它）
-packages/cli/src/route-b/index.ts        CLI 内部 Route B barrel（renderTimelineToFile / renderBundleToFile /
+packages/cli/src/node-render/index.ts        CLI 内部 Route B barrel（renderTimelineToFile / renderBundleToFile /
                                  renderBundleFrameToFile / exportBundleAudioToFile）；render/frame/audio 惰性 import 它
 ```
 

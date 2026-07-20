@@ -3,7 +3,7 @@
  * (Route B: PixiJS WebGPU, no browser).
  *
  * It snapshots the entry file's project into a {@link RuntimeBundle} and hands it
- * to the CLI's Route B `renderBundleToFile` (`./route-b`), which runs under
+ * to the CLI's Route B `renderBundleToFile` (`./node-render`), which runs under
  * `@sequio/server`'s `serverEnv`: the runtime re-runs the composition's own
  * builder in Node, the environment's WebGPU renderer + output scale are folded
  * into `new Compositor(...)` implicitly (contract #3), and Mediabunny
@@ -43,7 +43,7 @@ export async function runRender(entryFile: string, options: RenderOptions = {}):
 
   // Import Route B lazily: it pulls Node-only deps (WebGPU, canvas, codecs), only
   // needed when actually rendering.
-  const { renderBundleToFile } = await import('./route-b');
+  const { renderBundleToFile } = await import('./node-render');
 
   try {
     const out = options.out ?? 'out.mp4';

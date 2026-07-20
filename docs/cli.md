@@ -17,7 +17,7 @@
 ## 为什么是「薄封装」
 
 - **渲染**的重活（真正的 WebGPU 合成 + `node-av`/FFmpeg 编解码、写容器）由 **Route B**
-  （纯 Node，PixiJS WebGPU）承担——它现在住在 CLI 自己的 `src/route-b/`，在 `@sequio/server`
+  （纯 Node，PixiJS WebGPU）承担——它现在住在 CLI 自己的 `src/node-render/`，在 `@sequio/server`
   提供的 `serverEnv`（Node 渲染环境）下运行；`renderBundleToFile` 把一段命令式代码在 Node 里跑成
   视频，不需要浏览器。
 - **预览**的重活（编译+链接+运行、挂时钟、`renderPreview`）已经存在于 `runtime` 的
@@ -40,7 +40,7 @@ src/
   render.ts     `render <file>`：readBundle → 本地 `./route-b` 的 renderBundleToFile（纯 Node WebGPU，跑在 @sequio/server 的 serverEnv 上）
   frame.ts      `frame <file>`：readBundle → `./route-b` 的 renderBundleFrameToFile（seek 一帧 → PNG，同一渲染核心）
   audio.ts      `audio <file>`：readBundle → `./route-b` 的 exportBundleAudioToFile（只导离线混音 → m4a/mp3/wav/ogg/webm）
-  route-b/      Route B 代码渲染实现（Node-only，惰性 import）：export-node（GPU 读帧循环）+ render-bundle + frame-node + audio-node + barrel
+  node-render/  Route B 代码渲染实现（Node-only，惰性 import）：export-node（GPU 读帧循环）+ render-bundle + frame-node + audio-node + barrel
   preview.ts    `preview <file>`：程序化起 Vite（根=preview/），serve /__bundle，--watch 全量刷新
   cli.ts        解析 + 分发 + 进程生命周期（退出码、Ctrl-C）；index.ts 是程序化 barrel
 preview/        预览页（index.html + preview.ts：fetch /__bundle → Runtime → preview() + 播放条）
@@ -135,7 +135,7 @@ sequio check example/index.ts --json     # 机读：Diagnostic[] JSON
 
 ### `render`（纯 Node，PixiJS WebGPU / Route B）
 
-`runRender()`：`readBundle` → 惰性 `import('./route-b')` 的 `renderBundleToFile(bundle,{out,scale})`（跑在 `@sequio/server` 的 `serverEnv` 上）。
+`runRender()`：`readBundle` → 惰性 `import('./node-render')` 的 `renderBundleToFile(bundle,{out,scale})`（跑在 `@sequio/server` 的 `serverEnv` 上）。
 Route B 在 Node 里做完整条 decode→composite→encode：`setupNodeEnvironment()` 用 Dawn 装好
 `navigator.gpu`、jsdom/`@napi-rs/canvas` 补 DOM 与字体、`@mediabunny/server`（node-av/FFmpeg）补
 WebCodecs；再 `new Runtime(bundle).run()` → `composer.build({ target:'server', compositorOptions:{ createRenderer, resolution:scale } })`。

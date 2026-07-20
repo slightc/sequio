@@ -7,7 +7,7 @@
  *    renderer and statically validate it — no GPU, no network (the fast
  *    pre-flight in the `check → frame → render` loop).
  *  - `render <file>` → snapshot the composition into a {@link RuntimeBundle} and
- *    hand it to Route B (`./route-b`, pure Node + WebGPU, running under
+ *    hand it to Route B (`./node-render`, pure Node + WebGPU, running under
  *    `@sequio/server`'s `serverEnv`) to encode a video.
  *  - `frame <file>` → the same Route B path, but seek to one time and write a
  *    single PNG — a fast visual check without a full render.

@@ -25,6 +25,7 @@
  */
 export { setupNodeEnvironment, createNodeWebGPURenderer, getMediabunny } from './env';
 export { serverEnv, type ServerEnv, type ServerEnvOptions } from './server-env';
+export { encodeRGBAToPng } from './image-node';
 export {
   loadFontsNode,
   bridgeFontManagerToNode,
