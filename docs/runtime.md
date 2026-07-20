@@ -202,9 +202,9 @@ engine 层 `EngineEnv` 与 runtime 层 `RuntimeEnv` 的分层、沙箱执行、h
 
 ## 服务端渲染（跑同一份代码）
 
-`server` 的 **Route A（无头 Chrome）** 暴露 `window.__SSR__.renderBundle(bundle)`：用 runtime
+**Route A（无头 Chrome，`@sequio/headless` 包）** 暴露 `window.__SSR__.renderBundle(bundle)`：用 runtime
 把 bundle 的文件编译+运行成 `Composer`，在服务端建**同一张图**（契约 #3）再编码。Node worker
-`route-a/ssr-render.cjs` 新增 `--bundle bundle.json`（与 `--timeline spec.json` 互斥）：
+`packages/headless/ssr-render.cjs` 新增 `--bundle bundle.json`（与 `--timeline spec.json` 互斥）：
 
 ```bash
 pnpm ssr:render -- --bundle bundle.json --out out.mp4   # 无头 Chrome 重新运行这段代码

@@ -63,7 +63,7 @@ WebCodecs 解/编码、`OfflineAudioContext` 混音、`document.fonts` 字体度
 | 编码/封装（`MediabunnyExportSink`） | WebCodecs (`VideoEncoder`)、`CanvasSource` |
 | 字体（`FontManager`） | `document.fonts` / `FontFace` |
 
-## 路线 A：Headless Chrome（本仓库实现的方案）
+## 路线 A：Headless Chrome（`@sequio/headless` 包）
 
 无头 Chrome 天生带 WebGL、WebCodecs、Web Audio 和字体，所以 **SDK 一行不用改**就能在服务器
 上跑。项目的 `verify:*` 脚本（`packages/*/scripts/verify-page.cjs`）本来就用 Puppeteer + Chrome-for-Testing
@@ -72,12 +72,17 @@ WebCodecs 解/编码、`OfflineAudioContext` 混音、`document.fonts` 字体度
 
 契约 #3（预览与导出共用渲染核心）因此天然满足：服务端产出与用户浏览器里所见逐像素一致。
 
+> **打包位置**：Route A 独立成 **`packages/headless`（`@sequio/headless`）** 包——它是仓库内 verify
+> harness、**不发布**（`private`）。`server` 因此只拥有 TimelineSpec 协议 + 纯 Node 的 Route B；headless
+> 依赖 `@sequio/server`（复用协议）+ `@sequio/runtime`（重跑 bundle）+ `@sequio/engine`。
+
 ### 组成
 
 ```
-packages/server/route-a/ssr-render.{html,ts}   浏览器入口：暴露 window.__SSR__.renderBundle(bundle)（代码，推荐）
-                                               与 window.__SSR__.render(spec)（JSON，可选）→ base64 视频
-packages/server/route-a/ssr-render.cjs         Node worker：起 Vite + 无头 Chrome，喂 --bundle/--timeline，取回字节写盘
+packages/headless/ssr-render.{html,ts}   浏览器入口：暴露 window.__SSR__.renderBundle(bundle)（代码，推荐）
+                                         与 window.__SSR__.render(spec)（JSON，可选）→ base64 视频
+packages/headless/ssr-render.cjs         Node worker：起 Vite + 无头 Chrome，喂 --bundle/--timeline，取回字节写盘
+packages/headless/scripts/verify-page.cjs 浏览器 e2e runner（`pnpm verify:ssr`）
 packages/server/src/timeline.ts        （可选）时间线 JSON 协议（TimelineSpec）+ buildTimeline() 重建对象图
 packages/server/src/sample-timeline.ts （可选）自包含 demo spec（纯文字 + 图形，无需外部素材）
 packages/server/tests/ssr-timeline.test.ts     builder 的 headless 单测（spec→对象图映射）
@@ -97,8 +102,8 @@ packages/server/tests/ssr-timeline.test.ts     builder 的 headless 单测（spe
  RuntimeBundle（代码，推荐）  ┐          ┌ 可选：时间线 JSON（服务器/DB）
       │                      │          │  JSON.parse
       ▼                      │          ▼
- packages/server/route-a/ssr-render.cjs ──启动──► Vite dev server
-      │                              │ 提供 packages/server/route-a/ssr-render.html
+ packages/headless/ssr-render.cjs ──启动──► Vite dev server
+      │                              │ 提供 packages/headless/ssr-render.html
       │  puppeteer.launch(headless)  ▼
       └──────────────────────► 无头 Chrome
                                      │ renderBundle(bundle)：Runtime→Composer→build

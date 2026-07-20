@@ -116,33 +116,29 @@ export interface ModuleEvaluator {
 
 ---
 
-## §C. `packages/headless` 包抽离（设计）
+## §C. `packages/headless` 包抽离（已实现）
 
-### 现状
-Route A（无头 Chrome）寄居在 `packages/server/route-a/`：`ssr-render.html`（浏览器入口，暴露
-`window.__SSR__.render/renderBundle`）、`ssr-render.ts`、`ssr-render.cjs`（Puppeteer worker：起 Vite +
-无头 Chrome + 喂 spec/bundle + 取回 base64）。它与 server 包的 Route B（Node 原生）耦合在一个包里，
-但两者其实是**两种独立的宿主**。
-
-### 目标结构
-新包 `@sequio/headless`：
+Route A（无头 Chrome）过去寄居在 `packages/server/route-a/`，与 server 的 Route B（Node 原生）耦合在
+一个包里，但两者是**两种独立的宿主**。现已抽成独立包 **`@sequio/headless`**：
 
 ```
 packages/headless/
-  src/index.ts          @sequio/headless barrel：renderBundleHeadless / renderTimelineHeadless
-  page/ssr-render.html  浏览器入口（迁自 route-a）——RPC server 侧（§D）
-  page/ssr-render.ts
-  worker/headless.ts    Puppeteer 生命周期 + Vite + RPC client 侧（§D，取代 ssr-render.cjs）
-  tests/
+  ssr-render.html/.ts   浏览器入口：window.__SSR__.render(spec) / renderBundle(bundle) / sample() → base64
+  ssr-render.cjs        Node worker：起 Vite + Puppeteer 无头 Chrome，喂 --timeline/--bundle，写盘
+  scripts/verify-page.cjs 浏览器 e2e runner（`pnpm verify:ssr`）
+  package.json          private（不发布）、vite.config.ts（仅 dev server，无 build）、tsconfig.json
 ```
 
-- **DAG**：`engine ← runtime ← {server, headless}`；`headless` 依赖 `runtime`（在页面里跑 bundle）+
-  **可选**依赖 `server`（复用 `TimelineSpec` / `buildTimeline`）。headless 与 server 互不依赖。
-- **迁移**：`packages/server/route-a/*` → `packages/headless/`；`verify:ssr` / `ssr:render` 脚本随之
-  迁到 headless 包；server 包的 README/描述去掉「Route A 是仓库内 harness」一句（改指向 headless 包）。
-- **对齐 `RuntimeEnv`**：headless 也暴露一个 `headlessEnv()`（宿主 = 无头浏览器），对称于
-  `nodeServerEnv()`——统一「server 提供一套 env」的心智。
-- **Puppeteer 仍是 devDependency**（不进发布包），与今天一致。
+- **DAG**：`engine ← runtime ← {server, headless}`；`headless` 依赖 `@sequio/server`（复用
+  `TimelineSpec` / `buildTimeline` / `sampleTimeline`）+ `@sequio/runtime`（页面里跑 bundle）+
+  `@sequio/engine`。server 因此只拥有协议 + Route B，不再背 Route A。
+- **迁移**：`packages/server/route-a/*` → `packages/headless/`（`git mv` 保留历史）；`verify:ssr` /
+  `ssr:render` 脚本 + 那份 `verify-page.cjs` 一并迁入；根 `package.json` 的 `verify:ssr`/`ssr:render`
+  改指 `-F @sequio/headless`；页面 import 从 `../src/timeline` 改成 `@sequio/server`。
+- **不发布**（`private: true`、无 `vite build`）：Route A 是仓库内 verify harness——全保真、复用浏览器
+  渲染核心（契约 #3），代价是每任务一个 Chrome 进程。Puppeteer 仍是**根 devDependency**。
+- **后续**：把 worker 的 `page.evaluate(...)→base64` 换成 §D 的 transport-agnostic RPC，并对称暴露一个
+  `headlessEnv()`（宿主 = 无头浏览器），大字节流走流式回传取代 base64。
 
 ---
 
@@ -200,8 +196,8 @@ export interface Endpoint {
 
 ## 落地顺序
 
-1. **§A engine 层 `EngineEnv` + runtime 层 `RuntimeEnv`** ——已实现（本次）。
-2. **§C headless 包抽离** ——纯搬迁 + DAG 调整，为 §D 铺路（RPC 的两个宿主之一就位）。
+1. **§A engine 层 `EngineEnv` + runtime 层 `RuntimeEnv`** ——已实现。
+2. **§C headless 包抽离** ——已实现（`@sequio/headless`，RPC 的两个宿主之一就位）。
 3. **§D RPC 协议** ——先定 `Endpoint` + `RenderService` 契约与自研信封，iframe 与 Puppeteer 两个适配器。
 4. **§B VM 沙箱** ——`ModuleEvaluator` 接缝 + `node:vm` + 浏览器 iframe 沙箱（复用 §D 的 RPC）。
 

@@ -36,9 +36,11 @@
 - [ ] VM 沙箱执行路径（`RuntimeEnv` 的 evaluator 维度）：`ModuleRuntime` 抽出 `ModuleEvaluator` 接缝，
       Node 用 `node:vm` 白名单 globals、浏览器用 iframe/Worker；配素材 URL allowlist 挡 SSRF。设计见
       [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §B。
-- [ ] `packages/headless` 包：把 Route A（无头 Chrome，`packages/server/route-a/*`）抽离成独立包
-      `@sequio/headless`，DAG `engine ← runtime ← {server, headless}`；对称暴露 `headlessEnv()`。设计见
-      [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §C。
+- [x] `packages/headless` 包：把 Route A（无头 Chrome）从 `packages/server/route-a/*` 抽离成独立包
+      `@sequio/headless`（private、不发布），依赖 `@sequio/server`（复用 TimelineSpec）+ runtime + engine，
+      DAG `engine ← runtime ← {server, headless}`；`verify:ssr`/`ssr:render` 迁入并改指该包。见
+      [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §C、[`docs/server-side-rendering.md`](../docs/server-side-rendering.md)。
+      对称的 `headlessEnv()` 随 §D RPC 一起做。
 - [ ] RPC 协议：transport-agnostic 的 `RenderService` + `Endpoint` 抽象，同时服务无头浏览器（Puppeteer/CDP
       桥）与 iframe/Worker（postMessage + Transferable，取代 base64）；Comlink vs 自研信封见
       [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §D。

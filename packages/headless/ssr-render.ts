@@ -3,8 +3,8 @@
  * headless browser — which has WebGL, WebCodecs and Web Audio — and exposes
  * `window.__SSR__.render(spec)`: it rebuilds the SDK object graph from a
  * {@link TimelineSpec}, runs the normal {@link Exporter}, and returns the encoded
- * video as base64 so the Node worker (`scripts/ssr-render.cjs`) can write it to
- * disk. The render core is the same one the live preview uses (contract #3).
+ * video as base64 so the Node worker (`ssr-render.cjs`) can write it to disk.
+ * The render core is the same one the live preview uses (contract #3).
  *
  * It also exposes `window.__SSR__.renderBundle(bundle)` — the **code** path: a
  * {@link RuntimeBundle} (the source files an editor's "Code Mode" produced) is
@@ -16,8 +16,7 @@
  */
 import { Exporter, loadMediabunny } from '@sequio/engine';
 import { Runtime, type RuntimeBundle } from '@sequio/runtime';
-import { sampleTimeline } from '../src/sample-timeline';
-import { buildTimeline, type TimelineSpec } from '../src/timeline';
+import { buildTimeline, sampleTimeline, type TimelineSpec } from '@sequio/server';
 
 export interface RenderResult {
   ok: boolean;

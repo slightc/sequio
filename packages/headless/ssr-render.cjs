@@ -9,7 +9,7 @@
  * harness — the same render core the browser preview uses (contract #3).
  *
  * Usage:
- *   node scripts/ssr-render.cjs [--timeline <spec.json>] [--bundle <bundle.json>] [--out <file>] [--verify]
+ *   node ssr-render.cjs [--timeline <spec.json>] [--bundle <bundle.json>] [--out <file>] [--verify]
  *
  *   --timeline <file>  timeline spec JSON; omit to render the built-in demo
  *   --bundle <file>    code bundle JSON ({ files, entry }) from Code Mode; the
@@ -36,11 +36,14 @@ function parseArgs(argv) {
   return args;
 }
 
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname);
 const PORT = 5198;
 
-// Resolve Vite's CLI whether it's hoisted here or at the workspace root.
-const VITE_BIN = require.resolve('vite/bin/vite.js', { paths: [ROOT, process.cwd()] });
+// Resolve Vite's CLI whether it's hoisted here or at the workspace root. Resolve
+// via the package.json (always exported) then join `bin/vite.js`, so newer Vite
+// versions that don't list the bin in their `exports` map still work.
+const VITE_PKG = require.resolve('vite/package.json', { paths: [ROOT, process.cwd()] });
+const VITE_BIN = path.join(path.dirname(VITE_PKG), 'bin/vite.js');
 
 function waitForServer(url, timeoutMs = 20000) {
   const start = Date.now();
@@ -105,7 +108,7 @@ async function main() {
       if (m.type() === 'error') errors.push(m.text());
     });
 
-    await page.goto(`http://localhost:${PORT}/route-a/ssr-render.html`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`http://localhost:${PORT}/ssr-render.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction('window.__SSR__ !== undefined', { timeout: 30000 });
 
     let result;

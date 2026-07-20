@@ -37,13 +37,15 @@ These are the invariants the whole design rests on. Any change must preserve the
 
 This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into five core
 packages, in a clean dependency DAG — `engine ← runtime ← server ← studio`, and
-`engine ← {server, studio, cli}` — plus the project website:
+`engine ← {server, studio, cli}` — plus the project website, and two non-published
+harness/docs packages (`headless`, `skill`):
 
 ```
 packages/
   engine/   @sequio/engine    the SDK runtime (the published library)
   runtime/  @sequio/runtime   compile+run TS/JS → a Composer (depends on engine)
-  server/   @sequio/server    server-side rendering (depends on engine + runtime)
+  server/   @sequio/server    server-side rendering: TimelineSpec protocol + Route B pure-Node WebGPU (depends on engine + runtime)
+  headless/ @sequio/headless  Route A server-side rendering: headless-Chrome (Puppeteer) worker → video (depends on engine + runtime + server; repo-internal harness, NOT published)
   studio/   @sequio/studio    reference multi-track editor (depends on engine + server + runtime)
   cli/      @sequio/cli       the `sequio` command line: check + render + frame + preview (depends on engine + runtime + server)
   website/  @sequio/website   the project website: home · demo gallery (sequio-rendered covers) + Code Mode · engine API reference · studio showcase (depends on engine + runtime)
@@ -82,8 +84,6 @@ example/       demos + browser e2e verify pages (verify:* harness)
 
 ```
 src/            TimelineSpec protocol + buildTimeline (the serializable JSON contract; barrel = src/index.ts)
-route-a/        Route A: headless Chrome — renders a TimelineSpec *or* a runtime code bundle
-                (ssr-render.html/.ts exposes render(spec)/renderBundle(bundle) + ssr-render.cjs worker)
 route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, server-env.ts, export-node.ts,
                 fonts-node.ts, render-bundle.ts, frame-node.ts, audio-node.ts + verify-*); index.ts =
                 (server-env.ts: nodeServerEnv() packages the Node bootstrap into one injectable RuntimeEnv
@@ -94,6 +94,23 @@ route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, server-env
                 exportBundleAudioToFile → `sequio audio`)
 tests/          headless spec→graph unit tests
 ```
+
+### `packages/headless` — Route A server-side rendering (repo-internal harness)
+
+```
+ssr-render.html/.ts   the SSR page: runs inside headless Chrome (WebGL + WebCodecs), exposes
+                      window.__SSR__.render(spec) / renderBundle(bundle) / sample() → base64 video;
+                      imports @sequio/server for the TimelineSpec protocol + @sequio/runtime for bundles
+ssr-render.cjs        the Node worker: spawns Vite + drives Puppeteer (Chrome-for-Testing) to the page,
+                      feeds --timeline / --bundle, writes the returned bytes to --out (`pnpm ssr:render`)
+scripts/              verify-page.cjs (the shared browser-e2e runner; `pnpm verify:ssr`)
+```
+
+**Not published** (`private: true`, no `vite build`): Route A is the productized form of the
+`verify:*` harness — full-fidelity SSR that reuses the exact browser render core (contract #3), at the
+cost of a Chrome process per task. It was split out of `packages/server/route-a/` so `server` owns only
+the protocol + the pure-Node Route B. A transport-agnostic RPC layer (for both the Puppeteer bridge and
+iframe) is the next milestone — see [`docs/environments-and-rpc.md`](docs/environments-and-rpc.md) §D.
 
 ### `packages/runtime` — code runtime
 
@@ -304,16 +321,16 @@ pnpm ssr:render-node -- --bundle <bundle.json> [--scale 2] --out out.mp4  # SSR 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's
 bundled Chromium lacks WebCodecs, so we use Puppeteer's Chrome-for-Testing —
 fetch it once with `pnpm exec puppeteer browsers install chrome`. The engine,
-studio and server each carry a copy of `scripts/verify-page.cjs` (spawns Vite in
+studio and headless each carry a copy of `scripts/verify-page.cjs` (spawns Vite in
 that package, asserts a page's `window.*` result).
 
-**Server-side rendering** (render a timeline to a video file on a server) lives in
-`packages/server` and has two routes: **A) headless Chrome** —
-`packages/server/route-a/ssr-render.cjs` drives `route-a/ssr-render.html` (full
-fidelity, reuses the verify path); and **B) pure Node** — `packages/server/route-b/`
-renders via PixiJS WebGPU (Dawn) with **filters** and **media sources**
-(video/image decode), no browser (needs a GPU or Mesa lavapipe). Both share the
-`packages/server/src/` timeline protocol (`@sequio/server`). The SDK
+**Server-side rendering** (render a timeline to a video file on a server) has two
+routes: **A) headless Chrome** — the `@sequio/headless` package's
+`ssr-render.cjs` drives `ssr-render.html` (full fidelity, reuses the verify path);
+and **B) pure Node** — `packages/server/route-b/` renders via PixiJS WebGPU (Dawn)
+with **filters** and **media sources** (video/image decode), no browser (needs a
+GPU or Mesa lavapipe). Both share the `packages/server/src/` timeline protocol
+(`@sequio/server`). The SDK
 hooks that enable Route B
 (all no-ops in the browser): `CompositorOptions.createRenderer` (inject a renderer),
 `loadMediabunny()`/`setMediabunnyModule()` (pin one mediabunny instance — dual-package
