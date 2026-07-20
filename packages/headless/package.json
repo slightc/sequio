@@ -15,7 +15,7 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "verify:ssr": "node scripts/verify-page.cjs ssr-render.html __SSR_TEST__ \"server-side render\"",
-    "ssr:render": "node ssr-render.cjs"
+    "ssr:render": "tsx ssr-worker.ts"
   },
   "keywords": [
     "server-side-rendering",

@@ -123,8 +123,8 @@ Route A（无头 Chrome）过去寄居在 `packages/server/route-a/`，与 serve
 
 ```
 packages/headless/
-  ssr-render.html/.ts   浏览器入口：window.__SSR__.render(spec) / renderBundle(bundle) / sample() → base64
-  ssr-render.cjs        Node worker：起 Vite + Puppeteer 无头 Chrome，喂 --timeline/--bundle，写盘
+  ssr-render.html/.ts   浏览器入口：`expose` 一个 RenderService（render/renderBundle/sample）到 RPC 上
+  ssr-worker.ts         Node worker（tsx）：起 Vite + Puppeteer，`wrap` 该 service，喂 --timeline/--bundle，写盘
   scripts/verify-page.cjs 浏览器 e2e runner（`pnpm verify:ssr`）
   package.json          private（不发布）、vite.config.ts（仅 dev server，无 build）、tsconfig.json
 ```
@@ -142,64 +142,72 @@ packages/headless/
 
 ---
 
-## §D. RPC 协议：无头浏览器 + iframe 通用（设计，含 Comlink 对比）
+## §D. RPC 协议：无头浏览器 + iframe 通用（已实现）
 
-### 现状与目标
-今天的传输是临时的：`page.evaluate((s) => window.__SSR__.render(s), spec)` 返回 base64。要点：
-① 无正式接口契约；② 只服务 Puppeteer，iframe（浏览器内沙箱预览/导出）无法复用；③ base64 有 ~33%
-膨胀、大文件要在内存里过一遍字符串。目标是**一套 transport-agnostic 的 RPC**，同时服务：
-- **无头浏览器**（Node worker ↔ Chrome 页面，跨 CDP 边界）
-- **iframe / Worker**（父页面 ↔ 沙箱 realm，§B 的浏览器沙箱、studio Code Mode 的隔离预览）
+过去的传输是临时的：`page.evaluate((s) => window.__SSR__.render(s), spec)` 返回 base64——无接口契约、
+只服务 Puppeteer、iframe 无法复用。现已换成**一套 transport-agnostic 的 RPC**（`@sequio/server`
+的 `src/rpc.ts`，零依赖、浏览器安全），一处 `expose`/`wrap`，两种传输通用。
 
-### 接口契约
-定义与传输无关的服务接口 + 一个 `Endpoint` 抽象：
-
+### 接口契约（`@sequio/server`）
 ```ts
-export interface RenderService {
-  renderBundle(bundle: RuntimeBundle, opts: RenderOpts): Promise<RenderResult>;
-  renderTimeline(spec: TimelineSpec, opts: RenderOpts): Promise<RenderResult>;
-  renderFrame(bundle: RuntimeBundle, time: number, opts: FrameOpts): Promise<FrameResult>;
-}
-// 双向消息端点：iframe/Worker 用 postMessage，Puppeteer 用自定义桥（见下）。
+// 通用 RPC 核心（rpc.ts）——Comlink 兼容形态的 Endpoint
 export interface Endpoint {
-  postMessage(msg: unknown, transfer?: Transferable[]): void;
-  addEventListener(type: 'message', h: (e: { data: unknown }) => void): void;
-  removeEventListener(type: 'message', h: (e: { data: unknown }) => void): void;
+  postMessage(message: unknown, transfer?: unknown[]): void;
+  addEventListener(type: 'message', l: (e: { data: unknown }) => void): void;
+  removeEventListener(type: 'message', l: (e: { data: unknown }) => void): void;
+  start?(): void;
+}
+export function expose(service: object, endpoint: Endpoint): () => void;   // 服务端：登记方法
+export function wrap<T>(endpoint: Endpoint): Remote<T>;                     // 客户端：remote.foo() 像本地调用
+export function windowEndpoint(remote, local?, targetOrigin?): Endpoint;    // iframe 适配器
+
+// 领域契约（render-service.ts）
+export interface RenderService {
+  render(spec: TimelineSpec, onProgress?: (p: number) => void): Promise<RenderResult>;
+  renderBundle(bundle: RuntimeBundle, onProgress?: (p: number) => void): Promise<RenderResult>;
+  sample(): Promise<TimelineSpec>;
 }
 ```
 
-- **iframe / Worker transport**：`Endpoint` 直接就是 `window`/`MessagePort`/`Worker`。`Transferable`
-  让 `ArrayBuffer` **零拷贝**回传（取代 base64）。
-- **无头浏览器 transport**：Puppeteer/CDP **没有原生 MessagePort**。桥法：Node 侧
-  `page.exposeFunction('__rpcSend', …)`（页面 → Node）+ `page.evaluate` 注入回调（Node → 页面），
-  在两侧各包一个满足 `Endpoint` 接口的适配器。大字节流走页面 `fetch` POST 到 worker 起的本地端点
-  （替换 base64）。
+支持的越界能力：**异步方法调用**（入参→结果）、**错误传播**（远端异常变本地 rejection）、**单向函数参数
+代理**——`onProgress` 回调被编码成 callback ref 送过去，远端每次调用即在本地触发（渲染进度因此能跨边界
+回报）。只有 clone/JSON 安全的值越界（两种传输能力的交集）。
 
-### Comlink vs 自研极简 RPC
+### 两种传输
+- **iframe / Worker / MessagePort**：这些对象**本身就是 `Endpoint`**（`Window` 用 `windowEndpoint` 适配）；
+  结构化克隆搬值。用于 §B 浏览器沙箱、studio Code Mode 的隔离预览。
+- **无头浏览器（Puppeteer）**：CDP 边界无原生 `MessagePort`。`@sequio/headless` 两侧各写一个
+  `Endpoint` 适配器——页面 → Node 走 `page.exposeFunction('__rpcFromPage')`，Node → 页面走
+  `page.evaluate(window.__rpcToPage, msg)`；值以 JSON 越界，视频字节仍以 base64 装在 `RenderResult` 里
+  （见下「取舍」）。页面 `expose(service, …)`，worker `wrap<RenderService>(…)`。
 
-| | Comlink | 自研极简 RPC |
-|---|---|---|
-| 风格 | proxy（`await remote.renderBundle(...)` 像本地调用） | 显式 request/response 信封 |
-| 依赖 | 引入 `comlink`（~5KB） | 无（契合仓库「依赖收口」风格） |
-| iframe/Worker | 一等公民（`Comlink.wrap(windowEndpoint(iframe))`） | 需自己写 `windowEndpoint` 等价物 |
-| Puppeteer/CDP | **需为 CDP 边界自定义 `Endpoint`**（Comlink 只认 MessagePort 形态） | 同样要写桥，但桥就是全部、无额外抽象 |
-| Transferable | 原生支持（`Comlink.transfer`） | 自己处理 transfer 列表 |
-| 可单测 | 需 mock endpoint | 纯函数信封，易单测（契合仓库单测风格） |
+### 落地位置
+- `packages/server/src/rpc.ts`（通用核心）+ `src/render-service.ts`（`RenderService`/`RenderResult`）——
+  浏览器安全、从 `@sequio/server` barrel 导出，headless 与 studio 都能引用。
+- `packages/headless/ssr-render.ts`（页面 `expose`）+ `ssr-worker.ts`（tsx worker `wrap`，取代旧
+  `ssr-render.cjs`；`page.evaluate(window.__SSR__…)` + base64 的老路彻底移除）。
 
-**推荐**：两者都要为 Puppeteer 写自定义 `Endpoint`，成本相近；差别在**是否愿为 iframe 侧的人体工学
-引入一个依赖**。倾向**自研极简 RPC**（无依赖、契合「只有 engine 直接依赖 pixi/mediabunny」的收口原则、
-信封可纯单测），但把 `Endpoint` 接口设计成 **Comlink 兼容形态**（`postMessage`/`addEventListener`），
-这样任何时候都能无缝换成 `Comlink.wrap`。实现该里程碑时按当时的 iframe 场景复杂度再定（用户已选
-「两者都探讨」）。
+### Comlink vs 自研极简 RPC（最终取自研）
+两者都得为 Puppeteer 写自定义 `Endpoint`，成本相近；差别只在**是否为 iframe 人体工学引入一个依赖**。
+选了**自研**（无依赖、契合「只有 engine 直接依赖 pixi/mediabunny」的收口原则、信封纯逻辑可单测——见
+`tests/rpc.test.ts`），但 `Endpoint` 刻意做成 **Comlink 兼容形态**，任何时候都能无缝换成 `Comlink.wrap`。
+
+### 已知取舍 / 后续
+- **base64 未换掉**：Puppeteer 的 `evaluate`/`exposeFunction` 按 JSON 序列化，`ArrayBuffer` 不过境，所以
+  Puppeteer 传输下视频仍走 base64（~33% 膨胀）。iframe/Worker 传输可用 `Transferable` 零拷贝、或大文件走
+  页面 `fetch` POST 流式回传——留作后续（`RenderResult` 的表示保持不变即可）。
+- **校验**：`tests/rpc.test.ts`（expose/wrap 往返、错误传播、未知方法、回调代理、并发不串、回调在返回后
+  不再触发）+ e2e `pnpm ssr:render`（RPC over Puppeteer 渲出合法 mp4，进度回调 2%→100% 跨 CDP 边界实测）。
 
 ---
 
 ## 落地顺序
 
 1. **§A engine 层 `EngineEnv` + runtime 层 `RuntimeEnv`** ——已实现。
-2. **§C headless 包抽离** ——已实现（`@sequio/headless`，RPC 的两个宿主之一就位）。
-3. **§D RPC 协议** ——先定 `Endpoint` + `RenderService` 契约与自研信封，iframe 与 Puppeteer 两个适配器。
-4. **§B VM 沙箱** ——`ModuleEvaluator` 接缝 + `node:vm` + 浏览器 iframe 沙箱（复用 §D 的 RPC）。
+2. **§C headless 包抽离** ——已实现（`@sequio/headless`）。
+3. **§D RPC 协议** ——已实现（`Endpoint`/`expose`/`wrap`/`windowEndpoint` + `RenderService`，Puppeteer
+   传输就位；iframe/Worker 适配器 + 零拷贝/流式回传待接场景）。
+4. **§B VM 沙箱** ——`ModuleEvaluator` 接缝 + `node:vm` + 浏览器 iframe 沙箱（复用 §D 的 RPC）。**下一项**。
 
 §A 的两层 env 是贯穿其余三项的骨架：sandbox 是 runtime 的一个 evaluator 维度、headless 是一个宿主
 （engine 层默认 + runtime 层 env）、RPC 是 env 之间的传输。VM 沙箱的浏览器侧隔离（iframe/Worker）也会用到

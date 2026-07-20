@@ -11,3 +11,7 @@
  */
 export * from './timeline';
 export { sampleTimeline } from './sample-timeline';
+
+// ── Transport-agnostic RPC (headless Chrome + iframe/Worker) ──────────────────
+export { expose, wrap, windowEndpoint, type Endpoint, type Remote } from './rpc';
+export { type RenderService, type RenderResult, type RenderEndpoint } from './render-service';

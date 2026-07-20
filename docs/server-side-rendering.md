@@ -79,14 +79,24 @@ WebCodecs 解/编码、`OfflineAudioContext` 混音、`document.fonts` 字体度
 ### 组成
 
 ```
-packages/headless/ssr-render.{html,ts}   浏览器入口：暴露 window.__SSR__.renderBundle(bundle)（代码，推荐）
-                                         与 window.__SSR__.render(spec)（JSON，可选）→ base64 视频
-packages/headless/ssr-render.cjs         Node worker：起 Vite + 无头 Chrome，喂 --bundle/--timeline，取回字节写盘
+packages/headless/ssr-render.{html,ts}   浏览器入口：`expose` 一个类型化 RenderService（render(spec)/
+                                         renderBundle(bundle)/sample）到 @sequio/server 的 RPC 上（取代旧的
+                                         window.__SSR__ 全局）；视频以 base64 装进 RenderResult
+packages/headless/ssr-worker.ts          Node worker（tsx）：起 Vite + 无头 Chrome，`wrap` 页面的 RenderService
+                                         （经 Puppeteer 桥接的 Endpoint），喂 --bundle/--timeline，取回字节写盘
 packages/headless/scripts/verify-page.cjs 浏览器 e2e runner（`pnpm verify:ssr`）
+packages/server/src/rpc.ts             transport-agnostic RPC 核心（Endpoint/expose/wrap/windowEndpoint）
+packages/server/src/render-service.ts  RenderService / RenderResult 契约
 packages/server/src/timeline.ts        （可选）时间线 JSON 协议（TimelineSpec）+ buildTimeline() 重建对象图
 packages/server/src/sample-timeline.ts （可选）自包含 demo spec（纯文字 + 图形，无需外部素材）
 packages/server/tests/ssr-timeline.test.ts     builder 的 headless 单测（spec→对象图映射）
+packages/server/tests/rpc.test.ts              RPC 核心单测（expose/wrap 往返、错误、回调代理）
 ```
+
+**传输**：页面与 worker 之间走 `@sequio/server` 的 transport-agnostic RPC——页面 `expose(service, …)`，
+worker `wrap<RenderService>(…)`。Puppeteer 无原生 `MessagePort`，故两侧各写一个 `Endpoint` 适配器桥接
+CDP（`page.exposeFunction` + `page.evaluate`）；同一 service 也能不改一行地跑在 iframe/Worker 的
+`MessagePort` 上。设计与取舍见 [`environments-and-rpc.md`](environments-and-rpc.md) §D。
 
 **为什么可选的时间线协议放在 `packages/server` 而不是引擎包**：引擎（`@sequio/engine`）
 刻意把持久化 / schema 交给上层（见 `AGENT.md`）。`TimelineSpec` 是一种消费者层的序列化格式，
@@ -102,14 +112,14 @@ packages/server/tests/ssr-timeline.test.ts     builder 的 headless 单测（spe
  RuntimeBundle（代码，推荐）  ┐          ┌ 可选：时间线 JSON（服务器/DB）
       │                      │          │  JSON.parse
       ▼                      │          ▼
- packages/headless/ssr-render.cjs ──启动──► Vite dev server
-      │                              │ 提供 packages/headless/ssr-render.html
+ packages/headless/ssr-worker.ts ──启动──► Vite dev server
+      │  wrap<RenderService>(endpoint)  │ 提供 packages/headless/ssr-render.html（expose(service)）
       │  puppeteer.launch(headless)  ▼
-      └──────────────────────► 无头 Chrome
+      └───remote.renderBundle(b)──► 无头 Chrome（RPC over Puppeteer 桥）
                                      │ renderBundle(bundle)：Runtime→Composer→build
                                      │   （或 render(spec)：buildTimeline(spec) → Compositor/Track/Clip）
-                                     │   Exporter.export() → Blob → base64
-      ◄──────────────────────────────┘ page.evaluate 返回 base64
+                                     │   Exporter.export() → Blob → base64（RenderResult）
+      ◄───RPC 返回 RenderResult───────┘ onProgress 回调经 RPC 跨边界回报
       │  Buffer.from(base64, 'base64')
       ▼
  out.mp4（写盘）

@@ -1,33 +1,31 @@
 /**
  * Server-side render entry (Route A: headless Chrome). This page runs inside a
- * headless browser — which has WebGL, WebCodecs and Web Audio — and exposes
- * `window.__SSR__.render(spec)`: it rebuilds the SDK object graph from a
- * {@link TimelineSpec}, runs the normal {@link Exporter}, and returns the encoded
- * video as base64 so the Node worker (`ssr-render.cjs`) can write it to disk.
+ * headless browser — which has WebGL, WebCodecs and Web Audio — and **exposes a
+ * typed {@link RenderService} over the transport-agnostic RPC** (`@sequio/server`'s
+ * {@link expose}). The Node worker (`ssr-worker.ts`) `wrap`s it and calls:
+ *  - `render(spec)` — rebuild the SDK object graph from a {@link TimelineSpec},
+ *    run the normal {@link Exporter}, return the encoded video as base64;
+ *  - `renderBundle(bundle)` — the **code** path: a {@link RuntimeBundle} (an
+ *    editor's "Code Mode" source) is re-run here by the {@link Runtime}, building
+ *    the same graph on the server it built in the browser — no spec to serialize.
  * The render core is the same one the live preview uses (contract #3).
  *
- * It also exposes `window.__SSR__.renderBundle(bundle)` — the **code** path: a
- * {@link RuntimeBundle} (the source files an editor's "Code Mode" produced) is
- * re-run here by the {@link Runtime}, building the same object graph on the server
- * that it built in the browser. No spec to serialize — the code is the artifact.
- *
- * On load it also renders the built-in sample and publishes the result on
+ * The RPC rides a Puppeteer bridge here (see {@link puppeteerPageEndpoint}); the
+ * same service works unchanged over an iframe/Worker `MessagePort`. On load it
+ * also renders the built-in sample and publishes the result on
  * `window.__SSR_TEST__` so `pnpm verify:ssr` can assert the browser half works.
  */
 import { Exporter, loadMediabunny } from '@sequio/engine';
 import { Runtime, type RuntimeBundle } from '@sequio/runtime';
-import { buildTimeline, sampleTimeline, type TimelineSpec } from '@sequio/server';
-
-export interface RenderResult {
-  ok: boolean;
-  container?: 'mp4' | 'webm';
-  videoCodec?: string;
-  mime?: string;
-  size?: number;
-  /** base64 of the encoded container. */
-  base64?: string;
-  error?: string;
-}
+import {
+  buildTimeline,
+  type Endpoint,
+  expose,
+  type RenderResult,
+  type RenderService,
+  sampleTimeline,
+  type TimelineSpec,
+} from '@sequio/server';
 
 /**
  * Pick a container + codec the browser can actually encode, preferring what the
@@ -147,16 +145,31 @@ export async function renderBundle(
   }
 }
 
-// Publish the API the Node worker calls.
-(
-  window as unknown as {
-    __SSR__: { render: typeof render; renderBundle: typeof renderBundle; sample: typeof sampleTimeline };
-  }
-).__SSR__ = {
-  render,
-  renderBundle,
-  sample: sampleTimeline,
-};
+/**
+ * Page-side {@link Endpoint} for the Puppeteer transport. The CDP boundary has no
+ * `MessagePort`, so we bridge it: outgoing messages call `window.__rpcFromPage`
+ * (a function the Node worker exposes via `page.exposeFunction`); incoming ones
+ * arrive through `window.__rpcToPage`, which the worker drives via `page.evaluate`.
+ */
+function puppeteerPageEndpoint(): Endpoint {
+  const listeners = new Set<(event: { data: unknown }) => void>();
+  const w = window as unknown as {
+    __rpcFromPage?: (message: unknown) => void;
+    __rpcToPage?: (message: unknown) => void;
+  };
+  w.__rpcToPage = (message) => listeners.forEach((l) => l({ data: message }));
+  return {
+    postMessage: (message) => w.__rpcFromPage?.(message),
+    addEventListener: (_type, listener) => listeners.add(listener),
+    removeEventListener: (_type, listener) => listeners.delete(listener),
+  };
+}
+
+// Serve the typed RenderService over the RPC — the Node worker `wrap`s it. This
+// replaces the old ad-hoc `window.__SSR__` global with a checked contract.
+const service: RenderService = { render, renderBundle, sample: async () => sampleTimeline() };
+expose(service, puppeteerPageEndpoint());
+(window as unknown as { __RPC_READY__: boolean }).__RPC_READY__ = true;
 
 // Self-check on load so `verify:ssr` can assert the browser half end-to-end.
 render(sampleTimeline())

@@ -83,7 +83,9 @@ example/       demos + browser e2e verify pages (verify:* harness)
 ### `packages/server` — server-side rendering
 
 ```
-src/            TimelineSpec protocol + buildTimeline (the serializable JSON contract; barrel = src/index.ts)
+src/            TimelineSpec protocol + buildTimeline (the serializable JSON contract) + rpc.ts
+                (transport-agnostic Endpoint/expose/wrap/windowEndpoint) + render-service.ts
+                (RenderService/RenderResult contract); barrel = src/index.ts
 route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, server-env.ts, export-node.ts,
                 fonts-node.ts, render-bundle.ts, frame-node.ts, audio-node.ts + verify-*); index.ts =
                 (server-env.ts: nodeServerEnv() packages the Node bootstrap into one injectable RuntimeEnv
@@ -98,11 +100,12 @@ tests/          headless spec→graph unit tests
 ### `packages/headless` — Route A server-side rendering (repo-internal harness)
 
 ```
-ssr-render.html/.ts   the SSR page: runs inside headless Chrome (WebGL + WebCodecs), exposes
-                      window.__SSR__.render(spec) / renderBundle(bundle) / sample() → base64 video;
-                      imports @sequio/server for the TimelineSpec protocol + @sequio/runtime for bundles
-ssr-render.cjs        the Node worker: spawns Vite + drives Puppeteer (Chrome-for-Testing) to the page,
-                      feeds --timeline / --bundle, writes the returned bytes to --out (`pnpm ssr:render`)
+ssr-render.html/.ts   the SSR page: runs inside headless Chrome (WebGL + WebCodecs); `expose`s a typed
+                      RenderService (render/renderBundle/sample) over the @sequio/server RPC — the old
+                      window.__SSR__ global is gone. imports @sequio/server (protocol + RPC) + @sequio/runtime
+ssr-worker.ts         the Node worker (tsx): spawns Vite + drives Puppeteer (Chrome-for-Testing), `wrap`s the
+                      page's RenderService over a Puppeteer-bridged Endpoint, feeds --timeline / --bundle,
+                      writes the bytes to --out (`pnpm ssr:render`); onProgress rides the RPC across CDP
 scripts/              verify-page.cjs (the shared browser-e2e runner; `pnpm verify:ssr`)
 ```
 
@@ -325,8 +328,9 @@ studio and headless each carry a copy of `scripts/verify-page.cjs` (spawns Vite 
 that package, asserts a page's `window.*` result).
 
 **Server-side rendering** (render a timeline to a video file on a server) has two
-routes: **A) headless Chrome** — the `@sequio/headless` package's
-`ssr-render.cjs` drives `ssr-render.html` (full fidelity, reuses the verify path);
+routes: **A) headless Chrome** — the `@sequio/headless` package's `ssr-worker.ts`
+`wrap`s the `RenderService` the `ssr-render.html` page `expose`s over the
+`@sequio/server` RPC (full fidelity, reuses the verify path);
 and **B) pure Node** — `packages/server/route-b/` renders via PixiJS WebGPU (Dawn)
 with **filters** and **media sources** (video/image decode), no browser (needs a
 GPU or Mesa lavapipe). Both share the `packages/server/src/` timeline protocol

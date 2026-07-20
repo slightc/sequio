@@ -41,9 +41,12 @@
       DAG `engine ← runtime ← {server, headless}`；`verify:ssr`/`ssr:render` 迁入并改指该包。见
       [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §C、[`docs/server-side-rendering.md`](../docs/server-side-rendering.md)。
       对称的 `headlessEnv()` 随 §D RPC 一起做。
-- [ ] RPC 协议：transport-agnostic 的 `RenderService` + `Endpoint` 抽象，同时服务无头浏览器（Puppeteer/CDP
-      桥）与 iframe/Worker（postMessage + Transferable，取代 base64）；Comlink vs 自研信封见
-      [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §D。
+- [x] RPC 协议：transport-agnostic 的 `Endpoint`/`expose`/`wrap`/`windowEndpoint`（`@sequio/server/src/rpc.ts`，
+      零依赖、Comlink 兼容形态）+ `RenderService`/`RenderResult` 契约（`render-service.ts`）。headless 页面
+      `expose(service)`、worker（`ssr-worker.ts`，tsx）`wrap` 该 service，经 Puppeteer 桥接的 Endpoint 跨 CDP
+      通信；onProgress 回调跨边界回报。旧 `window.__SSR__` + `page.evaluate` base64 老路移除。iframe/Worker
+      适配器 + 零拷贝/流式回传待接场景。见 [`docs/environments-and-rpc.md`](../docs/environments-and-rpc.md) §D。
+- [ ] `headlessEnv()`：对称于 `nodeServerEnv()`，把无头 Chrome 宿主也表达成一个 env（随 iframe/RPC 接场景）。
 - [ ] 路线 B 精修（续）：`writeTexture` 上传的色彩空间（sRGB）校正细化；软件光栅化性能基线；
       带音频的视频源在 Route B 的音轨解码（AudioSource 走同一实例，理论已通，待补 e2e）。
 - [ ] SSR 大文件回传：base64 换成页面 `fetch` POST 流式回传 / CDP `ArrayBuffer`（当前 demo 走 base64）。

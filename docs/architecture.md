@@ -289,11 +289,11 @@ source)` 即可，预览驱动、导出混音都自动取它——无需自己 `
   且预览与导出共用同一渲染核心(契约 #3)。这是把 `verify:*`(`packages/*/scripts/verify-page.cjs`,
   Puppeteer + 带 WebCodecs 的 Chrome-for-Testing)产品化成"时间线 JSON → 视频文件"的 worker。
 - **组成**:`packages/server/src/timeline.ts`(可序列化的 `TimelineSpec` 协议 + `buildTimeline()` 重建对象图,
-  文字/图形/图片/视频/音频 + 变换与关键帧)、`packages/headless/ssr-render.{html,ts}`(浏览器入口,暴露
-  `window.__SSR__.render(spec)` → base64 视频)、`packages/headless/ssr-render.cjs`(Node worker:起 Vite +
-  无头 Chrome,喂 spec,取回字节写盘)。Route A 独立成 **`@sequio/headless`** 包(仓库内 harness、不发布,依赖
-  `@sequio/server` 复用协议)。**时间线协议刻意放在 `packages/server` 而非引擎包**——SDK 把
-  持久化/schema 交给上层,SSR 的 JSON 格式是消费者层的事,引擎的公开面不变。
+  文字/图形/图片/视频/音频 + 变换与关键帧)、`packages/headless/ssr-render.{html,ts}`(浏览器入口,经
+  `@sequio/server` 的 RPC `expose` 一个类型化 `RenderService` → base64 视频)、`packages/headless/ssr-worker.ts`
+  (Node worker:起 Vite + 无头 Chrome,`wrap` 该 service,取回字节写盘)。Route A 独立成 **`@sequio/headless`**
+  包(仓库内 harness、不发布,依赖 `@sequio/server` 复用协议 + RPC)。**时间线协议刻意放在 `packages/server`
+  而非引擎包**——SDK 把持久化/schema 交给上层,SSR 的 JSON 格式是消费者层的事,引擎的公开面不变。
 - 校验:`tests/ssr-timeline.test.ts`(headless 单测 spec→对象图映射:clip 时序、变换/透明度取值、
   命名 easing、时间线时长)+ e2e `pnpm verify:ssr`(浏览器半侧:无头 Chrome 里 render 内置 demo 产出
   合法 MP4)+ `pnpm ssr:render -- --verify`(Node worker 全链路:Node→无头 Chrome→写盘,魔数断言合法容器)。
