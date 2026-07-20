@@ -1,7 +1,7 @@
 {
   "name": "@sequio/server",
   "version": "0.1.2",
-  "description": "Server-side rendering for sequio: a serializable TimelineSpec protocol plus Route B — pure Node, PixiJS WebGPU. (Route A, headless Chrome, is a repo-internal harness and not part of the published package.)",
+  "description": "Server-side rendering for sequio: a serializable TimelineSpec protocol plus Route B — pure Node, PixiJS WebGPU. (Route A, headless Chrome, lives in the @sequio/headless package — a repo-internal harness, not published.)",
   "type": "module",
   "license": "MIT",
   "author": "slightc",
@@ -45,12 +45,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify:ssr": "node scripts/verify-page.cjs route-a/ssr-render.html __SSR_TEST__ \"server-side render\"",
     "verify:ssr-node": "tsx route-b/render.ts --verify --out .ssr-out/node-demo.mp4",
     "verify:ssr-node-audio": "tsx route-b/verify-audio.ts",
     "verify:ssr-node-font": "tsx route-b/verify-font.ts",
     "verify:ssr-node-media": "tsx route-b/verify-media.ts",
-    "ssr:render": "node route-a/ssr-render.cjs",
     "ssr:render-node": "tsx route-b/render.ts"
   },
   "keywords": [

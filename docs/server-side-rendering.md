@@ -34,8 +34,9 @@
   `fetch`，未经校验就是让租户借你的服务器去打内网。对租户提交的 URL 做**协议 + 域名
   allowlist**（禁 `file:`/内网地址），或只接受你自己签发的素材句柄。
 - **确实需要跑不可信代码时**，后续给 `@sequio/runtime` 加**沙箱执行路径**
-  （QuickJS / isolated-vm / 锁死 globals 的 worker）——**当前未实现**，属待办。在它落地前，
-  "公网直接渲染用户提交的合成代码"就是一个 RCE/SSRF 洞，不要这么部署。
+  （`node:vm` / isolated-vm / iframe-worker）——**当前未实现**，属待办；设计见
+  [`environments-and-rpc.md`](environments-and-rpc.md) §B（`ModuleEvaluator` 接缝 + 隔离强度对比）。
+  在它落地前，"公网直接渲染用户提交的合成代码"就是一个 RCE/SSRF 洞，不要这么部署。
 
 一句话：**bundle（代码）路线是给可信来源的；面向公网/多租户请走"自定义 spec + 你的
 builder"的数据路线。**
@@ -62,7 +63,7 @@ WebCodecs 解/编码、`OfflineAudioContext` 混音、`document.fonts` 字体度
 | 编码/封装（`MediabunnyExportSink`） | WebCodecs (`VideoEncoder`)、`CanvasSource` |
 | 字体（`FontManager`） | `document.fonts` / `FontFace` |
 
-## 路线 A：Headless Chrome（本仓库实现的方案）
+## 路线 A：Headless Chrome（`@sequio/headless` 包）
 
 无头 Chrome 天生带 WebGL、WebCodecs、Web Audio 和字体，所以 **SDK 一行不用改**就能在服务器
 上跑。项目的 `verify:*` 脚本（`packages/*/scripts/verify-page.cjs`）本来就用 Puppeteer + Chrome-for-Testing
@@ -71,16 +72,31 @@ WebCodecs 解/编码、`OfflineAudioContext` 混音、`document.fonts` 字体度
 
 契约 #3（预览与导出共用渲染核心）因此天然满足：服务端产出与用户浏览器里所见逐像素一致。
 
+> **打包位置**：Route A 独立成 **`packages/headless`（`@sequio/headless`）** 包——它是仓库内 verify
+> harness、**不发布**（`private`）。`server` 因此只拥有 TimelineSpec 协议 + 纯 Node 的 Route B；headless
+> 依赖 `@sequio/server`（复用协议）+ `@sequio/runtime`（重跑 bundle）+ `@sequio/engine`。
+
 ### 组成
 
 ```
-packages/server/route-a/ssr-render.{html,ts}   浏览器入口：暴露 window.__SSR__.renderBundle(bundle)（代码，推荐）
-                                               与 window.__SSR__.render(spec)（JSON，可选）→ base64 视频
-packages/server/route-a/ssr-render.cjs         Node worker：起 Vite + 无头 Chrome，喂 --bundle/--timeline，取回字节写盘
+packages/headless/ssr-render.{html,ts}   浏览器入口：`expose` 一个类型化 RenderService（render(spec)/
+                                         renderBundle(bundle)/sample）到 @sequio/server 的 RPC 上（取代旧的
+                                         window.__SSR__ 全局）；视频以 base64 装进 RenderResult
+packages/headless/ssr-worker.ts          Node worker（tsx）：起 Vite + 无头 Chrome，`wrap` 页面的 RenderService
+                                         （经 Puppeteer 桥接的 Endpoint），喂 --bundle/--timeline，取回字节写盘
+packages/headless/scripts/verify-page.cjs 浏览器 e2e runner（`pnpm verify:ssr`）
+packages/server/src/rpc.ts             transport-agnostic RPC 核心（Endpoint/expose/wrap/windowEndpoint）
+packages/server/src/render-service.ts  RenderService / RenderResult 契约
 packages/server/src/timeline.ts        （可选）时间线 JSON 协议（TimelineSpec）+ buildTimeline() 重建对象图
 packages/server/src/sample-timeline.ts （可选）自包含 demo spec（纯文字 + 图形，无需外部素材）
 packages/server/tests/ssr-timeline.test.ts     builder 的 headless 单测（spec→对象图映射）
+packages/server/tests/rpc.test.ts              RPC 核心单测（expose/wrap 往返、错误、回调代理）
 ```
+
+**传输**：页面与 worker 之间走 `@sequio/server` 的 transport-agnostic RPC——页面 `expose(service, …)`，
+worker `wrap<RenderService>(…)`。Puppeteer 无原生 `MessagePort`，故两侧各写一个 `Endpoint` 适配器桥接
+CDP（`page.exposeFunction` + `page.evaluate`）；同一 service 也能不改一行地跑在 iframe/Worker 的
+`MessagePort` 上。设计与取舍见 [`environments-and-rpc.md`](environments-and-rpc.md) §D。
 
 **为什么可选的时间线协议放在 `packages/server` 而不是引擎包**：引擎（`@sequio/engine`）
 刻意把持久化 / schema 交给上层（见 `AGENT.md`）。`TimelineSpec` 是一种消费者层的序列化格式，
@@ -96,14 +112,14 @@ packages/server/tests/ssr-timeline.test.ts     builder 的 headless 单测（spe
  RuntimeBundle（代码，推荐）  ┐          ┌ 可选：时间线 JSON（服务器/DB）
       │                      │          │  JSON.parse
       ▼                      │          ▼
- packages/server/route-a/ssr-render.cjs ──启动──► Vite dev server
-      │                              │ 提供 packages/server/route-a/ssr-render.html
+ packages/headless/ssr-worker.ts ──启动──► Vite dev server
+      │  wrap<RenderService>(endpoint)  │ 提供 packages/headless/ssr-render.html（expose(service)）
       │  puppeteer.launch(headless)  ▼
-      └──────────────────────► 无头 Chrome
+      └───remote.renderBundle(b)──► 无头 Chrome（RPC over Puppeteer 桥）
                                      │ renderBundle(bundle)：Runtime→Composer→build
                                      │   （或 render(spec)：buildTimeline(spec) → Compositor/Track/Clip）
-                                     │   Exporter.export() → Blob → base64
-      ◄──────────────────────────────┘ page.evaluate 返回 base64
+                                     │   Exporter.export() → Blob → base64（RenderResult）
+      ◄───RPC 返回 RenderResult───────┘ onProgress 回调经 RPC 跨边界回报
       │  Buffer.from(base64, 'base64')
       ▼
  out.mp4（写盘）
@@ -230,8 +246,12 @@ packages/server/route-b/export-node.ts  GPU 读帧导出：renderToTexture → c
 packages/server/route-b/fonts-node.ts   Node 字体加载：自托管 URL + Google 字体（css2→文件→GlobalFonts.register）
                                  + bridgeFontManagerToNode（把引擎 FontManager 的 load 钩子改接 loadFontsNode，
                                  让代码/bundle 路线里作曲的 fonts.load(...) 在 Node 也注册进 GlobalFonts）
-packages/server/route-b/render-bundle.ts renderBundleToFile：读 RuntimeBundle（命令式代码）→ Runtime→Composer→build
-                                 →renderTimelineToFile（`sequio render` 与 worker `--bundle` 都走它）
+packages/server/route-b/server-env.ts   nodeServerEnv()：把 setupNodeEnvironment + bridgeFontManagerToNode +
+                                 WebGPU renderer 工厂 + 输出倍率打包成一个可注入的 RuntimeEnv（「server 提供一套
+                                 server env」）；build 后经 env.renderer 暴露创建出的 renderer 供 GPU 读帧。
+                                 render/frame/audio 三处入口都注入它，见 docs/environments-and-rpc.md
+packages/server/route-b/render-bundle.ts renderBundleToFile：读 RuntimeBundle（命令式代码）→ Runtime(env=nodeServerEnv)
+                                 →Composer→build →renderTimelineToFile（`sequio render` 与 worker `--bundle` 都走它）
 packages/server/route-b/frame-node.ts   renderBundleFrameToFile：读 RuntimeBundle → build → seek 一帧 → renderFrameRGBA
                                  → @napi-rs/canvas 编码 PNG 写盘（`sequio frame` 走它；与 render 同一渲染核心）
 packages/server/route-b/audio-node.ts   exportBundleAudioToFile：读 RuntimeBundle → build → Exporter.exportAudio（只导

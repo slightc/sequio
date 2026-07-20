@@ -1,0 +1,32 @@
+{
+  "name": "@sequio/headless",
+  "version": "0.1.2",
+  "description": "Route A server-side rendering for sequio: a headless Chrome (Puppeteer) worker that renders a TimelineSpec or a code bundle to a video file. Repo-internal harness — NOT published.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "slightc",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slightc/sequio.git",
+    "directory": "packages/headless"
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "verify:ssr": "node scripts/verify-page.cjs ssr-render.html __SSR_TEST__ \"server-side render\"",
+    "ssr:render": "tsx ssr-worker.ts"
+  },
+  "keywords": [
+    "server-side-rendering",
+    "headless",
+    "puppeteer",
+    "pixijs",
+    "video"
+  ],
+  "dependencies": {
+    "@sequio/engine": "workspace:^",
+    "@sequio/runtime": "workspace:^",
+    "@sequio/server": "workspace:^"
+  }
+}

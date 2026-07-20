@@ -152,6 +152,41 @@ class RuntimeCompositor extends Compositor {
 重新 link 还带来一个好处：**每次 build 是独立的模块状态**（预览与导出互不串），转译结果按
 文件缓存，所以重复 link 只是重跑一遍很轻的模块体。
 
+### 统一环境模型（`RuntimeEnv` / `setEnv`）
+
+上一节的 `env.compositorOptions` 只是「环境」的一部分。真正的宿主差异还包括：一次性引导
+（装浏览器 globals、钉 mediabunny 实例、桥接字体）、额外 `externals`（gsap…）、`loadAsset`。过去这些
+散落在每个服务端入口里逐字重复。`src/env.ts` 的 **`RuntimeEnv`** 把它们收进一个可注入对象：
+
+```ts
+export interface RuntimeEnv {
+  readonly name?: string;
+  readonly target?: 'preview' | 'export' | 'server';
+  setup?(): Promise<void> | void;                         // 一次性宿主引导（Composer 缓存，仅跑一次）
+  readonly externals?: Externals;
+  readonly loadAsset?: AssetLoader;
+  resolveCompositorOptions?(): Promise<Partial<CompositorOptions>> | Partial<CompositorOptions>;
+  dispose?(): Promise<void> | void;
+}
+export const browserEnv: RuntimeEnv = { name: 'browser', target: 'preview' };
+```
+
+- **安装**：`new Runtime({ files, env })` 或 `runtime.setEnv(env)`（可链式）。`env.externals` 折进注入的
+  裸模块（**显式 `RuntimeOptions.externals` 覆盖 env 的**），`env.loadAsset` 作为 loader 兜底。
+- **消费**：`Composer.build()` 先跑 `env.setup()`（缓存，多次 build 仅一次）→ `resolveCompositorOptions()`
+  折进该次 build 的 `compositorOptions`；显式 `build({compositorOptions})` 覆盖仍生效。无 env 时行为不变。
+- **renderer 默认落在 engine 层**：renderer / codec 这些引擎自己的东西由 **engine 层的 `EngineEnv` +
+  `setDefaultEngineEnv()`** 设进程默认（`Compositor` 消费，显式 `CompositorOptions` 覆盖），而不是 runtime 往
+  每个 build 折 `compositorOptions`——因为 DAG 是 `engine ← runtime`，engine 不能引用 runtime 的类型。
+- **具体 env 由宿主提供**——「server 提供一套 server env」：`@sequio/server/route-b` 的
+  **`nodeServerEnv()`**（一个 `RuntimeEnv`）在 `setup()` 里做 Node 引导并
+  **`setDefaultEngineEnv({ createRenderer, resolution })` 把 renderer 注册到 engine 层**，把创建出的 renderer
+  暴露成 `env.renderer` 供 GPU 读帧。`render` / `frame` / `audio` 三处入口因此塌缩成
+  `new Runtime({ ...bundle, env: nodeServerEnv({ scale, externals, loadAsset }) }).run()` → `build()`。
+
+engine 层 `EngineEnv` 与 runtime 层 `RuntimeEnv` 的分层、沙箱执行、headless 宿主、iframe/RPC 都是这套环境
+模型的延伸，见 [`environments-and-rpc.md`](environments-and-rpc.md)。
+
 ### `Composer`：一处产出、三处消费
 
 `Runtime.run()` 编译+运行入口，把 builder 规整成 `Composer`。同一个 `Composer`：
@@ -167,9 +202,10 @@ class RuntimeCompositor extends Compositor {
 
 ## 服务端渲染（跑同一份代码）
 
-`server` 的 **Route A（无头 Chrome）** 暴露 `window.__SSR__.renderBundle(bundle)`：用 runtime
-把 bundle 的文件编译+运行成 `Composer`，在服务端建**同一张图**（契约 #3）再编码。Node worker
-`route-a/ssr-render.cjs` 新增 `--bundle bundle.json`（与 `--timeline spec.json` 互斥）：
+**Route A（无头 Chrome，`@sequio/headless` 包）** 经 `@sequio/server` 的 RPC `expose` 一个 `RenderService`，
+其 `renderBundle(bundle)` 用 runtime 把 bundle 的文件编译+运行成 `Composer`，在服务端建**同一张图**（契约
+#3）再编码。Node worker `packages/headless/ssr-worker.ts` `wrap` 该 service，支持 `--bundle bundle.json`
+（与 `--timeline spec.json` 互斥）：
 
 ```bash
 pnpm ssr:render -- --bundle bundle.json --out out.mp4   # 无头 Chrome 重新运行这段代码

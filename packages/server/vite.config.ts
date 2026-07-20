@@ -3,8 +3,8 @@ import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
 
 // Server package. Two jobs:
-//   • the dev server (`pnpm dev:server`) serves the Route A page in `route-a/`
-//     and vitest runs the headless timeline-protocol unit tests;
+//   • the dev server (`pnpm dev:server`) + vitest run the headless
+//     timeline-protocol unit tests;
 //   • `vite build` produces the published library — ESM with type declarations —
 //     with two entries: the browser-safe protocol barrel (`.`, imports only the
 //     engine) and the Node-only `./route-b` render route.
@@ -15,9 +15,9 @@ import dts from 'vite-plugin-dts';
 // resolve one instance of each on the host. Output is ESM only: route-b uses
 // `import.meta.url` + `createRequire` to pin a single mediabunny instance.
 //
-// Route A (headless Chrome) is a repo-internal verify harness — it is NOT built
-// or published; only `.` and `./route-b` ship. Dev/test resolve the engine and
-// runtime straight from source (aliases below) so no prior `pnpm build` is needed.
+// Route A (headless Chrome) now lives in the `@sequio/headless` package. Dev/test
+// resolve the engine and runtime straight from source (aliases below) so no prior
+// `pnpm build` is needed.
 export default defineConfig({
   server: {
     port: 6175,
@@ -31,7 +31,7 @@ export default defineConfig({
   plugins: [
     dts({
       include: ['src', 'route-b'],
-      exclude: ['tests', 'route-a', 'route-b/verify-*.ts', 'route-b/render.ts'],
+      exclude: ['tests', 'route-b/verify-*.ts', 'route-b/render.ts'],
       entryRoot: __dirname,
       aliasesExclude: [/^@sequio\//],
     }),

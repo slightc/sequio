@@ -13,11 +13,9 @@
  * instant. Requires a WebGPU-capable host (real GPU or Mesa lavapipe);
  * {@link setupNodeEnvironment} throws a clear message if none is found.
  */
-import type { Renderer } from '@sequio/engine';
 import { type AssetLoader, Runtime, type Externals, type RuntimeBundle } from '@sequio/runtime';
-import { createNodeWebGPURenderer, setupNodeEnvironment } from './env';
 import { renderFrameRGBA } from './export-node';
-import { bridgeFontManagerToNode } from './fonts-node';
+import { nodeServerEnv } from './server-env';
 
 export interface RenderFrameNodeOptions {
   /** Output image path. The extension is corrected to `.png`. */
@@ -69,28 +67,16 @@ export async function renderBundleFrameToFile(
   bundle: RuntimeBundle,
   opts: RenderFrameNodeOptions,
 ): Promise<RenderFrameNodeResult> {
-  await setupNodeEnvironment();
-  bridgeFontManagerToNode();
-
-  const scale = Math.max(1, opts.scale ?? 1);
-  let renderer: Renderer | null = null;
-
-  const composer = await new Runtime({ ...bundle, externals: opts.externals, loadAsset: opts.loadAsset }).run();
-  const built = await composer.build({
-    target: 'server',
-    compositorOptions: {
-      createRenderer: async (o) => {
-        renderer = await createNodeWebGPURenderer(o);
-        return renderer;
-      },
-      resolution: scale,
-    },
-  });
+  // One injectable server env (Node bootstrap + WebGPU renderer + scale); the
+  // created renderer comes back as `env.renderer`. See {@link renderBundleToFile}.
+  const env = nodeServerEnv({ scale: opts.scale, externals: opts.externals, loadAsset: opts.loadAsset });
+  const composer = await new Runtime({ ...bundle, env }).run();
+  const built = await composer.build();
 
   try {
     // Clamp the requested time into the composition's timeline.
     const t = Math.min(Math.max(opts.time ?? 0, 0), built.duration);
-    const { rgba, width, height } = await renderFrameRGBA(built.compositor, renderer!, t);
+    const { rgba, width, height } = await renderFrameRGBA(built.compositor, env.renderer!, t);
     const out = pngPath(opts.out);
     const bytes = await writePng(out, rgba, width, height);
     return { out, time: t, width, height, bytes };

@@ -289,10 +289,11 @@ source)` 即可，预览驱动、导出混音都自动取它——无需自己 `
   且预览与导出共用同一渲染核心(契约 #3)。这是把 `verify:*`(`packages/*/scripts/verify-page.cjs`,
   Puppeteer + 带 WebCodecs 的 Chrome-for-Testing)产品化成"时间线 JSON → 视频文件"的 worker。
 - **组成**:`packages/server/src/timeline.ts`(可序列化的 `TimelineSpec` 协议 + `buildTimeline()` 重建对象图,
-  文字/图形/图片/视频/音频 + 变换与关键帧)、`packages/server/route-a/ssr-render.{html,ts}`(浏览器入口,暴露
-  `window.__SSR__.render(spec)` → base64 视频)、`packages/server/route-a/ssr-render.cjs`(Node worker:起 Vite +
-  无头 Chrome,喂 spec,取回字节写盘)。**时间线协议刻意放在 `packages/server` 而非引擎包**——SDK 把
-  持久化/schema 交给上层,SSR 的 JSON 格式是消费者层的事,引擎的公开面不变。
+  文字/图形/图片/视频/音频 + 变换与关键帧)、`packages/headless/ssr-render.{html,ts}`(浏览器入口,经
+  `@sequio/server` 的 RPC `expose` 一个类型化 `RenderService` → base64 视频)、`packages/headless/ssr-worker.ts`
+  (Node worker:起 Vite + 无头 Chrome,`wrap` 该 service,取回字节写盘)。Route A 独立成 **`@sequio/headless`**
+  包(仓库内 harness、不发布,依赖 `@sequio/server` 复用协议 + RPC)。**时间线协议刻意放在 `packages/server`
+  而非引擎包**——SDK 把持久化/schema 交给上层,SSR 的 JSON 格式是消费者层的事,引擎的公开面不变。
 - 校验:`tests/ssr-timeline.test.ts`(headless 单测 spec→对象图映射:clip 时序、变换/透明度取值、
   命名 easing、时间线时长)+ e2e `pnpm verify:ssr`(浏览器半侧:无头 Chrome 里 render 内置 demo 产出
   合法 MP4)+ `pnpm ssr:render -- --verify`(Node worker 全链路:Node→无头 Chrome→写盘,魔数断言合法容器)。
@@ -303,6 +304,12 @@ source)` 即可，预览驱动、导出混音都自动取它——无需自己 `
   注入 seam**(`Compositor.init` 默认仍 `autoDetectRenderer`,Node 传入 WebGPU 工厂),其余引擎
   (reconcile/renderSync/renderToTexture/转场)renderer 无关、零改动。代码在 `packages/server/route-b/`,校验
   `pnpm verify:ssr-node`;完整踩坑与 shim 见 `docs/server-side-rendering.md`。
+- **引擎级环境默认(`EngineEnv` / `setDefaultEngineEnv`)**:上面这些「引擎跑在浏览器之外」的 seam
+  (`createRenderer`、`setMediabunnyModule`、`setFrameImageExtractor`、输出倍率)由 `src/env.ts` 的
+  **`EngineEnv`** 收成**一个进程级默认**,`setDefaultEngineEnv(env)` 一次设好;`Compositor` 构造/`init`
+  时消费(**显式 `CompositorOptions` 永远覆盖默认**,并发/隔离仍逐个传 renderer)。服务端的 `nodeServerEnv()`
+  在其 `setup()` 里调 `setDefaultEngineEnv` 注册 Node WebGPU renderer——所以用户 bundle 里普通的
+  `new Compositor(...)` 在 Node 也拿到 renderer。设计见 [`environments-and-rpc.md`](environments-and-rpc.md) §A。
 
 ### 文字与字体加载（TextClip / FontManager）
 
