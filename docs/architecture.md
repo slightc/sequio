@@ -30,11 +30,12 @@
 > **Monorepo**：本仓库是 pnpm workspace，分五个包——`packages/engine`
 > （`@sequio/engine`，即本 SDK）、`packages/runtime`
 > （`@sequio/runtime`，编译并运行 TS/JS 代码得到一个 `Composer`，仅依赖
-> engine）、`packages/server`（`@sequio/server`，服务端渲染，依赖
-> engine + runtime）、`packages/studio`（`@sequio/studio`，参考编辑器）、
+> engine）、`packages/server`（`@sequio/server`，服务端渲染环境 `serverEnv`，仅依赖
+> engine）、`packages/studio`（`@sequio/studio`，参考编辑器）、
 > `packages/cli`（`@sequio/cli`，`sequio` 命令行：render + preview，依赖
 > engine + runtime + server，见 [`cli.md`](cli.md)）。
-> DAG：`engine ← runtime ← server ← studio`，`engine ← {server, studio, cli}`。除非另有
+> DAG：`engine ← runtime`、`engine ← server`（server 不依赖 runtime）、
+> `engine ← runtime ← headless ← studio`、`cli ← {runtime, server}`。除非另有
 > `packages/…` 前缀，本文提到的 `src/`、`tests/`、`example/` 路径均相对
 > **`packages/engine/`**；消费包以 `@sequio/engine` 从源码直接引用引擎。
 > 代码运行时（虚拟文件系统 + 编译 + 命令式 Composer）见 [`runtime.md`](runtime.md)。
@@ -288,13 +289,14 @@ source)` 即可，预览驱动、导出混音都自动取它——无需自己 `
 - **采用路线 A(Headless Chrome)**:无头 Chrome 天生带这些 API,故 **SDK 一行不改**即可服务端运行,
   且预览与导出共用同一渲染核心(契约 #3)。这是把 `verify:*`(`packages/*/scripts/verify-page.cjs`,
   Puppeteer + 带 WebCodecs 的 Chrome-for-Testing)产品化成"时间线 JSON → 视频文件"的 worker。
-- **组成**:`packages/server/src/timeline.ts`(可序列化的 `TimelineSpec` 协议 + `buildTimeline()` 重建对象图,
+- **组成**:`packages/headless/src/timeline.ts`(可序列化的 `TimelineSpec` 协议 + `buildTimeline()` 重建对象图,
   文字/图形/图片/视频/音频 + 变换与关键帧)、`packages/headless/ssr-render.{html,ts}`(浏览器入口,经
-  `@sequio/server` 的 RPC `expose` 一个类型化 `RenderService` → base64 视频)、`packages/headless/ssr-worker.ts`
+  本包自己的 RPC `expose` 一个类型化 `RenderService` → base64 视频)、`packages/headless/ssr-worker.ts`
   (Node worker:起 Vite + 无头 Chrome,`wrap` 该 service,取回字节写盘)。Route A 独立成 **`@sequio/headless`**
-  包(仓库内 harness、不发布,依赖 `@sequio/server` 复用协议 + RPC)。**时间线协议刻意放在 `packages/server`
-  而非引擎包**——SDK 把持久化/schema 交给上层,SSR 的 JSON 格式是消费者层的事,引擎的公开面不变。
-- 校验:`tests/ssr-timeline.test.ts`(headless 单测 spec→对象图映射:clip 时序、变换/透明度取值、
+  包(仓库内 harness、不发布,依赖 `@sequio/runtime` + `@sequio/engine`,并**自带协议 + RPC**)。**时间线协议
+  刻意放在 `packages/headless` 而非引擎或 server 包**——SDK 把持久化/schema 交给上层,SSR 的 JSON 格式是
+  "把时间线送进浏览器"那一层(Route A 的职责),引擎的公开面不变;`server` 只提供 `serverEnv`。
+- 校验:`packages/headless/tests/ssr-timeline.test.ts`(headless 单测 spec→对象图映射:clip 时序、变换/透明度取值、
   命名 easing、时间线时长)+ e2e `pnpm verify:ssr`(浏览器半侧:无头 Chrome 里 render 内置 demo 产出
   合法 MP4)+ `pnpm ssr:render -- --verify`(Node worker 全链路:Node→无头 Chrome→写盘,魔数断言合法容器)。
 - **路线 B(Node 原生,免浏览器,含滤镜)已实现**:用 Pixi **WebGPU** 渲染器(Dawn 的 `webgpu` 绑定 +
@@ -302,14 +304,16 @@ source)` 即可，预览驱动、导出混音都自动取它——无需自己 `
   (node-av/FFmpeg)编码、`@napi-rs/canvas` 供文字度量/字体、jsdom 补 DOM。帧渲到 `RenderTexture` 后经
   `copyTextureToBuffer` 从 GPU 读回(BGRA→RGBA)再编码。SDK 侧仅新增 **`CompositorOptions.createRenderer`
   注入 seam**(`Compositor.init` 默认仍 `autoDetectRenderer`,Node 传入 WebGPU 工厂),其余引擎
-  (reconcile/renderSync/renderToTexture/转场)renderer 无关、零改动。代码在 `packages/server/route-b/`,校验
-  `pnpm verify:ssr-node`;完整踩坑与 shim 见 `docs/server-side-rendering.md`。
+  (reconcile/renderSync/renderToTexture/转场)renderer 无关、零改动。环境（`serverEnv`）在
+  `packages/server/src/`,渲染实现（`renderBundleToFile` 等）在 `packages/cli/src/node-render/`,校验
+  `pnpm verify:cli`;完整踩坑与 shim 见 `docs/server-side-rendering.md`。
 - **引擎级环境默认(`EngineEnv` / `setDefaultEngineEnv`)**:上面这些「引擎跑在浏览器之外」的 seam
   (`createRenderer`、`setMediabunnyModule`、`setFrameImageExtractor`、输出倍率)由 `src/env.ts` 的
   **`EngineEnv`** 收成**一个进程级默认**,`setDefaultEngineEnv(env)` 一次设好;`Compositor` 构造/`init`
-  时消费(**显式 `CompositorOptions` 永远覆盖默认**,并发/隔离仍逐个传 renderer)。服务端的 `nodeServerEnv()`
-  在其 `setup()` 里调 `setDefaultEngineEnv` 注册 Node WebGPU renderer——所以用户 bundle 里普通的
-  `new Compositor(...)` 在 Node 也拿到 renderer。设计见 [`environments-and-rpc.md`](environments-and-rpc.md) §A。
+  时消费(**显式 `CompositorOptions` 永远覆盖默认**,并发/隔离仍逐个传 renderer)。服务端的 `serverEnv()`
+  （`@sequio/server`,不依赖 runtime）在其 `setup()` 里调 `setDefaultEngineEnv` 注册 Node WebGPU renderer——
+  所以用户 bundle 里普通的 `new Compositor(...)` 在 Node 也拿到 renderer。设计见
+  [`environments-and-rpc.md`](environments-and-rpc.md) §A。
 
 ### 文字与字体加载（TextClip / FontManager）
 
@@ -513,7 +517,7 @@ resolution 1)。
 `canEncodeVideo` / `Input`）时走 engine 的 `loadMediabunny()`，同时天然复用其双包
 （ESM/CJS）实例收口。
 
-**唯一例外**是 `packages/server/route-b/env.ts`——Route B 的 Node 环境适配层，它要在运行时
+**唯一例外**是 `packages/server/src/env.ts`——`serverEnv` 背后的 Node 环境适配层，它要在运行时
 `import('pixi.js')` 打补丁（`DOMAdapter` / `CanvasSource` / `WebGPURenderer`）并用 CJS
 `require('mediabunny')` 钉住 node-av 编解码注册的那个实例（双包 hazard）。这属于环境 bootstrap，
 必须直接触达底层库；其类型仍从 engine 转出的 `MediabunnyModule` 等来。

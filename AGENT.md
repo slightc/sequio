@@ -36,18 +36,20 @@ These are the invariants the whole design rests on. Any change must preserve the
 ## Monorepo layout
 
 This is a **pnpm workspace** (`pnpm-workspace.yaml`) split into five core
-packages, in a clean dependency DAG — `engine ← runtime ← server ← studio`, and
-`engine ← {server, studio, cli}` — plus the project website, and two non-published
-harness/docs packages (`headless`, `skill`):
+packages, in a clean dependency DAG — `engine ← runtime`, `engine ← server`
+(server is engine-only, no runtime), `engine ← runtime ← headless ← studio`, and
+`engine ← runtime + server ← cli` (cli sets up `serverEnv` then runs the runtime)
+— plus the project website, and two non-published harness/docs packages
+(`headless`, `skill`):
 
 ```
 packages/
   engine/   @sequio/engine    the SDK runtime (the published library)
   runtime/  @sequio/runtime   compile+run TS/JS → a Composer (depends on engine)
-  server/   @sequio/server    server-side rendering: TimelineSpec protocol + Route B pure-Node WebGPU (depends on engine + runtime)
-  headless/ @sequio/headless  Route A server-side rendering: headless-Chrome (Puppeteer) worker → video (depends on engine + runtime + server; repo-internal harness, NOT published)
-  studio/   @sequio/studio    reference multi-track editor (depends on engine + server + runtime)
-  cli/      @sequio/cli       the `sequio` command line: check + render + frame + preview (depends on engine + runtime + server)
+  server/   @sequio/server    the server-side render environment: `serverEnv` (pure-Node PixiJS WebGPU bootstrap) — nothing else, no runtime dep (depends on engine)
+  headless/ @sequio/headless  Route A server-side rendering (headless-Chrome worker → video) + the TimelineSpec protocol & RPC it rides on (depends on engine + runtime; repo-internal harness, NOT published)
+  studio/   @sequio/studio    reference multi-track editor (depends on engine + runtime + headless for the Spec types)
+  cli/      @sequio/cli       the `sequio` command line: check + render + frame + audio + preview; owns the Route B code-bundle render helpers (depends on engine + runtime + server)
   website/  @sequio/website   the project website: home · demo gallery (sequio-rendered covers) + Code Mode · engine API reference · studio showcase (depends on engine + runtime)
   skill/    @sequio/skill     an installable AI Agent Skill (SKILL.md) + llms.txt teaching how to use sequio (docs only; no runtime code, no deps)
 docs/       architecture & design (workspace-level)
@@ -80,40 +82,52 @@ tests/         vitest unit tests (pure-logic modules)
 example/       demos + browser e2e verify pages (verify:* harness)
 ```
 
-### `packages/server` — server-side rendering
+### `packages/server` — the server-side render environment (`serverEnv`)
 
 ```
-src/            TimelineSpec protocol + buildTimeline (the serializable JSON contract) + rpc.ts
-                (transport-agnostic Endpoint/expose/wrap/windowEndpoint) + render-service.ts
-                (RenderService/RenderResult contract); barrel = src/index.ts
-route-b/        Route B: pure Node, PixiJS WebGPU (render.ts, env.ts, server-env.ts, export-node.ts,
-                fonts-node.ts, render-bundle.ts, frame-node.ts, audio-node.ts + verify-*); index.ts =
-                (server-env.ts: nodeServerEnv() packages the Node bootstrap into one injectable RuntimeEnv
-                whose setup() registers the WebGPU renderer + scale at the engine layer via
-                setDefaultEngineEnv — the render/frame/audio entries all inject it)
-                @sequio/server/route-b node-only barrel (renderTimelineToFile / renderBundleToFile —
-                the latter powers `sequio render`; renderBundleFrameToFile → `sequio frame`;
-                exportBundleAudioToFile → `sequio audio`)
-tests/          headless spec→graph unit tests
+src/            The pure-Node (PixiJS WebGPU / Dawn) render environment, and nothing else:
+  env.ts        setupNodeEnvironment (jsdom + WebGPU + @napi-rs/canvas + WebCodecs shims) +
+                createNodeWebGPURenderer + getMediabunny (pins one mediabunny instance)   ✅ implemented
+  server-env.ts serverEnv(): the server render env + a convenient setup(). Does NOT depend on
+                @sequio/runtime — setup() runs the Node bootstrap + registers the WebGPU renderer +
+                scale at the engine layer via setDefaultEngineEnv, and captures the renderer for GPU
+                frame readback. Flow: setup engine → serverEnv().setup() → run runtime → get compositor   ✅
+  fonts-node.ts loadFontsNode + bridgeFontManagerToNode (self-hosted + Google fonts → GlobalFonts) + NodeFontSpec  ✅
+  image-node.ts encodeRGBAToPng (RGBA → PNG via @napi-rs/canvas; the CLI's `sequio frame` calls it, so the
+                @napi-rs/canvas dep stays in server only)  ✅
+  index.ts      public barrel — the whole `@sequio/server` surface is `serverEnv` + its Node primitives
+tests/          parseGoogleFontUrls unit test
 ```
 
-### `packages/headless` — Route A server-side rendering (repo-internal harness)
+The single job of `@sequio/server` is to provide `serverEnv`. It owns **no protocol, no render
+orchestration, and no `@sequio/runtime` dependency**: the serializable `TimelineSpec` + RPC live in
+`@sequio/headless`, and the code-bundle render helpers (`renderBundleToFile` / `…FrameToFile` /
+`exportBundleAudioToFile`) live in
+`@sequio/cli`, which does `serverEnv().setup()` → runs `@sequio/runtime` → gets the `Compositor`.
+
+### `packages/headless` — Route A server-side rendering + the Spec/RPC protocol (repo-internal harness)
 
 ```
+src/                  the serialization layer the SSR routes ride on (browser-safe; engine + runtime only):
+  timeline.ts         TimelineSpec protocol + buildTimeline (the serializable JSON contract)
+  sample-timeline.ts  the built-in self-contained sample spec (no external assets)
+  rpc.ts              transport-agnostic RPC — Endpoint/expose/wrap/windowEndpoint (Puppeteer + iframe/Worker)
+  render-service.ts   RenderService/RenderResult contract (render / renderBundle / sample)
+  index.ts            @sequio/headless barrel (studio's "Server Render" imports the Spec types from here)
 ssr-render.html/.ts   the SSR page: runs inside headless Chrome (WebGL + WebCodecs); `expose`s a typed
-                      RenderService (render/renderBundle/sample) over the @sequio/server RPC — the old
-                      window.__SSR__ global is gone. imports @sequio/server (protocol + RPC) + @sequio/runtime
+                      RenderService over this package's own RPC — imports ./src + @sequio/runtime
 ssr-worker.ts         the Node worker (tsx): spawns Vite + drives Puppeteer (Chrome-for-Testing), `wrap`s the
                       page's RenderService over a Puppeteer-bridged Endpoint, feeds --timeline / --bundle,
                       writes the bytes to --out (`pnpm ssr:render`); onProgress rides the RPC across CDP
 scripts/              verify-page.cjs (the shared browser-e2e runner; `pnpm verify:ssr`)
+tests/                rpc + spec→graph unit tests (moved here with the protocol)
 ```
 
 **Not published** (`private: true`, no `vite build`): Route A is the productized form of the
 `verify:*` harness — full-fidelity SSR that reuses the exact browser render core (contract #3), at the
-cost of a Chrome process per task. It was split out of `packages/server/route-a/` so `server` owns only
-the protocol + the pure-Node Route B. A transport-agnostic RPC layer (for both the Puppeteer bridge and
-iframe) is the next milestone — see [`docs/environments-and-rpc.md`](docs/environments-and-rpc.md) §D.
+cost of a Chrome process per task. It also owns the **serializable protocol** (`TimelineSpec` + RPC),
+since that is the "ship a timeline into a browser" layer; `@sequio/server` is left holding only the
+pure-Node render environment. See [`docs/environments-and-rpc.md`](docs/environments-and-rpc.md) §D.
 
 ### `packages/runtime` — code runtime
 
@@ -177,9 +191,14 @@ src/
   assets.ts     which files are binary assets + their MIME (bundle/serve) ✅ implemented
   assets-node.ts nodeAssetLoader: read local media off disk → Blob        ✅ implemented
   check.ts      `check <file> [--json]` → GPU-free static validation (null renderer; Diagnostic[]) ✅ implemented
-  render.ts     `render <file>` → video, pure Node WebGPU (server Route B) ✅ implemented
+  render.ts     `render <file>` → video, pure Node WebGPU (Route B) ✅ implemented
   frame.ts      `frame <file> [--time t]` → single-frame PNG (Route B)     ✅ implemented
   audio.ts      `audio <file> [--format mp3]` → audio-only file (Route B)  ✅ implemented
+  node-render/  the Route B code-bundle render helpers (Node-only; run under @sequio/server's serverEnv):
+                export-node.ts (renderTimelineToFile/renderFrameRGBA — the GPU-readback frame loop) +
+                render-bundle.ts (renderBundleToFile → `sequio render`) + frame-node.ts
+                (renderBundleFrameToFile → `sequio frame`) + audio-node.ts (exportBundleAudioToFile →
+                `sequio audio`); index.ts = barrel. Imported lazily (pulls Node-native deps)  ✅ implemented
   preview.ts    `preview <file> [--watch]` → Vite dev server             ✅ implemented
   cli.ts        dispatch + process lifecycle;  index.ts = programmatic barrel
 preview/        the preview page (index.html + preview.ts: fetch /__bundle → Runtime → preview();
@@ -209,8 +228,9 @@ the `check → frame → render` verify loop, catching illegal clip times, dead
 keyframes, unregistered fonts, non-overlapping transitions, out-of-range anchors
 and missing local assets before any render; `render` snapshots the composition
 into a {@link RuntimeBundle} and hands it to
-the server's **Route B** `renderBundleToFile` (`@sequio/server/route-b`) — pure
-Node, PixiJS WebGPU, no browser (needs a GPU or Mesa lavapipe); `frame` runs the
+the CLI's own **Route B** `renderBundleToFile` (`src/node-render/`, running under
+`@sequio/server`'s `serverEnv`) — pure Node, PixiJS WebGPU, no browser (needs a
+GPU or Mesa lavapipe); `frame` runs the
 same Route B path but seeks to one time and writes a single PNG
 (`renderBundleFrameToFile`) — a fast visual check without a full render; `audio`
 runs the same Route B path but exports only the `AudioEngine` offline mix to an
@@ -251,10 +271,10 @@ tests assert the frontmatter is well-formed and no link dangles. See its
   that leak into the public surface (`Renderer`, `AutoDetectOptions`,
   `BLEND_MODES`) are re-exported type-only from `index.ts`, and the mediabunny
   module is reached via `loadMediabunny()`. The sole exception is
-  `packages/server/route-b/env.ts` — Route B's Node environment adapter, which
-  must touch both libraries at runtime to bootstrap the environment (patch Pixi's
-  `DOMAdapter`/`CanvasSource`, `require('mediabunny')` for the dual-package
-  hazard).
+  `packages/server/src/env.ts` — the Route B Node environment adapter behind
+  `serverEnv`, which must touch both libraries at runtime to bootstrap the
+  environment (patch Pixi's `DOMAdapter`/`CanvasSource`, `require('mediabunny')`
+  for the dual-package hazard).
 - **Public surface** is whatever `packages/engine/src/index.ts` exports. Internal
   helpers (`Reconciler`, `FrameCache`, `TextureManager`, demuxers, muxers) are
   exported for advanced extension but are not stable API — see the table in
@@ -268,10 +288,13 @@ tests assert the frontmatter is well-formed and no link dangles. See its
   **straight from source** via the tsconfig `paths` + Vite aliases, so the
   `dist`-pointing `exports` never affect in-repo work and no prior build is
   needed. Cross-package deps use the `workspace:^` protocol (rewritten to a
-  concrete range by `pnpm publish`). Route B's Node-native bindings
+  concrete range by `pnpm publish`). The `serverEnv` Node-native bindings
   (`@napi-rs/canvas`, `webgpu`, `jsdom`, …) are `optionalDependencies` of
-  `server` so `npm i @sequio/server` never fails on an unsupported platform.
-  Route A (headless Chrome) is a repo-internal verify harness — not published.
+  `server` alone — including the single-frame PNG encode (`encodeRGBAToPng`), so
+  `cli` needs no native binding of its own and `npm i @sequio/server` /
+  `@sequio/cli` never fails on an unsupported platform. Route A (headless Chrome)
+  + the Spec/RPC protocol live in the repo-internal `headless` harness — not
+  published.
   `engine` is released by `.github/workflows/release.yml`; the other four by
   `.github/workflows/release-packages.yml`.
 
@@ -313,13 +336,14 @@ pnpm verify:editor-audio  # Puppeteer e2e: video imports with sound; export muxe
 pnpm verify:origin        # Puppeteer e2e: origin=[0.5,0.5] renders position [0,0] at the canvas centre
 pnpm verify:ssr           # Puppeteer e2e: server-side render (Route A) — headless Chrome renders a timeline to video
 pnpm ssr:render -- --timeline <spec.json> --out out.mp4       # SSR worker A (headless Chrome): timeline JSON → video file
-pnpm verify:ssr-node      # Pure-Node SSR (Route B): PixiJS WebGPU (Dawn) renders a filtered timeline to MP4, no browser
-pnpm verify:ssr-node-audio# Route B audio: synth tone + shape → MP4, decoded back asserts video+audio tracks
-pnpm verify:ssr-node-font # Route B fonts: load a Google font (Roboto) in Node and assert glyphs rendered
-pnpm verify:ssr-node-media# Route B media: decode a video + a data-URL image in pure Node and composite them
-pnpm ssr:render-node -- --timeline <spec.json> [--scale 2] --out out.mp4  # SSR worker B (Node WebGPU): --scale N = N× resolution; needs a GPU or Mesa lavapipe
-pnpm ssr:render-node -- --bundle <bundle.json> [--scale 2] --out out.mp4  # SSR worker B, code path: re-run a RuntimeBundle in pure Node (same renderBundleToFile `sequio render` uses)
+pnpm sequio render <file> [--out out.mp4] [--scale 2]         # Route B (pure Node WebGPU) — the code-bundle render path lives in the CLI now (see the `sequio` commands above); needs a GPU or Mesa lavapipe
 ```
+
+Pure-Node (Route B) rendering is reached through the `sequio` CLI (`render` /
+`frame` / `audio`) — the old `verify:ssr-node*` / `ssr:render-node` timeline
+workers were dropped when the `TimelineSpec` protocol moved to `@sequio/headless`
+and the code-bundle render helpers moved to `@sequio/cli`. `pnpm verify:cli`
+end-to-end exercises the Route B render / frame / audio paths.
 
 Browser e2e (`verify:*`) needs a WebCodecs-capable browser. Playwright's
 bundled Chromium lacks WebCodecs, so we use Puppeteer's Chrome-for-Testing —
@@ -329,14 +353,15 @@ that package, asserts a page's `window.*` result).
 
 **Server-side rendering** (render a timeline to a video file on a server) has two
 routes: **A) headless Chrome** — the `@sequio/headless` package's `ssr-worker.ts`
-`wrap`s the `RenderService` the `ssr-render.html` page `expose`s over the
-`@sequio/server` RPC (full fidelity, reuses the verify path);
-and **B) pure Node** — `packages/server/route-b/` renders via PixiJS WebGPU (Dawn)
-with **filters** and **media sources** (video/image decode), no browser (needs a
-GPU or Mesa lavapipe). Both share the `packages/server/src/` timeline protocol
-(`@sequio/server`). The SDK
-hooks that enable Route B
-(all no-ops in the browser): `CompositorOptions.createRenderer` (inject a renderer),
+`wrap`s the `RenderService` the `ssr-render.html` page `expose`s over headless's
+own RPC (full fidelity, reuses the verify path);
+and **B) pure Node** — the CLI's `packages/cli/src/node-render/` renders via PixiJS
+WebGPU (Dawn) with **filters** and **media sources** (video/image decode), no
+browser (needs a GPU or Mesa lavapipe), running under `@sequio/server`'s
+`serverEnv`. Route A owns the serializable timeline protocol
+(`packages/headless/src/`, `@sequio/headless`); Route B works from code bundles.
+The SDK hooks that enable Route B (all no-ops in the browser):
+`CompositorOptions.createRenderer` (inject a renderer),
 `loadMediabunny()`/`setMediabunnyModule()` (pin one mediabunny instance — dual-package
 hazard), `setFrameImageExtractor()` (how a decoded frame becomes a texture). Design,
 protocol, the Route B shims and usage are in

@@ -22,8 +22,8 @@
   ],
   "dependencies": {
     "@sequio/engine": "workspace:*",
+    "@sequio/headless": "workspace:*",
     "@sequio/runtime": "workspace:*",
-    "@sequio/server": "workspace:*",
     "mediabunny": "^1.49.0",
     "pixi.js": "^8.6.0"
   }

@@ -21,7 +21,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer, { type Page } from 'puppeteer';
-import { type Endpoint, type RenderResult, type RenderService, wrap } from '@sequio/server';
+import { type Endpoint, type RenderResult, type RenderService, wrap } from './src';
 
 interface Args {
   timeline: string | null;

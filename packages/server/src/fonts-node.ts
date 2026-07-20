@@ -9,7 +9,20 @@
  * stylesheet, pull the font-file URLs out of it, fetch those and register them.
  */
 import { buildGoogleCss2Url, FontManager, type FontSpec as EngineFontSpec, type GoogleFontSpec } from '@sequio/engine';
-import type { FontSpec } from '../src/timeline';
+
+/**
+ * The minimal font descriptor {@link loadFontsNode} registers: a self-hosted URL
+ * or a Google Fonts request. Kept local so the server env owns no serializable
+ * protocol — the `TimelineSpec`'s richer `FontSpec` (now in `@sequio/headless`) is
+ * structurally compatible, so a headless caller can pass its specs straight in.
+ */
+export interface NodeFontSpec {
+  family: string;
+  /** Self-hosted URL. Mutually exclusive with {@link google}. */
+  src?: string;
+  /** Load from Google Fonts instead of a self-hosted URL. */
+  google?: { weights?: number[]; italic?: boolean; cssBase?: string };
+}
 
 /**
  * Extract the font-file URLs from a Google Fonts css2 stylesheet. Pure and
@@ -29,7 +42,7 @@ export function parseGoogleFontUrls(css: string): string[] {
 const CSS2_UA = 'Mozilla/5.0';
 
 /** Register every font a timeline references with `@napi-rs/canvas`'s GlobalFonts. */
-export async function loadFontsNode(specs: FontSpec[] | undefined): Promise<void> {
+export async function loadFontsNode(specs: NodeFontSpec[] | undefined): Promise<void> {
   if (!specs?.length) return;
   const { GlobalFonts } = await import('@napi-rs/canvas');
   const { Buffer } = await import('node:buffer');

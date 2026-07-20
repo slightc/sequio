@@ -20,7 +20,7 @@
  * with VP9/WebM (which node-av reliably has).
  */
 import { type AudioEngine, Compositor, exportFrameTimes, type Renderer } from '@sequio/engine';
-import { getMediabunny } from './env';
+import { getMediabunny } from '@sequio/server';
 
 export interface NodeExportOptions {
   fps: number;

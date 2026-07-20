@@ -9,10 +9,12 @@
  * supplied by hosts:
  *  - `browserEnv` (below) — the default: no bootstrap, no overrides, so preview
  *    and export behave exactly as they always have.
- *  - `@sequio/server/route-b`'s `nodeServerEnv()` — packages the Node WebGPU
- *    bootstrap (globals, font bridge, mediabunny pinning) + the renderer factory
- *    into one injectable object. This is "the server providing a server env".
  *  - a future sandbox env (VM / iframe) — see `docs/environments-and-rpc.md`.
+ *
+ * Server-side rendering does **not** go through a `RuntimeEnv`: `@sequio/server`'s
+ * `serverEnv()` bootstraps the Node host and registers the WebGPU renderer at the
+ * *engine* layer (`setDefaultEngineEnv`), so the host does `serverEnv().setup()`,
+ * then runs the runtime (passing `externals` / `loadAsset` directly), then builds.
  *
  * Install one via `new Runtime({ env })` or `runtime.setEnv(env)`; the
  * {@link Composer} runs `setup()` once, then folds `resolveCompositorOptions()`

@@ -31,7 +31,7 @@ Pick the package that matches the task before writing code:
 | Drive an object graph in an app you control | **engine** directly | `@sequio/engine` |
 | Author a self-contained composition file that previews **and** renders | **runtime** authoring API | `@sequio/engine` + `@sequio/runtime` |
 | Turn a composition file into an `.mp4`, a single-frame PNG, or a live preview from a terminal | **cli** | `sequio check` / `sequio render` / `sequio frame` / `sequio preview` |
-| Render a composition to a file on a server (no browser) | **server** Route B | `@sequio/server/route-b` |
+| Render a composition to a file on a server (no browser) | **cli** Route B (runs under `@sequio/server`'s `serverEnv`) | `sequio render` / `runRender` from `@sequio/cli` |
 
 For most "make me a video from code" tasks, author a **composition file** (runtime
 API) and drive it with the **CLI** — that is the path the examples use.

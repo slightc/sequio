@@ -178,11 +178,13 @@ export const browserEnv: RuntimeEnv = { name: 'browser', target: 'preview' };
 - **renderer 默认落在 engine 层**：renderer / codec 这些引擎自己的东西由 **engine 层的 `EngineEnv` +
   `setDefaultEngineEnv()`** 设进程默认（`Compositor` 消费，显式 `CompositorOptions` 覆盖），而不是 runtime 往
   每个 build 折 `compositorOptions`——因为 DAG 是 `engine ← runtime`，engine 不能引用 runtime 的类型。
-- **具体 env 由宿主提供**——「server 提供一套 server env」：`@sequio/server/route-b` 的
-  **`nodeServerEnv()`**（一个 `RuntimeEnv`）在 `setup()` 里做 Node 引导并
-  **`setDefaultEngineEnv({ createRenderer, resolution })` 把 renderer 注册到 engine 层**，把创建出的 renderer
-  暴露成 `env.renderer` 供 GPU 读帧。`render` / `frame` / `audio` 三处入口因此塌缩成
-  `new Runtime({ ...bundle, env: nodeServerEnv({ scale, externals, loadAsset }) }).run()` → `build()`。
+- **server 只提供一套 server env（且不依赖 runtime）**：`@sequio/server` 的 **`serverEnv()`** 的
+  `setup()` 做 Node 引导并 **`setDefaultEngineEnv({ createRenderer, resolution })` 把 renderer 注册到
+  engine 层**，把创建出的 renderer 暴露成 `env.renderer` 供 GPU 读帧。层次是
+  **setup engine → setup server env → run runtime → get compositor**：CLI 的 `render`/`frame`/`audio`
+  先 `const env = serverEnv({ scale }); await env.setup();`，再
+  `await new Runtime({ ...bundle, externals, loadAsset }).run()` → `build()`；externals/loadAsset 直接给
+  `Runtime`，server 与 runtime 互不引用。
 
 engine 层 `EngineEnv` 与 runtime 层 `RuntimeEnv` 的分层、沙箱执行、headless 宿主、iframe/RPC 都是这套环境
 模型的延伸，见 [`environments-and-rpc.md`](environments-and-rpc.md)。
@@ -202,7 +204,7 @@ engine 层 `EngineEnv` 与 runtime 层 `RuntimeEnv` 的分层、沙箱执行、h
 
 ## 服务端渲染（跑同一份代码）
 
-**Route A（无头 Chrome，`@sequio/headless` 包）** 经 `@sequio/server` 的 RPC `expose` 一个 `RenderService`，
+**Route A（无头 Chrome，`@sequio/headless` 包）** 经该包自己的 RPC `expose` 一个 `RenderService`，
 其 `renderBundle(bundle)` 用 runtime 把 bundle 的文件编译+运行成 `Composer`，在服务端建**同一张图**（契约
 #3）再编码。Node worker `packages/headless/ssr-worker.ts` `wrap` 该 service，支持 `--bundle bundle.json`
 （与 `--timeline spec.json` 互斥）：

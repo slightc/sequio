@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src", "route-b", "tests"],
+  "include": ["src", "tests"],
   "exclude": ["node_modules", ".ssr-out"]
 }

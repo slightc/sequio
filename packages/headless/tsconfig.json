@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["ssr-render.ts", "ssr-worker.ts"],
+  "include": ["ssr-render.ts", "ssr-worker.ts", "src", "tests"],
   "exclude": ["node_modules", ".ssr-out"]
 }

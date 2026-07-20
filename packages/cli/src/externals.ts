@@ -15,7 +15,7 @@
  * The engine stays gsap-free (it only declares the binding's structural types);
  * here the CLI — a batteries-included consumer — provides the actual libraries and
  * threads them through the runtime's `externals` seam, identically in both hosts:
- *  - **render** (Node): passed to `@sequio/server/route-b` `renderBundleToFile`;
+ *  - **render** (Node): passed to Route B's `renderBundleToFile` (`./node-render`);
  *  - **preview** (browser): passed to `new Runtime(...)` on the preview page.
  *
  * Isomorphic: gsap and pixi.js both run in Node and the browser, so the same

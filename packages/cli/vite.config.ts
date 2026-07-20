@@ -50,7 +50,6 @@ export default defineConfig({
         '@sequio/runtime',
         '@sequio/runtime/node-fs',
         '@sequio/server',
-        '@sequio/server/route-b',
         'gsap',
         'vite',
         /^node:/,

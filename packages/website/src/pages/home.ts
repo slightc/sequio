@@ -33,7 +33,7 @@ const CONTRACTS = [
 const PACKAGES = [
   { name: '@sequio/engine', sub: 'packages/engine', desc: 'The SDK: a command-style object-graph runtime — decode, composite, audio, export. The published library.' },
   { name: '@sequio/runtime', sub: 'packages/runtime', desc: 'Compile + run multi-file TS/JS into a Composer that previews, exports, or feeds server rendering.' },
-  { name: '@sequio/server', sub: 'packages/server', desc: 'Server-side rendering — a TimelineSpec protocol plus two routes (headless Chrome / pure-Node WebGPU).' },
+  { name: '@sequio/server', sub: 'packages/server', desc: 'serverEnv — the pure-Node (PixiJS WebGPU) render environment that runs the engine outside a browser.' },
   { name: '@sequio/studio', sub: 'packages/studio', desc: 'A reference multi-track editor: timeline, canvas manipulation, forked export, Code Mode, Server Render.' },
   { name: '@sequio/cli', sub: 'packages/cli', desc: 'The sequio command line: render a composition to video and preview it live in the browser.' },
 ];

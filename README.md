@@ -10,9 +10,9 @@ and `engine ← {server, studio, cli}` — plus the project website:
 |---|---|---|
 | [`packages/engine`](packages/engine) | `@sequio/engine` | The SDK: a command-style object-graph runtime — **decode, composite, audio, export**. The published library. |
 | [`packages/runtime`](packages/runtime) | `@sequio/runtime` | Compile + run multi-file TS/JS (virtual or real filesystem) → a `Composer` that previews, exports, or feeds server rendering. Depends on engine. |
-| [`packages/server`](packages/server) | `@sequio/server` | **Server-side rendering** — a serializable `TimelineSpec` protocol plus two render routes (headless Chrome / pure-Node WebGPU). Depends on engine + runtime. |
-| [`packages/studio`](packages/studio) | `@sequio/studio` | A reference **multi-track editor** app (timeline, canvas manipulation, forked export, Code Mode, Server Render). Depends on engine + server + runtime. |
-| [`packages/cli`](packages/cli) | `@sequio/cli` | The `sequio` command line: `render` a composition to video (pure-Node WebGPU) and `preview` it live in-browser. Depends on engine + runtime + server. |
+| [`packages/server`](packages/server) | `@sequio/server` | **The server-side render environment** — `serverEnv`, a pure-Node (PixiJS WebGPU / Dawn) bootstrap that runs the engine's render core outside a browser. Depends on engine + runtime. |
+| [`packages/studio`](packages/studio) | `@sequio/studio` | A reference **multi-track editor** app (timeline, canvas manipulation, forked export, Code Mode, Server Render). Depends on engine + runtime + headless (for the `TimelineSpec` types). |
+| [`packages/cli`](packages/cli) | `@sequio/cli` | The `sequio` command line: `check` / `render` / `frame` / `audio` a composition (pure-Node WebGPU, Route B) and `preview` it live in-browser. Owns the code-bundle render helpers. Depends on engine + runtime + server. |
 | [`packages/website`](packages/website) | `@sequio/website` | The project **website**: home, a demo gallery whose covers are live sequio renders, an in-browser Code Mode, the engine API reference, and the studio showcase. Depends on engine + runtime. |
 | [`packages/skill`](packages/skill) | `@sequio/skill` | An installable **AI Agent Skill** (`SKILL.md`) + **`llms.txt`** that teach an AI assistant how to use sequio. Docs only — no runtime code, no engine dependency. |
 
@@ -65,13 +65,15 @@ The rest of the stack is published alongside it (each ships built ESM + `.d.ts`)
 | Package | Install | What it adds |
 | --- | --- | --- |
 | [`@sequio/runtime`](https://www.npmjs.com/package/@sequio/runtime) | `npm i @sequio/runtime` | Compile + run multi-file TS/JS into a `Composer`. Also exposes a Node filesystem adapter at `@sequio/runtime/node-fs`. |
-| [`@sequio/server`](https://www.npmjs.com/package/@sequio/server) | `npm i @sequio/server` | The serializable `TimelineSpec` protocol; the pure-Node WebGPU render route at `@sequio/server/route-b` (its native bindings are `optionalDependencies`). |
-| [`@sequio/cli`](https://www.npmjs.com/package/@sequio/cli) | `npm i -g @sequio/cli` | The `sequio` command: `render` / `frame` / `preview`. |
+| [`@sequio/server`](https://www.npmjs.com/package/@sequio/server) | `npm i @sequio/server` | `serverEnv` — the pure-Node (PixiJS WebGPU) render environment that runs the engine outside a browser (its native bindings are `optionalDependencies`). |
+| [`@sequio/cli`](https://www.npmjs.com/package/@sequio/cli) | `npm i -g @sequio/cli` | The `sequio` command: `check` / `render` / `frame` / `audio` / `preview`, plus the Route B code-bundle render helpers. |
 | [`@sequio/skill`](https://www.npmjs.com/package/@sequio/skill) | `npm i @sequio/skill` | An installable AI Agent Skill + `llms.txt` (docs only). |
 
-Route A (headless Chrome) is a repo-internal verify harness and is **not** part
-of the published `@sequio/server` package — only the protocol (`.`) and Route B
-(`./route-b`) ship.
+Server-side rendering has two routes. **Route B** (pure-Node WebGPU) runs the
+composition's code on the server via the CLI (`sequio render`), under
+`@sequio/server`'s `serverEnv`. **Route A** (headless Chrome) plus the
+serializable `TimelineSpec` protocol + RPC live in the repo-internal
+`@sequio/headless` harness — **not** published.
 
 ## Quick start
 

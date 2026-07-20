@@ -75,9 +75,6 @@ importers:
       '@sequio/runtime':
         specifier: workspace:^
         version: link:../runtime
-      '@sequio/server':
-        specifier: workspace:^
-        version: link:../server
 
   packages/runtime:
     dependencies:
@@ -93,9 +90,6 @@ importers:
       '@sequio/engine':
         specifier: workspace:^
         version: link:../engine
-      '@sequio/runtime':
-        specifier: workspace:^
-        version: link:../runtime
       mediabunny:
         specifier: ^1.49.0
         version: 1.50.6
@@ -126,12 +120,12 @@ importers:
       '@sequio/engine':
         specifier: workspace:*
         version: link:../engine
+      '@sequio/headless':
+        specifier: workspace:*
+        version: link:../headless
       '@sequio/runtime':
         specifier: workspace:*
         version: link:../runtime
-      '@sequio/server':
-        specifier: workspace:*
-        version: link:../server
       mediabunny:
         specifier: ^1.49.0
         version: 1.50.6

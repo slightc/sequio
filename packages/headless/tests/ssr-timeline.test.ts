@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { BlurEffect, ColorEffect, ShapeClip, TextClip } from '@sequio/engine';
 import { buildClip, buildEffect, timelineEnd, type TimelineSpec } from '../src/timeline';
 import { sampleTimeline } from '../src/sample-timeline';
-import { parseGoogleFontUrls } from '../route-b/fonts-node';
 
 /**
  * The spec→object-graph mapping the SSR builder does. Text/shape clips need no
@@ -136,22 +135,5 @@ describe('buildTimeline mapping', () => {
     );
     expect(clip.effects).toHaveLength(1);
     expect(clip.effects[0]).toBeInstanceOf(BlurEffect);
-  });
-
-  it('extracts font-file URLs from a Google css2 stylesheet (Node font loader)', () => {
-    const css = `
-      @font-face {
-        font-family: 'Roboto'; font-style: normal; font-weight: 400;
-        src: url(https://fonts.gstatic.com/s/roboto/v51/a.ttf) format('truetype');
-      }
-      @font-face {
-        font-family: 'Roboto'; font-style: normal; font-weight: 700;
-        src: url("https://fonts.gstatic.com/s/roboto/v51/b.ttf") format('truetype');
-      }`;
-    expect(parseGoogleFontUrls(css)).toEqual([
-      'https://fonts.gstatic.com/s/roboto/v51/a.ttf',
-      'https://fonts.gstatic.com/s/roboto/v51/b.ttf',
-    ]);
-    expect(parseGoogleFontUrls('/* no faces */')).toEqual([]);
   });
 });

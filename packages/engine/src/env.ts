@@ -11,10 +11,10 @@
  * single call:
  *
  * ```ts
- * import { setDefaultEngineEnv } from '@sequio/engine';
- * setDefaultEngineEnv(nodeServerEnv());   // from @sequio/server/route-b
+ * import { serverEnv } from '@sequio/server';
+ * await serverEnv().setup();              // registers the Node WebGPU renderer via setDefaultEngineEnv
  * const c = new Compositor({ width, height });
- * await c.init();                         // uses the env's renderer + setup
+ * await c.init();                         // uses the engine env's renderer + setup
  * ```
  *
  * Resolution rule: an **explicit `CompositorOptions` value always wins**; the
