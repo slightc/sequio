@@ -36,4 +36,15 @@ export abstract class VisualSource extends MediaSource {
   abstract prepare(sourceTime: number): Promise<void>;
   /** Synchronously read the cached frame as a texture; null on cache miss. */
   abstract getTextureAt(sourceTime: number): Texture | null;
+  /**
+   * Whether the frame at `sourceTime` is decoded and renderable **right now** —
+   * a pure, side-effect-free check (unlike {@link getTextureAt}, it uploads
+   * nothing). Preview reads it to hold the last presented frame rather than
+   * flashing an undecoded (black) one mid-scrub. Defaults to `true` for sources
+   * that are always ready once loaded (e.g. a still image); a video overrides it
+   * to report per-frame cache residency.
+   */
+  hasFrameAt(_sourceTime: number): boolean {
+    return true;
+  }
 }

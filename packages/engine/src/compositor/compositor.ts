@@ -352,6 +352,41 @@ export class Compositor implements Disposable {
   }
 
   /**
+   * Whether every source-backed clip active at `t` already has its frame
+   * decoded — i.e. rendering now would draw a complete frame, not a partly
+   * undecoded (black-flashing) one. Pure and synchronous (no texture uploads);
+   * {@link renderPreview} uses it to hold the last presented frame during a
+   * scrub miss. Only ACTIVE clips gate the current frame — upcoming/pre-warm
+   * clips aren't visible yet, so they don't count.
+   */
+  private frameReady(t: number): boolean {
+    const rt = this.resolveRenderTime(t);
+    for (const track of this.tracks) {
+      if (track instanceof VisualTrack && track.enabled) {
+        if (!this.clipsReady(track.clips, rt)) return false;
+      }
+    }
+    return true;
+  }
+
+  /** Recursive half of {@link frameReady}: are all active source clips ready at
+   *  `localT`? Mirrors {@link collectPrepareJobs}' active-clip / group traversal. */
+  private clipsReady(clips: readonly VisualClip[], localT: number): boolean {
+    for (const clip of clips) {
+      if (!clip.isActiveAt(localT)) continue; // inactive clips draw nothing → don't gate
+      if (clip instanceof GroupClip) {
+        if (!this.clipsReady(clip.children, clip.localTime(localT))) return false;
+        continue;
+      }
+      const source = (clip as { source?: VisualSource }).source;
+      if (source instanceof VisualSource && !source.hasFrameAt(clip.sourceTimeAt(localT))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Synchronously reconcile the scene graph for time `t` and draw one frame
    * using already-ready frames. `render(t)` is a pure function of (graph, t):
    * calling it twice for the same graph and `t` produces the same display tree
@@ -441,7 +476,17 @@ export class Compositor implements Disposable {
    */
   renderPreview(t: number): void {
     const ready = this.prepare(t); // kick off decodes first
-    this.tryRenderSync(t); // immediate best-effort (a miss shows the last/empty frame); bumps the token
+    // Present the immediate frame ONLY when every source active at `t` is already
+    // decoded. On a miss, hold the last presented frame (just advance the token)
+    // instead of drawing a partly-undecoded — black-flashing — frame: that flash
+    // is the scrub flicker. The post-decode repaint below draws `t` once ready.
+    // When frames are already warm (steady playback, re-seek to a buffered spot)
+    // this renders immediately as before, so nothing is lost there.
+    if (this.frameReady(t)) {
+      this.tryRenderSync(t); // fully ready → draw now; bumps the token
+    } else {
+      this.previewToken++; // hold the current frame on screen, but supersede older pending repaints
+    }
     const token = this.previewToken; // this render's generation
     // Repaint the same frame once its decodes settle — whether they RESOLVED or
     // REJECTED. A single failed/aborted decode (e.g. a source churned by rapid

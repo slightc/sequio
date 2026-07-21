@@ -103,6 +103,31 @@ class FlakyUpdateClip extends VisualClip {
   override unmount(): void {}
 }
 
+/** A gated slow decode that also reports NOT-ready until released — models a
+ *  scrub to an unbuffered position (the frame isn't in cache yet). */
+class UnreadyGatedSource extends VisualSource {
+  private readonly resolves: Array<() => void> = [];
+  private ready = false;
+  async load(): Promise<SourceMetadata> {
+    return { width: 1, height: 1, duration: 5, hasAudio: false };
+  }
+  prepare(): Promise<void> {
+    return new Promise((r) => this.resolves.push(r));
+  }
+  releaseAll(): void {
+    this.ready = true;
+    this.resolves.splice(0).forEach((r) => r());
+  }
+  override hasFrameAt(): boolean {
+    return this.ready;
+  }
+  getTextureAt(): Texture | null {
+    return null;
+  }
+  dispose(): void {}
+  adoptTextureManager(): void {}
+}
+
 const flush = () => new Promise<void>((r) => setTimeout(r, 0));
 
 /** Minimal visual clip that records mount/update/unmount for assertions. */
@@ -709,6 +734,51 @@ describe('Compositor', () => {
     await flush();
     expect(spy).toHaveBeenCalledTimes(2); // the stale 0.5 repaint is skipped — no clobber
     expect(spy).toHaveBeenLastCalledWith(1.0);
+  });
+
+  it('holds the last presented frame instead of flashing black when the new frame is undecoded', async () => {
+    // The scrub-flicker fix: seeking to an unbuffered position must NOT draw the
+    // partly-undecoded (black) frame immediately — it holds the last frame and
+    // only draws once the decode lands. A warm re-seek still renders immediately.
+    const c = makeCompositor();
+    const source = new UnreadyGatedSource();
+    const clip = new SourceClip(source);
+    clip.start = 0;
+    clip.end = 5;
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    const spy = vi.spyOn(c, 'renderSync');
+    c.renderPreview(0.5);
+    expect(spy).not.toHaveBeenCalled(); // not ready → immediate render skipped (no black flash)
+
+    source.releaseAll(); // the frame decodes
+    await flush();
+    expect(spy).toHaveBeenCalledTimes(1); // drawn exactly once, now that it's ready
+    expect(spy).toHaveBeenLastCalledWith(0.5);
+  });
+
+  it('a later seek still supersedes a held (undecoded) earlier frame — latest wins, no stale draw', async () => {
+    const c = makeCompositor();
+    const source = new UnreadyGatedSource();
+    const clip = new SourceClip(source);
+    clip.start = 0;
+    clip.end = 5;
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    const spy = vi.spyOn(c, 'renderSync');
+    c.renderPreview(0.2); // held (unready) — token bumped, nothing drawn
+    c.renderPreview(0.6); // held (unready) — token bumped again
+    expect(spy).not.toHaveBeenCalled();
+
+    source.releaseAll();
+    await flush();
+    // Only the final frame's repaint survives its token check.
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenLastCalledWith(0.6);
   });
 
   it('still repaints after a decode REJECTION — best-effort preview never strands black', async () => {
