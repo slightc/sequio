@@ -1,5 +1,6 @@
 import {
   Compositor,
+  GroupClip,
   ImageClip,
   ImageSource,
   ShapeClip,
@@ -9,7 +10,6 @@ import {
   VisualTrack,
   easeInOutCubic,
   easeOutCubic,
-  type VisualClip,
 } from '@sequio/engine';
 import { defineComposition } from '@sequio/runtime';
 
@@ -25,8 +25,9 @@ import { defineComposition } from '@sequio/runtime';
  * (never-drop) throughput:
  *
  *   - many simultaneously-active clips (compositing + transform eval per frame),
- *   - several concurrent **network video** decodes (the heaviest knob),
- *   - a wall of **network images**, each keyframe-animated,
+ *   - a background grid of distinct **network videos** (2×2 by default), every
+ *     one decoding every frame (the heaviest knob),
+ *   - a floating wall of **network images**, each keyframe-animated,
  *   - hundreds of animated shapes + text clips.
  *
  * Every media asset is referenced by URL — nothing is stored in the repo, the
@@ -47,7 +48,7 @@ const DURATION = 12;
 
 // ── LOAD KNOBS — crank these up to push the engine harder ─────────────────────
 const IMAGE_TILES = 64; // network images in an animated grid (composite + transforms/frame)
-const VIDEO_LAYERS = 4; // concurrent full-frame network video decodes — the HEAVY knob
+const VIDEO_LAYERS = 4; // distinct background videos tiled as a grid (4 → 2×2) — the HEAVY knob
 const TEXT_LABELS = 40; // animated text clips (text layout + draw/frame)
 const SHAPE_CONFETTI = 120; // animated shapes (many cheap fill draws/frame)
 
@@ -79,48 +80,71 @@ function rng(seed: number): () => number {
   };
 }
 
-/** Fill the frame like CSS `object-fit: cover`, centred; returns the base scale. */
-function coverFull(clip: VisualClip, sw: number, sh: number): number {
-  const scale = Math.max(W / sw, H / sh);
+/**
+ * One background cell of the video grid: a distinct network video cover-fitted
+ * to the cell and clipped to it. A `VideoClip` is a Sprite and can't mask
+ * itself, so wrap it in a `GroupClip` (positioned at the cell) whose `maskShape`
+ * is the cell rect; the video child is laid out from the group's local origin.
+ */
+function videoCell(
+  source: VideoSource,
+  meta: { width: number; height: number },
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): GroupClip {
+  const cell = new GroupClip();
+  cell.start = 0;
+  cell.end = DURATION;
+  cell.transform.anchor.setStatic([0, 0]);
+  cell.transform.position.setStatic([x, y]);
+  cell.maskShape = { kind: 'rect', width: w, height: h }; // clip the video to this quadrant
+
+  const clip = new VideoClip(source);
+  clip.start = 0;
+  clip.end = DURATION;
+  // Cover-fit the cell (fill it, crop the overflow via the mask), centred.
+  const cover = Math.max(w / meta.width, h / meta.height);
   clip.transform.anchor.setStatic([0.5, 0.5]);
-  clip.transform.position.setStatic([W / 2, H / 2]);
-  clip.transform.scale.setStatic([scale, scale]);
-  return scale;
+  clip.transform.position.setStatic([w / 2, h / 2]);
+  // Slow Ken Burns push so the transform re-evaluates every frame (still clipped).
+  clip.transform.scale.setKeyframes([
+    { time: 0, value: [cover, cover] },
+    { time: DURATION, value: [cover * 1.12, cover * 1.12], easing: easeInOutCubic },
+  ]);
+  cell.add(clip);
+  return cell;
 }
 
-/** VIDEO_LAYERS full-frame network videos, all decoding every frame, cross-fading. */
-async function buildVideoMontage(compositor: Compositor): Promise<void> {
+/**
+ * The background: VIDEO_LAYERS distinct network videos tiled as a grid (2×2 for
+ * the default 4) — every one decoding every frame (the heavy knob). Each cell is
+ * a different video from the pool, cover-fitted and masked to its quadrant.
+ */
+async function buildVideoGrid(compositor: Compositor): Promise<void> {
   const track = new VisualTrack();
   track.zIndex = 0;
 
-  const clips = await Promise.all(
+  // Square-ish grid: 4 → 2×2. Rows fill top-to-bottom.
+  const cols = Math.ceil(Math.sqrt(VIDEO_LAYERS));
+  const rows = Math.ceil(VIDEO_LAYERS / cols);
+  const cellW = W / cols;
+  const cellH = H / rows;
+
+  const cells = await Promise.all(
     Array.from({ length: VIDEO_LAYERS }, async (_unused, i) => {
+      // One DISTINCT video per cell (pool is cycled only if VIDEO_LAYERS > pool).
       const source = new VideoSource({ src: VIDEO_POOL[i % VIDEO_POOL.length]! });
       const meta = await source.load();
       // Keep memory bounded: many concurrent decoders, small ring each.
       source.configureCache(8, 4);
-
-      const clip = new VideoClip(source);
-      clip.start = 0;
-      clip.end = DURATION;
-      const base = coverFull(clip, meta.width, meta.height);
-      // Slow Ken Burns push so the transform re-evaluates every frame.
-      clip.transform.scale.setKeyframes([
-        { time: 0, value: [base, base] },
-        { time: DURATION, value: [base * 1.15, base * 1.15], easing: easeInOutCubic },
-      ]);
-      // Rotating cross-fade: each layer peaks at a different point in the loop,
-      // but every layer stays active (and therefore decoding) the whole time.
-      const peak = (i / VIDEO_LAYERS) * DURATION;
-      clip.opacity.setKeyframes([
-        { time: 0, value: i === 0 ? 1 : 0.15 },
-        { time: Math.max(0.001, peak), value: 1, easing: easeInOutCubic },
-        { time: DURATION, value: 0.15, easing: easeInOutCubic },
-      ]);
-      return clip;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      return videoCell(source, meta, col * cellW, row * cellH, cellW, cellH);
     }),
   );
-  for (const c of clips) track.add(c);
+  for (const c of cells) track.add(c);
   compositor.addTrack(track);
 }
 
@@ -160,9 +184,10 @@ async function buildImageWall(compositor: Compositor): Promise<void> {
         { time: DURATION, value: [cx, cy], easing: easeInOutCubic },
       ]);
 
-      // Cover the cell (slightly overscanned so drift never exposes a gap), pulsing.
-      const base = Math.max(cellW / meta.width, cellH / meta.height) * 1.08;
-      const pulse = base * (1.08 + r() * 0.15);
+      // Contain the image to a *card* smaller than its cell, so the tiles float
+      // with gaps and the background video grid shows through between them.
+      const base = Math.min(cellW / meta.width, cellH / meta.height) * 0.6;
+      const pulse = base * (1.06 + r() * 0.12);
       clip.transform.scale.setKeyframes([
         { time: 0, value: [base, base] },
         { time: DURATION * 0.5, value: [pulse, pulse], easing: easeInOutCubic },
@@ -172,11 +197,12 @@ async function buildImageWall(compositor: Compositor): Promise<void> {
         { time: 0, value: 0 },
         { time: DURATION, value: (r() - 0.5) * 0.35 },
       ]);
-      // Staggered fade-in so the wall assembles over the first ~1.5s.
+      // Staggered fade-in so the wall assembles over the first ~1.5s. Slightly
+      // translucent so the background video grid stays visible behind the cards.
       const inAt = (i / IMAGE_TILES) * 1.5;
       clip.opacity.setKeyframes([
         { time: 0, value: 0 },
-        { time: inAt + 0.4, value: 0.95, easing: easeOutCubic },
+        { time: inAt + 0.4, value: 0.9, easing: easeOutCubic },
       ]);
       return clip;
     }),
@@ -284,7 +310,7 @@ export default defineComposition(async () => {
 
   // Fetch + decode the network media in parallel so the build doesn't serialize
   // dozens of round-trips; the graph itself is the point of the stress test.
-  await Promise.all([buildVideoMontage(compositor), buildImageWall(compositor)]);
+  await Promise.all([buildVideoGrid(compositor), buildImageWall(compositor)]);
   buildConfetti(compositor);
   buildText(compositor);
 

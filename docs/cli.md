@@ -62,11 +62,12 @@ example/        一段样例作曲（index.ts + scene.ts + font.ts=内嵌 data: 
   media-network/  引用**网络** image + video 的 demo（ImageSource/VideoSource 直接吃 URL，零本地文件）
   media-local/    引用**本地** image + video 的 demo（loadAsset('./video.mp4')；媒体 .gitignore、不进仓库）
   stress-test/    渲染管线的**负载压力测试** demo（1920×1080/30fps/12s）：顶部 LOAD KNOBS 常量可调——
-                  IMAGE_TILES 张关键帧动画的网络图（picsum 按 seed 取图，各不相同）铺成网格、
-                  VIDEO_LAYERS 路并发全屏网络视频解码（最重的一档）、SHAPE_CONFETTI 个飘落 ShapeClip、
-                  TEXT_LABELS 条闪烁 TextClip，外加汇报当前档位的 HUD 标题。全部媒体走 URL、零本地文件，
-                  用固定种子的 PRNG 保证布局在多次 render 间确定（契约 #2）。preview 看实时帧率、
-                  render/frame 压满 never-drop 路径；把 KNOBS 调大即可加压
+                  背景是 VIDEO_LAYERS 路**各不相同**的网络视频拼成的宫格（默认 4 → 2×2，每路各占一个
+                  象限、cover 裁切后用 GroupClip.maskShape 裁到格内，全程解码，最重的一档）、上面浮着
+                  IMAGE_TILES 张关键帧动画的网络图卡（picsum 按 seed 取图、各不相同、留缝透出背景视频）、
+                  SHAPE_CONFETTI 个飘落 ShapeClip、TEXT_LABELS 条闪烁 TextClip，外加汇报当前档位的 HUD 标题。
+                  全部媒体走 URL、零本地文件，用固定种子的 PRNG 保证布局在多次 render 间确定（契约 #2）。
+                  preview 看实时帧率、render/frame 压满 never-drop 路径；把 KNOBS 调大即可加压
   yc-spot/      独立 showcase：仿 Y Combinator 编辑风格的 15s 动态海报（1920×1080/30fps）——
                 index.ts（入口）+ theme.ts（配色/字号/四幕时间轴）+ kit.ts（卡片/徽章/统计条/
                 连线等可复用 builder）+ scenes.ts（四幕分镜）。全部用引擎自身的
