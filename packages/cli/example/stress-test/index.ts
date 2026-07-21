@@ -56,12 +56,14 @@ const SHAPE_CONFETTI = 120; // animated shapes (many cheap fill draws/frame)
 // so a wall of N tiles is N small, cache-friendly downloads.
 const imageUrl = (seed: string, w: number, h: number) =>
   `https://picsum.photos/seed/${seed}/${w}/${h}`;
-// A small pool of public sample videos (CORS + range). Cycled across the layers.
+// A small pool of public sample videos (CORS `*` + HTTP range). Cycled across
+// the layers; hosted on GitHub Pages / jsdelivr, which serve both. (Google's
+// gtv-videos-bucket samples were dropped — they now 403.)
 const VIDEO_POOL = [
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-  'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+  'https://mdn.github.io/shared-assets/videos/flower.mp4',
+  'https://mdn.github.io/shared-assets/videos/friday.mp4',
+  'https://cdn.jsdelivr.net/gh/mediaelement/mediaelement-files/big_buck_bunny.mp4',
+  'https://cdn.jsdelivr.net/gh/mediaelement/mediaelement-files/echo-hereweare.mp4',
 ];
 
 const LABEL_WORDS = ['LOAD', 'STRESS', 'DECODE', 'COMPOSITE', 'FRAME', 'GPU', 'THROUGHPUT', 'RENDER'];
