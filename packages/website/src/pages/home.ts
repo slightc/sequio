@@ -59,9 +59,9 @@ title.end = 4;
 track.add(title);
 compositor.addTrack(track);
 
-const clock = new RealtimeClock();
+const clock = new RealtimeClock(compositor.timebase); // frame-gated preview
 clock.onTick((t) => compositor.renderPreview(t)); // wire clock → preview
-clock.start();`;
+clock.play();`;
 
 export const homePage: Page = ({ view }) => {
   // ── Hero ────────────────────────────────────────────────────────────────

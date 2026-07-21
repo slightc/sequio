@@ -85,7 +85,7 @@ canvas，因此对象图可以在没有 GPU 的环境里构建与单测。GPU re
 const c = new Compositor({ width, height, fps: 30 }); // 或 timebase；两者都不传默认 30fps
 await c.init();
 document.body.append(c.view);
-const clock = new RealtimeClock();
+const clock = new RealtimeClock(c.timebase); // 传 timebase：按帧节流预览 + seek 吸附帧
 clock.duration = timelineDuration;
 clock.onTick((t) => c.renderPreview(t)); // 预览循环
 clock.play();

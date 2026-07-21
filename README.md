@@ -97,9 +97,9 @@ const timebase = new Timebase(30);
 const compositor = new Compositor({ width: 1920, height: 1080, timebase });
 compositor.addTrack(new VisualTrack());
 
-const clock = new RealtimeClock();
+const clock = new RealtimeClock(timebase); // frame-gated preview (ticks at fps, not refresh rate)
 clock.onTick((t) => compositor.renderPreview(t)); // wire clock → preview
-clock.start();
+clock.play();
 ```
 
 Or author a composition as a file and render / preview it with the CLI:

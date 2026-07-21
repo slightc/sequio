@@ -186,7 +186,7 @@ async function main(): Promise<void> {
   await compositor.init();
   document.getElementById('stage')!.append(compositor.view);
 
-  const clock = new RealtimeClock();
+  const clock = new RealtimeClock(compositor.timebase);
   const audio = new AudioEngine(new Timebase(FPS));
 
   const playBtn = document.getElementById('play') as HTMLButtonElement;
@@ -251,11 +251,20 @@ async function main(): Promise<void> {
       playBtn.textContent = '▶ Play';
     }
   });
+  // rAF-throttle scrubbing: coalesce rapid inputs into one seek per frame (the
+  // clock frame-snaps the seek itself).
+  let scrubRaf = 0;
+  let scrubPending = 0;
   scrub.addEventListener('input', () => {
     clock.pause();
     audio.pause();
     playBtn.textContent = '▶ Play';
-    clock.seek(Number(scrub.value));
+    scrubPending = Number(scrub.value);
+    if (scrubRaf !== 0) return;
+    scrubRaf = requestAnimationFrame(() => {
+      scrubRaf = 0;
+      clock.seek(scrubPending);
+    });
   });
   reverseBox.addEventListener('change', () => {
     const wasPlaying = !clock.paused;

@@ -39,8 +39,8 @@ tb.quantize(1.02);  // → snap seconds to the frame grid`,
         name: 'RealtimeClock',
         kind: 'class',
         summary:
-          'A wall-clock-driven Clock for live preview. Its control surface mirrors an HTMLMediaElement: play / pause / seek over [0, duration], auto-pausing at the end.',
-        code: `const clock = new RealtimeClock();
+          'A wall-clock-driven Clock for live preview. Its control surface mirrors an HTMLMediaElement: play / pause / seek over [0, duration], auto-pausing at the end. Pass a Timebase (e.g. compositor.timebase) to tick once per frame boundary — preview repaints at the timeline fps, not the display refresh rate — and to frame-snap seeks.',
+        code: `const clock = new RealtimeClock(compositor.timebase); // frame-gated
 clock.duration = 4;
 clock.onTick((t) => compositor.renderPreview(t));
 clock.play();`,

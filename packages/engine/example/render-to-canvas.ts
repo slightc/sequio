@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   compositor.addTrack(track);
 
   // 3. Drive a clock; every tick renders that frame to the canvas.
-  const clock = new RealtimeClock();
+  const clock = new RealtimeClock(compositor.timebase);
   clock.duration = DURATION;
   clock.onTick((t) => compositor.renderPreview(t)); // best-effort prepare + render
 
