@@ -101,6 +101,24 @@ describe('ForwardDecodeCursor', () => {
     expect(await cursor.at(0.5)).toBeNull(); // nothing at-or-before 0.5
   });
 
+  it('invalidate drops the live iterator, closing its head, and rebuilds on next at()', async () => {
+    // A hidden tab's decoder can be reclaimed by the browser; invalidate() drops
+    // the dead iterator so the next at() re-seeks (rebuilds), yet the cursor stays
+    // reusable (unlike dispose()). A forward step that would otherwise reuse the
+    // iterator now re-seeks instead.
+    const { open, opens, samples } = fakeStream([0, 0.1, 0.2, 0.3, 0.4]);
+    const cursor = new ForwardDecodeCursor(open);
+    await cursor.at(0); // opens at 0, holds 0.1 as look-ahead head
+    expect(opens).toEqual([0]);
+
+    cursor.invalidate();
+    expect(samples[1]!.closed).toBe(true); // carried head released
+
+    // A forward step that WOULD have reused the iterator now rebuilds from a seek.
+    expect(ts(await cursor.at(0.1))).toBeCloseTo(0.1);
+    expect(opens).toEqual([0, 0.1]); // re-seeked after invalidate
+  });
+
   it('dispose closes the carried look-ahead frame', async () => {
     const { open, samples } = fakeStream([0, 0.1, 0.2]);
     const cursor = new ForwardDecodeCursor(open);

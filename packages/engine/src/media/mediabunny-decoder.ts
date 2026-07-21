@@ -234,6 +234,15 @@ export class MediabunnyVideoDecoder implements VideoDecoderBackend {
     };
   }
 
+  /**
+   * Drop the forward cursor's live decoder without re-parsing the demux; the next
+   * {@link decode} rebuilds it from a keyframe seek. Recovers a decoder the browser
+   * reclaimed while the tab was hidden (see {@link VideoDecoderBackend.reset}).
+   */
+  reset(): void {
+    this.cursor?.invalidate();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.cursor?.dispose(); // release the cursor's decoder + carried frame

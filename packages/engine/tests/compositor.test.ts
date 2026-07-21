@@ -15,6 +15,7 @@ import { Timebase } from '../src/time/timebase';
 class SpySource extends VisualSource {
   adopted: TextureManager | null = null;
   prepared: number[] = [];
+  purged = 0;
   async load(): Promise<SourceMetadata> {
     return { width: 1, height: 1, duration: 5, hasAudio: false };
   }
@@ -23,6 +24,9 @@ class SpySource extends VisualSource {
   }
   getTextureAt(): Texture | null {
     return null;
+  }
+  override purge(): void {
+    this.purged++;
   }
   dispose(): void {}
   adoptTextureManager(manager: TextureManager): void {
@@ -1000,5 +1004,35 @@ describe('Compositor', () => {
     // group inactive at timeline 0 → nested source untouched
     await c.prepare(0);
     expect(inner.prepared).toEqual([1]);
+  });
+
+  it('reloadPreview purges every source (incl. nested in groups) then repaints', async () => {
+    // The visibility-restore recovery: a browser that reclaimed a hidden tab's
+    // decode/GPU memory leaves stale-but-present frames, so reloadPreview drops
+    // them across the whole clip tree and repaints the current frame fresh.
+    const c = makeCompositor();
+    const top = new SpySource();
+    const topClip = new SourceClip(top);
+    topClip.start = 0;
+    topClip.end = 5;
+
+    const nested = new SpySource();
+    const nestedClip = new SourceClip(nested);
+    nestedClip.start = 0;
+    nestedClip.end = 5;
+    const group = new GroupClip();
+    group.start = 0;
+    group.end = 5;
+    group.add(nestedClip);
+
+    const track = new VisualTrack();
+    track.add(topClip);
+    track.add(group);
+    c.addTrack(track);
+
+    c.reloadPreview(0.5);
+    expect(top.purged).toBe(1); // top-level source purged
+    expect(nested.purged).toBe(1); // group-nested source purged too
+    expect(top.prepared.at(-1)).toBeCloseTo(0.5); // repainted at the requested time
   });
 });

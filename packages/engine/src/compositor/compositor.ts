@@ -278,6 +278,38 @@ export class Compositor implements Disposable {
     await Promise.all(jobs);
   }
 
+  /**
+   * Drop every decoded frame + derived GPU texture across all visual sources and
+   * repaint `t` fresh. A browser that reclaims memory from a hidden tab can
+   * invalidate cached `VideoFrame`s (and the decoder) while the {@link FrameCache}
+   * still reports them present — so the preview serves them as black and, because
+   * the cache looks full, never re-decodes; only ranges whose textures were
+   * already uploaded (visited before backgrounding) keep showing. Call this when
+   * the tab becomes visible again to force a clean re-decode of the current frame.
+   *
+   * Preview-only recovery: it drops warm caches, so never call it on the export
+   * path (which awaits each `prepare` and must not lose decoded frames).
+   */
+  reloadPreview(t: number): void {
+    for (const track of this.tracks) {
+      if (track instanceof VisualTrack) this.purgeClipSources(track.clips);
+    }
+    this.renderPreview(t);
+  }
+
+  /** Recurse the clip tree (mirroring {@link collectPrepareJobs}) purging every
+   *  source's decode cache so a reclaimed frame re-decodes instead of drawing black. */
+  private purgeClipSources(clips: readonly VisualClip[]): void {
+    for (const clip of clips) {
+      if (clip instanceof GroupClip) {
+        this.purgeClipSources(clip.children);
+        continue;
+      }
+      const source = (clip as { source?: VisualSource }).source;
+      if (source instanceof VisualSource) source.purge();
+    }
+  }
+
   /** The timeline's end in seconds: the largest clip end across visual tracks
    *  (`0` if there are none). This is the exclusive edge of `[0, end)`. */
   private timelineEnd(): number {

@@ -12,6 +12,7 @@ class FakeBackend implements VideoDecoderBackend {
   decodeCalls: number[] = [];
   frames: { sec: number; close: ReturnType<typeof vi.fn> }[] = [];
   disposed = false;
+  resetCalls = 0;
 
   constructor(private readonly meta: SourceMetadata = META) {}
 
@@ -24,6 +25,10 @@ class FakeBackend implements VideoDecoderBackend {
     const frame = { sec, close: vi.fn() };
     this.frames.push(frame);
     return { timestamp: sec, image: {} as CanvasImageSource, close: frame.close };
+  }
+
+  reset(): void {
+    this.resetCalls++;
   }
 
   dispose(): void {
@@ -336,6 +341,32 @@ describe('VideoSource', () => {
     expect(backend.frames[0]!.close).toHaveBeenCalled(); // frame 0 closed
     expect(textures.created[0]!.destroy).toHaveBeenCalled(); // its texture released
     expect(textures.count).toBe(0);
+  });
+
+  it('purge drops decoded frames + textures and re-decodes on the next prepare', async () => {
+    // Recovery path for a browser that reclaimed a hidden tab's decode/GPU memory:
+    // the cached frames are stale but still reported present, so preview draws them
+    // black. purge() clears them (and resets the decoder) so the next prepare
+    // re-decodes fresh instead of stranding on black.
+    const { backend, textures, source } = make({ lookahead: 0 });
+    await source.load();
+    await source.prepare(0.5); // idx 15
+    source.getTextureAt(0.5); // upload its texture
+    expect(source.cachedFrameCount).toBe(1);
+    expect(textures.count).toBe(1);
+
+    source.purge();
+    expect(source.cachedFrameCount).toBe(0); // frames dropped
+    expect(backend.frames[0]!.close).toHaveBeenCalled(); // frame closed
+    expect(textures.created[0]!.destroy).toHaveBeenCalled(); // texture released
+    expect(textures.count).toBe(0);
+    expect(backend.resetCalls).toBe(1); // reclaimed decoder rebuilt
+    expect(source.getTextureAt(0.5)).toBeNull(); // nothing resident until re-decode
+
+    // The next prepare re-decodes the same frame from scratch (not a cache hit).
+    await source.prepare(0.5);
+    expect(backend.decodeCalls.filter((s) => s === 0.5)).toHaveLength(2);
+    expect(source.getTextureAt(0.5)).not.toBeNull();
   });
 
   it('getMediabunnyDemux is null for a custom (non-mediabunny) backend', async () => {

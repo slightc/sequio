@@ -123,6 +123,17 @@ abstract class BaseClock implements Clock {
  * timeline's fps. Seeks are snapped to the frame grid too. With no timebase the
  * clock ticks every RAF, exactly as before (backwards compatible).
  */
+/**
+ * Largest wall-clock step a single `requestAnimationFrame` may advance the
+ * playhead (seconds). A hidden tab pauses rAF; on resume the timestamp gap spans
+ * the ENTIRE hidden period, and advancing `currentTime` by it would teleport the
+ * playhead straight to `duration` (auto-ending playback the moment the tab
+ * returns). No legitimate single frame takes this long, so a larger gap is a
+ * stall: cap the step and resume ~where we left off (preview may drop frames —
+ * contract #1 — so losing the hidden interval is correct, not a jump to the end).
+ */
+const MAX_REALTIME_STEP = 0.25;
+
 export class RealtimeClock extends BaseClock {
   private rafId: number | null = null;
   private lastTs = 0;
@@ -142,7 +153,9 @@ export class RealtimeClock extends BaseClock {
     const loop = (ts: number) => {
       if (this._paused) return;
       if (this.lastTs !== 0) {
-        this._time += (ts - this.lastTs) / 1000;
+        // Cap the step so a backgrounded-tab rAF stall doesn't teleport the
+        // playhead to the end when the tab returns (see MAX_REALTIME_STEP).
+        this._time += Math.min((ts - this.lastTs) / 1000, MAX_REALTIME_STEP);
       }
       this.lastTs = ts;
       if (this._time >= this.duration) {

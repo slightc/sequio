@@ -47,4 +47,14 @@ export abstract class VisualSource extends MediaSource {
   hasFrameAt(_sourceTime: number): boolean {
     return true;
   }
+
+  /**
+   * Drop every decoded frame + derived GPU texture so the next {@link prepare}
+   * re-decodes from scratch. A browser that reclaims memory from a backgrounded
+   * tab can invalidate cached frames (and the decoder) while the source still
+   * reports them present — so the preview would serve them as black and never
+   * refill. A compositor calls this on visibility restore to recover. Sources
+   * with nothing time-varying to drop (e.g. a still image) leave it a no-op.
+   */
+  purge(): void {}
 }

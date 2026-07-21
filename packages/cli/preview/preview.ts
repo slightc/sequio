@@ -67,6 +67,15 @@ scrub.addEventListener('input', () => {
   });
 });
 
+// A browser reclaims memory from a hidden tab (WebCodecs frames, GPU textures,
+// the decoder) after it's been backgrounded a while. On return, part of the
+// timeline strands on black — only ranges visited before backgrounding still show
+// — because the decode cache reports those reclaimed frames as present, so they
+// never re-decode. Repaint from scratch when the tab becomes visible again.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') preview?.refresh();
+});
+
 async function boot(): Promise<void> {
   log('Loading composition…');
   try {

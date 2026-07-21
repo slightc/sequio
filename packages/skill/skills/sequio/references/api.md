@@ -61,7 +61,10 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 
 - `Compositor` (`CompositorOptions`) — root. `new Compositor({ width, height,
   fps?, background?, timebase?, createRenderer?, resolution? })`, then
-  `await init()`, `addTrack(track)`, `renderPreview(t)`.
+  `await init()`, `addTrack(track)`, `renderPreview(t)`. `reloadPreview(t)`
+  purges every source's decode/GPU caches and repaints — call it when a tab
+  returns from being hidden (the browser can reclaim a backgrounded tab's decoded
+  frames, leaving part of the timeline stranded on black).
 - Tracks: `Track`, `VisualTrack` (stacks by `.zIndex`), `AudioTrack`.
   `TextClip`, `ShapeClip`, `GroupClip`. Types: `TextStyleLike`, `TextStrokeLike`,
   `ShapeSpec`, `ShapeKind`, `MaskSpec`.

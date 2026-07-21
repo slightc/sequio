@@ -62,6 +62,14 @@ export interface PreviewHandle {
   play(): void;
   pause(): void;
   seek(t: number): void;
+  /**
+   * Drop all decoded frames + GPU textures and repaint the current frame fresh.
+   * Recovers the preview after a browser reclaims a hidden tab's decode/GPU
+   * memory (part of the timeline strands on black — only ranges visited before
+   * backgrounding keep showing). The CLI preview page wires this to
+   * `visibilitychange`; a host can call it on any resume-from-hidden.
+   */
+  refresh(): void;
   readonly playing: boolean;
   dispose(): void;
 }
@@ -218,6 +226,12 @@ export class Composer {
         // (a redundant repaint churns the preview token and can race the first).
         clock.seek(t);
         if (playing) audioEngine.seek(clock.currentTime);
+      },
+      refresh() {
+        // Purge decode/GPU caches and repaint the current frame — the browser may
+        // have reclaimed them while the tab was hidden. Frame-snap the time first
+        // so the repaint lands on the same frame the clock is showing.
+        compositor.reloadPreview(clock.currentTime);
       },
       dispose() {
         playing = false;

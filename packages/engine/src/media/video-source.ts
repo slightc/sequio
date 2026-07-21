@@ -269,6 +269,23 @@ export class VideoSource extends VisualSource {
     return Math.abs(idx - this.currentIdx) <= this.dropHorizon;
   }
 
+  /**
+   * Drop all decoded frames + their GPU textures and reset the decode pipeline so
+   * the next {@link prepare} re-decodes from scratch. Recovers from a browser that
+   * reclaimed this tab's decode/GPU memory while it was hidden: the cached frames
+   * become invalid but `hasFrameAt` still reported them present, so the preview
+   * would draw them black and never refill. The opened demux (the fetched +
+   * parsed container) is kept — only the live decoder is rebuilt (`backend.reset`).
+   */
+  override purge(): void {
+    this.cache.clear(); // closes frames; onEvict releases their textures
+    this.inFlight.clear();
+    this.reverseInFlight = null;
+    this.decodeLane = Promise.resolve();
+    this.lastSec = null; // next prepare re-primes direction from a clean state
+    this.backend.reset?.(); // rebuild a decoder the browser may have reclaimed
+  }
+
   dispose(): void {
     this.cache.dispose(); // closes frames; onEvict releases their textures
     this.inFlight.clear();

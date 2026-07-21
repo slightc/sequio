@@ -146,6 +146,14 @@ function main(): void {
   const timeLabel = $<HTMLSpanElement>('time');
   const exportFormat = $<HTMLSelectElement>('export-format');
 
+  // A browser reclaims a hidden tab's decode/GPU memory after it's backgrounded a
+  // while; on return part of the timeline strands on black (cached-but-reclaimed
+  // frames still report present, so they never re-decode). Repaint from scratch
+  // when the tab becomes visible again.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') preview?.refresh();
+  });
+
   function log(message: string, kind: 'info' | 'ok' | 'err' = 'info'): void {
     logEl.textContent = message;
     logEl.className = `log${kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : ''}`;

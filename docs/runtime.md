@@ -195,6 +195,10 @@ engine 层 `EngineEnv` 与 runtime 层 `RuntimeEnv` 的分层、沙箱执行、h
 
 1. **客户端预览** —— `composer.preview(container)`：跑 builder 得到活的 `Compositor`，挂一个
    `RealtimeClock` 驱动 `renderPreview`，返回带 play/pause/seek 的 `PreviewHandle`。
+   `PreviewHandle.refresh()` 会清空所有源的解码/纹理缓存并按当前帧重绘——标签页在后台被浏览器
+   回收内存后（已解码的 `VideoFrame`/纹理/解码器被回收，缓存却仍报告"已就绪"，于是那段
+   timerange 会一直黑场，只有回后台前访问过的区间还有画面），切回前台时调用它即可恢复；
+   CLI/Studio 的预览页已把它接到 `visibilitychange`。
 2. **客户端导出** —— `composer.export(options)`：**再跑一次 builder**得到一张独立的图，跑引擎
    `Exporter` 导出视频 `Blob`（所以导出绝不打扰预览；与预览同一渲染核心，契约 #3）。
 3. **服务端渲染** —— `composer.toBundle()`：返回**源码文件本身**（`{ files, entry }`）。服务端
