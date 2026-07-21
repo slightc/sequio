@@ -398,6 +398,22 @@ export class Compositor implements Disposable {
     }
   }
 
+  /** Recurse the clip tree disposing every source — closes its cached `VideoFrame`s
+   *  and the decoder's held `VideoSample`s (contract #4). Without this, disposing a
+   *  compositor (e.g. rebuilding a live preview) leaks them: they only get closed by
+   *  GC, which logs "VideoFrame/VideoSample garbage collected without being closed"
+   *  and, across repeated rebuilds, can stall the decoder. */
+  private disposeClipSources(clips: readonly VisualClip[]): void {
+    for (const clip of clips) {
+      if (clip instanceof GroupClip) {
+        this.disposeClipSources(clip.children);
+        continue;
+      }
+      const source = (clip as { source?: VisualSource }).source;
+      if (source instanceof VisualSource) source.dispose();
+    }
+  }
+
   /** The timeline's end in seconds: the largest clip end across visual tracks
    *  (`0` if there are none). This is the exclusive edge of `[0, end)`. */
   private timelineEnd(): number {
@@ -664,6 +680,12 @@ export class Compositor implements Disposable {
     for (const effect of this.attachedEffects) effect.detach(this.stage);
     this.attachedEffects.clear();
     this.reconciler.clear(this.stage);
+    // Dispose every clip's decoder BEFORE dropping the tracks, so cached
+    // VideoFrames + the decoder's VideoSamples are closed explicitly (not left to
+    // GC — which warns and, across preview rebuilds, can stall decode).
+    for (const track of this.tracks) {
+      if (track instanceof VisualTrack) this.disposeClipSources(track.clips);
+    }
     this.tracks.length = 0;
     this.audioEngine.dispose();
     if (this.ownsTextures) this.textures.dispose(); // keep a shared/injected pool alive

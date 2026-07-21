@@ -498,7 +498,10 @@ resolution 1)。
      `composer.preview()`（全新 compositor + renderer + canvas），再 `seek` 回原时间、恢复播放态——等价
      "刷新页面"但不发网络请求。丢失通常在标签页仍隐藏时到达，故重建**推迟到 `visibilitychange → visible`**
      再做（给隐藏标签页新建的 GPU 设备可能又立刻丢失）；并对自动重建设了上限（连续 3 次仍失败就提示手动
-     刷新，每次重新进入后台会重置计数），避免坏 GPU 把预览拖进重建热循环。
+     刷新，每次重新进入后台会重置计数），避免坏 GPU 把预览拖进重建热循环。重建会 `dispose()` 旧
+     compositor，而 `Compositor.dispose()` 会**递归 clip 树 dispose 每个 source**（关闭其缓存的
+     `VideoFrame` 与解码器持有的 `VideoSample`）——否则反复重建会泄漏这些资源，只能等 GC 关闭并打印
+     "VideoFrame/VideoSample garbage collected without being closed" 告警，累积后还会拖慢解码（契约 #4）。
   2. **解码帧/纹理被回收**（次因）——已缓存的 `VideoFrame`、GPU 纹理乃至 WebCodecs 解码器可能被作废，
      但 `FrameCache.has()` 仍报告这些帧「在缓存里」，预览会把作废帧当成已就绪画上去且永不重解。
      `VideoSource.purge()` 清空 `FrameCache`（`clear()`：关帧 + 经 `onEvict` 释放纹理）、重置解码车道并

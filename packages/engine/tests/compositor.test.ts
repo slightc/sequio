@@ -28,7 +28,10 @@ class SpySource extends VisualSource {
   override purge(): void {
     this.purged++;
   }
-  dispose(): void {}
+  disposed = 0;
+  dispose(): void {
+    this.disposed++;
+  }
   adoptTextureManager(manager: TextureManager): void {
     this.adopted = manager;
   }
@@ -1147,5 +1150,33 @@ describe('Compositor', () => {
     expect(top.purged).toBe(1); // top-level source purged
     expect(nested.purged).toBe(1); // group-nested source purged too
     expect(top.prepared.at(-1)).toBeCloseTo(0.5); // repainted at the requested time
+  });
+
+  it('dispose disposes every clip source (incl. group-nested) — no leaked frames', async () => {
+    // Rebuilding a live preview disposes the old compositor; if it doesn't dispose
+    // the clips' sources, their VideoFrames/VideoSamples leak (GC-only close).
+    const c = makeCompositor();
+    const top = new SpySource();
+    const topClip = new SourceClip(top);
+    topClip.start = 0;
+    topClip.end = 5;
+
+    const nested = new SpySource();
+    const nestedClip = new SourceClip(nested);
+    nestedClip.start = 0;
+    nestedClip.end = 5;
+    const group = new GroupClip();
+    group.start = 0;
+    group.end = 5;
+    group.add(nestedClip);
+
+    const track = new VisualTrack();
+    track.add(topClip);
+    track.add(group);
+    c.addTrack(track);
+
+    c.dispose();
+    expect(top.disposed).toBe(1);
+    expect(nested.disposed).toBe(1); // reached through the group
   });
 });
