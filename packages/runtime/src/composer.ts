@@ -179,7 +179,9 @@ export class Composer {
     const view = compositor.view;
     if (container) container.append(view);
 
-    const clock = new RealtimeClock();
+    // Frame-aware: tick once per frame boundary (repaint at the timeline's fps,
+    // not the display refresh rate) and snap seeks to the frame grid.
+    const clock = new RealtimeClock(compositor.timebase);
     clock.duration = duration;
     let playing = false;
 
@@ -211,8 +213,10 @@ export class Composer {
         audioEngine.pause();
       },
       seek(t: number) {
+        // `clock.seek` emits a tick, and the `onTick` subscription above already
+        // drives `compositor.renderPreview` — so don't render a second time here
+        // (a redundant repaint churns the preview token and can race the first).
         clock.seek(t);
-        compositor.renderPreview(clock.currentTime);
         if (playing) audioEngine.seek(clock.currentTime);
       },
       dispose() {

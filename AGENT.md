@@ -217,7 +217,11 @@ example/        a sample composition (index.ts + scene.ts + font.ts: embedded da
                 film/polaroid framing, torn-paper sunburst + whip-spin + light-leak cuts, over
                 real studio photography referenced by URL + procedural textures) showcases;
                 media-network/ (image+video from URLs) + media-local/ (loadAsset('./video.mp4'),
-                git-ignored media) demos — neither commits any media asset
+                git-ignored media) demos — neither commits any media asset;
+                stress-test/ (load/stress test: a background grid of distinct network videos
+                (2×2, masked per quadrant) under a floating wall of keyframe-animated network
+                images + hundreds of shapes/text, all URL-referenced with tunable LOAD KNOBS —
+                no media in the repo)
 tests/          args + bundle + check + example-demos (link every demo) unit tests
 ```
 

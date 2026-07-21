@@ -45,6 +45,11 @@ export class ImageSource extends VisualSource {
     return this.texture;
   }
 
+  /** Ready as soon as the single texture has decoded (time-independent). */
+  override hasFrameAt(_sourceTime: number): boolean {
+    return this.texture !== null;
+  }
+
   dispose(): void {
     this.texture?.destroy(true);
     this.texture = null;

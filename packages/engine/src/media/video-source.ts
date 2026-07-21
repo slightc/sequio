@@ -218,6 +218,12 @@ export class VideoSource extends VisualSource {
     return this.textures.acquireOrUpload(this.textureKey(idx), frame.image);
   }
 
+  /** Whether this frame is resident in the decode cache (no upload, no side
+   *  effects) — lets preview hold the last frame instead of flashing black. */
+  override hasFrameAt(sourceTime: number): boolean {
+    return this.metadata !== null && this.cache.has(this.frameIndexAt(sourceTime));
+  }
+
   /** Number of decoded frames currently resident (test/diagnostic hook). */
   get cachedFrameCount(): number {
     return this.cache.size;

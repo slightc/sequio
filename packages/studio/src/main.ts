@@ -105,7 +105,10 @@ async function main(): Promise<void> {
   await compositor.init();
   document.getElementById('stage')!.append(compositor.view);
 
-  const clock = new RealtimeClock();
+  // Frame-aware clock: it ticks once per frame boundary (not once per display
+  // refresh) so playback repaints at FPS, not 60–144Hz, and snaps seeks to the
+  // frame grid.
+  const clock = new RealtimeClock(timebase);
   // One AudioEngine drives preview playback AND the export offline mix.
   const audioEngine = new AudioEngine(timebase);
 
@@ -865,15 +868,27 @@ async function main(): Promise<void> {
     }
   });
 
+  // Scrubbing fires `input` on every pixel of pointer travel — far faster than
+  // we can decode + repaint. Coalesce those into at most one seek per animation
+  // frame (rAF throttle) and snap to the frame grid, so a drag triggers one
+  // render per frame boundary crossed instead of one per input event. The clock
+  // quantizes the seek itself, but pre-quantizing here lets us drop inputs that
+  // don't move the playhead to a new frame before doing any work.
+  let scrubRaf = 0;
+  let scrubPending = 0;
+  function flushScrub(): void {
+    scrubRaf = 0;
+    if (scrubPending === clock.currentTime) return; // same frame → nothing to do
+    clock.seek(scrubPending); // emits → render + scrub.value + time label + playhead
+    // Re-sync the inspector's X/Y readout to the (possibly keyframed) frame.
+    rebuildInspector();
+  }
   scrub.addEventListener('input', () => {
     clock.pause();
     audioEngine.pause();
     playBtn.textContent = '▶ Play';
-    clock.seek(Number(scrub.value));
-    updateTimeLabel();
-    updatePlayhead();
-    // Re-sync the inspector's X/Y readout to the (possibly keyframed) frame.
-    rebuildInspector();
+    scrubPending = quantize(Number(scrub.value));
+    if (scrubRaf === 0) scrubRaf = requestAnimationFrame(flushScrub);
   });
 
   // ── Toolbar wiring ─────────────────────────────────────────────────────

@@ -49,12 +49,22 @@ playBtn.addEventListener('click', () => {
   updateTransport(preview.clock.currentTime);
 });
 
+// Scrubbing fires `input` far faster than we can decode + repaint, so coalesce
+// rapid inputs into at most one seek per animation frame (the clock frame-snaps
+// the seek itself). A drag then triggers one render per frame boundary crossed.
+let scrubRaf = 0;
+let scrubPending = 0;
 scrub.addEventListener('input', () => {
   if (!preview) return;
   preview.pause();
-  const t = parseFloat(scrub.value);
-  preview.seek(t);
-  updateTransport(t);
+  scrubPending = parseFloat(scrub.value);
+  if (scrubRaf !== 0) return;
+  scrubRaf = requestAnimationFrame(() => {
+    scrubRaf = 0;
+    if (!preview) return;
+    preview.seek(scrubPending);
+    updateTransport(preview.clock.currentTime);
+  });
 });
 
 async function boot(): Promise<void> {

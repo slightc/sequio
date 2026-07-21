@@ -178,7 +178,7 @@ async function setupEffects(): Promise<void> {
     blur: document.getElementById('fx-blur-v')!,
   };
 
-  const clock = new RealtimeClock();
+  const clock = new RealtimeClock(compositor.timebase);
   clock.duration = DURATION;
 
   /** Manual mode: sliders → static values, repaint one frame. */
@@ -329,15 +329,25 @@ async function setupCrossfade(): Promise<void> {
     compositor.renderPreview(t);
   }
 
-  const clock = new RealtimeClock();
+  const clock = new RealtimeClock(compositor.timebase);
   clock.duration = XF_DUR;
   clock.onTick((t) => paint(t));
   clock.onEnded(() => clock.play());
 
+  // rAF-throttle scrubbing: coalesce rapid inputs into one seek per frame and
+  // route through the clock so the playhead stays in sync and the seek is
+  // frame-snapped (clock.onTick → paint).
+  let scrubRaf = 0;
+  let scrubPending = 0;
   scrub.addEventListener('input', () => {
     clock.pause();
     playBtn.textContent = '▶ Play';
-    paint(Number(scrub.value));
+    scrubPending = Number(scrub.value);
+    if (scrubRaf !== 0) return;
+    scrubRaf = requestAnimationFrame(() => {
+      scrubRaf = 0;
+      clock.seek(scrubPending);
+    });
   });
 
   playBtn.addEventListener('click', () => {
@@ -474,7 +484,7 @@ async function setupWarp(): Promise<void> {
   });
   sel.addEventListener('change', () => applyAmount(Number(amount.value)));
 
-  const clock = new RealtimeClock();
+  const clock = new RealtimeClock(compositor.timebase);
   clock.duration = DURATION;
   clock.onTick((t) => {
     const phase = Math.sin((t / clock.duration) * Math.PI * 2); // −1 … 1

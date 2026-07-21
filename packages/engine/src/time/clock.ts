@@ -113,13 +113,32 @@ abstract class BaseClock implements Clock {
 /**
  * Wall-clock driven via requestAnimationFrame. Used for preview: it may drop
  * frames to stay responsive (best-effort prepare + immediate renderSync).
+ *
+ * The display refreshes faster than the timeline's fps (60–144Hz vs. e.g.
+ * 30fps), so ticking once per `requestAnimationFrame` would repaint the *same*
+ * frame several times a second for nothing. Pass a {@link Timebase} and the
+ * clock ticks **once per frame boundary** instead — `currentTime` still tracks
+ * the wall clock continuously (so playback never drifts), but `onTick` fires
+ * only when time crosses into a new frame, cutting `renderPreview` calls to the
+ * timeline's fps. Seeks are snapped to the frame grid too. With no timebase the
+ * clock ticks every RAF, exactly as before (backwards compatible).
  */
 export class RealtimeClock extends BaseClock {
   private rafId: number | null = null;
   private lastTs = 0;
+  /** Last frame index handed to `emit()`; -1 forces the next tick to fire. */
+  private lastEmittedFrame = -1;
+
+  constructor(private readonly timebase?: Timebase) {
+    super();
+  }
 
   protected override onPlay(): void {
     this.lastTs = 0;
+    // Force the first tick of this playback run so the starting frame repaints
+    // promptly (e.g. after a replay-from-end rewind), even if a prior seek
+    // already recorded this frame as emitted.
+    this.lastEmittedFrame = -1;
     const loop = (ts: number) => {
       if (this._paused) return;
       if (this.lastTs !== 0) {
@@ -132,10 +151,39 @@ export class RealtimeClock extends BaseClock {
         this.finish();
         return;
       }
-      this.emit();
+      this.emitOnFrameChange();
       this.rafId = requestAnimationFrame(loop);
     };
     this.rafId = requestAnimationFrame(loop);
+  }
+
+  /**
+   * Emit only when the wall clock has advanced into a new frame, so preview
+   * repaints at the timebase fps rather than the (higher) display refresh rate.
+   * Without a timebase, every RAF ticks (original best-effort behaviour).
+   */
+  private emitOnFrameChange(): void {
+    if (!this.timebase) {
+      this.emit();
+      return;
+    }
+    const frame = this.timebase.toFrame(this._time);
+    if (frame === this.lastEmittedFrame) return;
+    this.lastEmittedFrame = frame;
+    this.emit();
+  }
+
+  /** Snap seeks to the frame grid (when a timebase is set) so a scrub never
+   *  lands on — or decodes — a sub-frame time. */
+  protected override seekInternal(t: number): void {
+    if (!this.timebase) {
+      this._time = this.clampToDuration(t);
+      return;
+    }
+    // Clamp into range, snap to the nearest frame, then re-clamp so a timeline
+    // whose duration isn't frame-aligned can't be nudged past its end.
+    this._time = this.clampToDuration(this.timebase.quantize(this.clampToDuration(t)));
+    this.lastEmittedFrame = this.timebase.toFrame(this._time);
   }
 
   protected override onPause(): void {

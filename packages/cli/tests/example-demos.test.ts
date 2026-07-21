@@ -20,6 +20,7 @@ const DEMOS = [
   'example/summer-lookbook/index.ts',
   'example/media-network/index.ts',
   'example/media-local/index.ts',
+  'example/stress-test/index.ts',
 ];
 
 describe('example demos link', () => {

@@ -65,6 +65,14 @@
 `RealtimeClock`（预览，rAF 驱动）与 `FixedStepClock`（导出，`tick()` 逐帧确定性推进）
 共享同一控制面，切换预览/导出只是换时钟，渲染核心不变（契约 #3）。
 
+**按帧节流（预览性能）**：显示器刷新（60–144Hz）远快于时间轴 fps（如 30fps），若每次
+rAF 都 `emit()` 会把**同一帧**重复渲染好几次。给 `new RealtimeClock(timebase)` 传入
+`Timebase` 后，`currentTime` 仍按墙钟连续推进（播放不漂移），但 `onTick` **仅在跨过帧边界
+时触发一次**，把 `renderPreview` 调用量压到时间轴 fps；`seek(t)` 也会**吸附到帧网格**，绝不
+落在（或去解码）子帧时间。不传 `timebase` 则每次 rAF 都 tick，行为与旧版一致（向后兼容）。
+上层拖动 scrub 时应再叠一层 rAF 节流，把连续的 `input` 事件合并为每帧至多一次 seek（见
+`studio` 的 `main.ts`）。
+
 ### Compositor 生命周期（同步构造 / 异步建 renderer）
 
 `new Compositor(options)` 是**同步**的：只建对象图、reconciler 和一块（可能离屏的）
@@ -77,7 +85,7 @@ canvas，因此对象图可以在没有 GPU 的环境里构建与单测。GPU re
 const c = new Compositor({ width, height, fps: 30 }); // 或 timebase；两者都不传默认 30fps
 await c.init();
 document.body.append(c.view);
-const clock = new RealtimeClock();
+const clock = new RealtimeClock(c.timebase); // 传 timebase：按帧节流预览 + seek 吸附帧
 clock.duration = timelineDuration;
 clock.onTick((t) => c.renderPreview(t)); // 预览循环
 clock.play();
@@ -491,6 +499,14 @@ resolution 1)。
    `renderPreview(t)` 立即出一帧后,还会在**该帧解码完成时补渲一次**——否则(暂停时)seek
    到还没解码的位置会一直黑屏。补渲带一个 token:任何后续渲染(再次 seek、播放推进、或导出的
    `renderSync`/`renderToTexture`)都会让待补渲失效,所以连续 seek 无竞态、导出也不受影响。
+   立即出帧还带一个**就绪门**:只有当 `t` 时刻所有活跃源都已解码(`VisualSource.hasFrameAt(t)`——
+   纯查询、不上传纹理)才立即渲染;否则**保持上一帧、只推进 token**,等补渲画出解码好的帧——
+   避免 seek 过程中把没解码好的帧当黑场画出去(画面闪烁)。帧已预热(稳定播放、seek 回已缓存
+   位置)时就绪门恒真,立即渲染行为不变。
+   预览是尽力而为的,补渲**无论 `prepare` 解决还是拒绝都会触发**(某一路解码失败/被来回 seek
+   打断,不该把整帧卡成黑屏),且预览路径的 `renderSync` 抛错会被吞掉(视作丢一帧,来回快速
+   seek 时某帧纹理被回收关闭而抛错,不会逃逸冻结 RAF/seek 循环)——导出直接走
+   `renderSync`/`renderToTexture`,错误照常抛出(契约 #2)。
 2. **`render(t)` 对当前对象图纯函数**。不依赖上一帧的隐式状态、不依赖真实时间，
    只看对象图 + t。否则导出不可重放、没法做帧级回归测试。
 3. **预览与导出共用同一渲染核心**。分辨率、色彩管线（sRGB↔linear、预乘 alpha）、

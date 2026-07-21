@@ -115,7 +115,7 @@ async function main(): Promise<void> {
   await compositor.init();
   document.getElementById('stage')!.append(compositor.view);
 
-  const clock = new RealtimeClock();
+  const clock = new RealtimeClock(compositor.timebase);
   clock.duration = DURATION;
   // At t=DURATION every clip has ended ([start, end)) → the Compositor holds the
   // last frame by default (holdLastFrameAtEnd), so the playhead can run to the
@@ -217,10 +217,19 @@ async function main(): Promise<void> {
       playBtn.textContent = '▶ Play';
     }
   });
+  // rAF-throttle scrubbing: coalesce rapid inputs into one seek per frame (the
+  // clock frame-snaps the seek itself).
+  let scrubRaf = 0;
+  let scrubPending = 0;
   scrub.addEventListener('input', () => {
     clock.pause();
     playBtn.textContent = '▶ Play';
-    clock.seek(Number(scrub.value));
+    scrubPending = Number(scrub.value);
+    if (scrubRaf !== 0) return;
+    scrubRaf = requestAnimationFrame(() => {
+      scrubRaf = 0;
+      clock.seek(scrubPending);
+    });
   });
 
   // ── Per-track controls ─────────────────────────────────────────────────────

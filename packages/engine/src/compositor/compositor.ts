@@ -352,6 +352,41 @@ export class Compositor implements Disposable {
   }
 
   /**
+   * Whether every source-backed clip active at `t` already has its frame
+   * decoded — i.e. rendering now would draw a complete frame, not a partly
+   * undecoded (black-flashing) one. Pure and synchronous (no texture uploads);
+   * {@link renderPreview} uses it to hold the last presented frame during a
+   * scrub miss. Only ACTIVE clips gate the current frame — upcoming/pre-warm
+   * clips aren't visible yet, so they don't count.
+   */
+  private frameReady(t: number): boolean {
+    const rt = this.resolveRenderTime(t);
+    for (const track of this.tracks) {
+      if (track instanceof VisualTrack && track.enabled) {
+        if (!this.clipsReady(track.clips, rt)) return false;
+      }
+    }
+    return true;
+  }
+
+  /** Recursive half of {@link frameReady}: are all active source clips ready at
+   *  `localT`? Mirrors {@link collectPrepareJobs}' active-clip / group traversal. */
+  private clipsReady(clips: readonly VisualClip[], localT: number): boolean {
+    for (const clip of clips) {
+      if (!clip.isActiveAt(localT)) continue; // inactive clips draw nothing → don't gate
+      if (clip instanceof GroupClip) {
+        if (!this.clipsReady(clip.children, clip.localTime(localT))) return false;
+        continue;
+      }
+      const source = (clip as { source?: VisualSource }).source;
+      if (source instanceof VisualSource && !source.hasFrameAt(clip.sourceTimeAt(localT))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Synchronously reconcile the scene graph for time `t` and draw one frame
    * using already-ready frames. `render(t)` is a pure function of (graph, t):
    * calling it twice for the same graph and `t` produces the same display tree
@@ -441,14 +476,46 @@ export class Compositor implements Disposable {
    */
   renderPreview(t: number): void {
     const ready = this.prepare(t); // kick off decodes first
-    this.renderSync(t); // immediate best-effort (a miss shows the last/empty frame); bumps the token
+    // Present the immediate frame ONLY when every source active at `t` is already
+    // decoded. On a miss, hold the last presented frame (just advance the token)
+    // instead of drawing a partly-undecoded — black-flashing — frame: that flash
+    // is the scrub flicker. The post-decode repaint below draws `t` once ready.
+    // When frames are already warm (steady playback, re-seek to a buffered spot)
+    // this renders immediately as before, so nothing is lost there.
+    if (this.frameReady(t)) {
+      this.tryRenderSync(t); // fully ready → draw now; bumps the token
+    } else {
+      this.previewToken++; // hold the current frame on screen, but supersede older pending repaints
+    }
     const token = this.previewToken; // this render's generation
-    void ready.then(() => {
-      // Repaint the same frame now that it's decoded — unless a newer render
-      // (another seek, a playback tick, or an export) superseded us, or we were
-      // disposed. So continuous seeking can't race, and export is untouched.
-      if (token === this.previewToken && !this.destroyed) this.renderSync(t);
-    });
+    // Repaint the same frame once its decodes settle — whether they RESOLVED or
+    // REJECTED. A single failed/aborted decode (e.g. a source churned by rapid
+    // back-and-forth seeking) must not strand the preview black: the repaint
+    // still runs and draws whatever IS ready. Skipped only if a newer render
+    // (another seek, a playback tick, or an export) superseded us, or we were
+    // disposed — so continuous seeking can't race and export is untouched.
+    const repaint = (): void => {
+      if (token === this.previewToken && !this.destroyed) this.tryRenderSync(t);
+    };
+    void ready.then(repaint, repaint);
+  }
+
+  /**
+   * `renderSync` for the preview path, where a frame may be dropped (contract
+   * #1). A transient throw — a `VideoFrame`/texture evicted and closed mid-churn
+   * during rapid seeking, say — must not escape and freeze the RAF/seek loop on a
+   * black frame; it's just a dropped frame, and `renderPreview`'s post-decode
+   * repaint will re-render once things settle. Export renders via `renderSync` /
+   * `renderToTexture` DIRECTLY, so its errors still surface (contract #2).
+   */
+  private tryRenderSync(t: number): void {
+    try {
+      this.renderSync(t);
+    } catch (err) {
+      // `renderSync` bumps `previewToken` on its first line, so the generation is
+      // still advanced even on a throw — the repaint's token check stays correct.
+      console.warn('[sequio] preview frame dropped (render error, will retry on settle):', err);
+    }
   }
 
   resize(w: number, h: number): void {

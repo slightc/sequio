@@ -102,8 +102,10 @@ async function main() {
 
   compositor.addTrack(track);
 
-  // 3. Drive a clock; every tick renders that frame to the canvas.
-  const clock = new RealtimeClock();
+  // 3. Drive a clock; every tick renders that frame to the canvas. Passing the
+  //    compositor's timebase makes it tick once per frame (not per display
+  //    refresh) and frame-snap seeks.
+  const clock = new RealtimeClock(compositor.timebase);
   clock.duration = DURATION;
   clock.onTick((t) => compositor.renderPreview(t)); // best-effort prepare + render
   clock.seek(0);   // paint the first frame immediately

@@ -125,7 +125,7 @@ async function run(): Promise<void> {
   };
 
   // ── Live, looping playback so the page actually animates ───────────────────
-  const clock = new RealtimeClock();
+  const clock = new RealtimeClock(compositor.timebase);
   clock.duration = DURATION;
   clock.onTick((t) => compositor.renderPreview(t));
   clock.onEnded(() => {
