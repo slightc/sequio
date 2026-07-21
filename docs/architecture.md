@@ -65,6 +65,14 @@
 `RealtimeClock`（预览，rAF 驱动）与 `FixedStepClock`（导出，`tick()` 逐帧确定性推进）
 共享同一控制面，切换预览/导出只是换时钟，渲染核心不变（契约 #3）。
 
+**按帧节流（预览性能）**：显示器刷新（60–144Hz）远快于时间轴 fps（如 30fps），若每次
+rAF 都 `emit()` 会把**同一帧**重复渲染好几次。给 `new RealtimeClock(timebase)` 传入
+`Timebase` 后，`currentTime` 仍按墙钟连续推进（播放不漂移），但 `onTick` **仅在跨过帧边界
+时触发一次**，把 `renderPreview` 调用量压到时间轴 fps；`seek(t)` 也会**吸附到帧网格**，绝不
+落在（或去解码）子帧时间。不传 `timebase` 则每次 rAF 都 tick，行为与旧版一致（向后兼容）。
+上层拖动 scrub 时应再叠一层 rAF 节流，把连续的 `input` 事件合并为每帧至多一次 seek（见
+`studio` 的 `main.ts`）。
+
 ### Compositor 生命周期（同步构造 / 异步建 renderer）
 
 `new Compositor(options)` 是**同步**的：只建对象图、reconciler 和一块（可能离屏的）

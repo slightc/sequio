@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { FixedStepClock } from '../src/time/clock';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { FixedStepClock, RealtimeClock } from '../src/time/clock';
 import { Timebase } from '../src/time/timebase';
 
 const tb = new Timebase(30);
@@ -83,5 +83,84 @@ describe('Clock (video-element control surface)', () => {
     const a = c.currentTime;
     c.seek(0.4);
     expect(c.currentTime).toBe(a);
+  });
+});
+
+describe('RealtimeClock (frame-gated preview)', () => {
+  // Drive requestAnimationFrame by hand: capture the pending callback and fire
+  // it with a chosen high-res timestamp so we control how "fast" the display
+  // refreshes relative to the timebase fps.
+  let pending: FrameRequestCallback | null = null;
+  let nextId = 0;
+
+  beforeEach(() => {
+    pending = null;
+    nextId = 0;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      pending = cb;
+      return ++nextId;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {
+      pending = null;
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** Fire the currently-scheduled rAF callback with a timestamp (ms). */
+  function refresh(ts: number): void {
+    const cb = pending;
+    pending = null;
+    cb?.(ts);
+  }
+
+  it('snaps seeks to the nearest frame boundary', () => {
+    const c = new RealtimeClock(tb); // 30fps → frames every 1/30s
+    c.seek(0.51); // 0.51*30 = 15.3 → frame 15 → 0.5s
+    expect(c.currentTime).toBeCloseTo(0.5);
+    c.seek(0.44); // 0.44*30 = 13.2 → frame 13 → 0.4333s
+    expect(c.currentTime).toBeCloseTo(13 / 30);
+  });
+
+  it('emits once per frame even when the display refreshes faster', () => {
+    const c = new RealtimeClock(tb);
+    const ticks: number[] = [];
+    c.onTick((t) => ticks.push(t));
+    c.play();
+    // ~125Hz refresh (8ms apart), 30fps timeline → most refreshes land on the
+    // same frame and must be coalesced. Frame index = round(t*30).
+    refresh(100); // t=0     → frame 0  → emit
+    refresh(108); // +8ms    → frame 0  → skip
+    refresh(116); // +16ms   → frame 0  → skip
+    refresh(124); // +24ms   → frame 1  → emit
+    refresh(132); // +32ms   → frame 1  → skip
+    refresh(160); // +60ms   → frame 2  → emit
+    c.pause();
+    // Six display refreshes collapsed to three frame ticks.
+    expect(ticks.length).toBe(3);
+  });
+
+  it('without a timebase, ticks every refresh (backwards compatible)', () => {
+    const c = new RealtimeClock(); // no timebase
+    let ticks = 0;
+    c.onTick(() => ticks++);
+    c.play();
+    refresh(100);
+    refresh(108);
+    refresh(116);
+    c.pause();
+    expect(ticks).toBe(3);
+  });
+
+  it('a seek before play does not double-render the first frame', () => {
+    const c = new RealtimeClock(tb);
+    const ticks: number[] = [];
+    c.seek(0.5); // frame 15
+    c.onTick((t) => ticks.push(t));
+    c.play();
+    refresh(100); // still frame 15, but a fresh play run always paints once
+    refresh(108); // +8ms → still frame 15 → skip
+    c.pause();
+    expect(ticks.length).toBe(1);
+    expect(ticks[0]).toBeCloseTo(0.5);
   });
 });

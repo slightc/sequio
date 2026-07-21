@@ -179,7 +179,9 @@ export class Composer {
     const view = compositor.view;
     if (container) container.append(view);
 
-    const clock = new RealtimeClock();
+    // Frame-aware: tick once per frame boundary (repaint at the timeline's fps,
+    // not the display refresh rate) and snap seeks to the frame grid.
+    const clock = new RealtimeClock(compositor.timebase);
     clock.duration = duration;
     let playing = false;
 
