@@ -61,6 +61,48 @@ class GatedSource extends VisualSource {
   adoptTextureManager(): void {}
 }
 
+/** A source whose `prepare` REJECTS when released — models a decode that fails
+ *  (or is aborted) mid-flight, e.g. a fast back-and-forth scrub. */
+class RejectingGatedSource extends VisualSource {
+  private readonly rejects: Array<(e: unknown) => void> = [];
+  async load(): Promise<SourceMetadata> {
+    return { width: 1, height: 1, duration: 5, hasAudio: false };
+  }
+  prepare(): Promise<void> {
+    return new Promise<void>((_resolve, reject) => this.rejects.push(reject));
+  }
+  failAll(): void {
+    this.rejects.splice(0).forEach((r) => r(new Error('decode failed')));
+  }
+  getTextureAt(): Texture | null {
+    return null;
+  }
+  dispose(): void {}
+  adoptTextureManager(): void {}
+}
+
+/** A clip whose `update` throws the first `throwsLeft` times — models a transient
+ *  render error (a frame texture evicted/closed mid-churn) that then clears. */
+class FlakyUpdateClip extends VisualClip {
+  updates: number[] = [];
+  constructor(private throwsLeft = 1) {
+    super();
+    this.start = 0;
+    this.end = 5;
+  }
+  override mount(): Container {
+    return new Container();
+  }
+  override update(t: number): void {
+    if (this.throwsLeft > 0) {
+      this.throwsLeft--;
+      throw new Error('transient render error');
+    }
+    this.updates.push(t);
+  }
+  override unmount(): void {}
+}
+
 const flush = () => new Promise<void>((r) => setTimeout(r, 0));
 
 /** Minimal visual clip that records mount/update/unmount for assertions. */
@@ -667,6 +709,51 @@ describe('Compositor', () => {
     await flush();
     expect(spy).toHaveBeenCalledTimes(2); // the stale 0.5 repaint is skipped — no clobber
     expect(spy).toHaveBeenLastCalledWith(1.0);
+  });
+
+  it('still repaints after a decode REJECTION — best-effort preview never strands black', async () => {
+    // Rapid back-and-forth seeking can leave a source's decode failing/aborted.
+    // The post-decode repaint must still run (drawing whatever IS ready) rather
+    // than being skipped because the promise rejected — otherwise the frame stays
+    // black until the user seeks again.
+    const c = makeCompositor();
+    const source = new RejectingGatedSource();
+    const clip = new SourceClip(source);
+    clip.start = 0;
+    clip.end = 5;
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    const spy = vi.spyOn(c, 'renderSync');
+    expect(() => c.renderPreview(0.5)).not.toThrow();
+    expect(spy).toHaveBeenCalledTimes(1); // immediate best-effort
+
+    source.failAll(); // the decode rejects
+    await flush();
+    expect(spy).toHaveBeenCalledTimes(2); // repaint STILL fires despite the rejection
+    expect(spy).toHaveBeenLastCalledWith(0.5);
+  });
+
+  it('swallows a transient preview render throw and recovers on the settle repaint', async () => {
+    // A frame texture evicted/closed mid-churn makes renderSync throw. In preview
+    // (best-effort, contract #1) that must NOT escape and freeze the loop black;
+    // it's a dropped frame, and the settle repaint re-renders once it clears.
+    const c = makeCompositor();
+    const clip = new FlakyUpdateClip(1); // first render throws, then succeeds
+    const track = new VisualTrack();
+    track.add(clip);
+    c.addTrack(track);
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // No source → prepare resolves immediately; the immediate render throws but is
+    // swallowed, and renderPreview does not propagate it.
+    expect(() => c.renderPreview(0.5)).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1); // the drop is logged, not thrown
+
+    await flush();
+    expect(clip.updates).toEqual([0.5]); // the settle repaint re-rendered, now cleanly
+    warn.mockRestore();
   });
 
   it('dispose unmounts clips and clears tracks', () => {

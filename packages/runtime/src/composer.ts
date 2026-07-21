@@ -213,8 +213,10 @@ export class Composer {
         audioEngine.pause();
       },
       seek(t: number) {
+        // `clock.seek` emits a tick, and the `onTick` subscription above already
+        // drives `compositor.renderPreview` — so don't render a second time here
+        // (a redundant repaint churns the preview token and can race the first).
         clock.seek(t);
-        compositor.renderPreview(clock.currentTime);
         if (playing) audioEngine.seek(clock.currentTime);
       },
       dispose() {

@@ -441,14 +441,36 @@ export class Compositor implements Disposable {
    */
   renderPreview(t: number): void {
     const ready = this.prepare(t); // kick off decodes first
-    this.renderSync(t); // immediate best-effort (a miss shows the last/empty frame); bumps the token
+    this.tryRenderSync(t); // immediate best-effort (a miss shows the last/empty frame); bumps the token
     const token = this.previewToken; // this render's generation
-    void ready.then(() => {
-      // Repaint the same frame now that it's decoded — unless a newer render
-      // (another seek, a playback tick, or an export) superseded us, or we were
-      // disposed. So continuous seeking can't race, and export is untouched.
-      if (token === this.previewToken && !this.destroyed) this.renderSync(t);
-    });
+    // Repaint the same frame once its decodes settle — whether they RESOLVED or
+    // REJECTED. A single failed/aborted decode (e.g. a source churned by rapid
+    // back-and-forth seeking) must not strand the preview black: the repaint
+    // still runs and draws whatever IS ready. Skipped only if a newer render
+    // (another seek, a playback tick, or an export) superseded us, or we were
+    // disposed — so continuous seeking can't race and export is untouched.
+    const repaint = (): void => {
+      if (token === this.previewToken && !this.destroyed) this.tryRenderSync(t);
+    };
+    void ready.then(repaint, repaint);
+  }
+
+  /**
+   * `renderSync` for the preview path, where a frame may be dropped (contract
+   * #1). A transient throw — a `VideoFrame`/texture evicted and closed mid-churn
+   * during rapid seeking, say — must not escape and freeze the RAF/seek loop on a
+   * black frame; it's just a dropped frame, and `renderPreview`'s post-decode
+   * repaint will re-render once things settle. Export renders via `renderSync` /
+   * `renderToTexture` DIRECTLY, so its errors still surface (contract #2).
+   */
+  private tryRenderSync(t: number): void {
+    try {
+      this.renderSync(t);
+    } catch (err) {
+      // `renderSync` bumps `previewToken` on its first line, so the generation is
+      // still advanced even on a throw — the repaint's token check stays correct.
+      console.warn('[sequio] preview frame dropped (render error, will retry on settle):', err);
+    }
   }
 
   resize(w: number, h: number): void {
