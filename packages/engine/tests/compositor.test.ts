@@ -292,6 +292,43 @@ describe('Compositor renderer seam', () => {
     c.dispose();
   });
 
+  it('treats a WebGPU uncaptured error as a lost context (reclaimed buffers, device kept)', async () => {
+    // Some browsers free a backgrounded tab's GPU buffers without resolving
+    // device.lost; the next submit raises an uncaptured "used in submit while
+    // destroyed" error instead. That must drive recovery too.
+    const listeners: Record<string, ((ev: unknown) => void)[]> = {};
+    const device = {
+      lost: new Promise<void>(() => {}), // never resolves
+      addEventListener: (t: string, cb: (ev: unknown) => void) => {
+        (listeners[t] ??= []).push(cb);
+      },
+      removeEventListener: () => {},
+    };
+    const renderer = { gpu: { device }, render: () => {}, destroy: () => {} } as unknown as Renderer;
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      createRenderer: async () => renderer,
+    });
+    await c.init();
+    const seen = vi.fn();
+    c.onContextLost(seen);
+    expect(c.isContextLost).toBe(false);
+
+    // Fire the uncaptured error (as the browser would on a bad submit).
+    for (const cb of listeners['uncapturederror'] ?? []) {
+      cb({ error: { message: 'Buffer used in submit while destroyed' } });
+    }
+    expect(c.isContextLost).toBe(true);
+    expect(seen).toHaveBeenCalledTimes(1);
+
+    // Repeated errors (every subsequent frame) don't re-fire the listeners.
+    for (const cb of listeners['uncapturederror'] ?? []) cb({ error: { message: 'again' } });
+    expect(seen).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+
   it('onContextLost fires immediately if the context is already lost', async () => {
     const { renderer, lose } = makeLostRenderer();
     const c = new Compositor({

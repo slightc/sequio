@@ -481,16 +481,24 @@ resolution 1)。
   `options`，**不再二次 `load()`**；`fork()` 因读 `options` 仍继承新值，导出照样有界。
 - **后台回收后恢复（`onContextLost` 重建 + `purge`）**：浏览器把标签页放到后台一段时间后会回收其
   内存，这有两个层面的破坏：
-  1. **GPU 设备/渲染上下文丢失**（主因）——WebGPU 的 `device.lost` promise 会**静默 resolve**
-     （没有异常、没有事件，控制台无任何报错），此后 PixiJS v8 的每次 `render` 都变成空操作、**整个
-     canvas 一直黑**；而音频走 Web Audio 与 GPU 无关，仍在继续播放。这正是"整块黑、有声音、只有刷新
-     页面才恢复"的现象。PixiJS 自己既不监听 `device.lost` 也不会恢复。`Compositor` 在 `init` 后
-     `watchContextLoss()`：挂到 `renderer.gpu.device.lost`（WebGPU）与 canvas 的 `webglcontextlost`
-     事件（WebGL），任一触发即经 `onContextLost(cb)` 通知（`isContextLost` 可查；主动 `dispose()` 触发的
-     lost 会被 `destroyed` 守卫忽略）。**恢复靠重建而非续用**：CLI / Studio 预览页订阅 `onContextLost`，
-     用留存的 `Composer` 就地重跑 `composer.preview()`（全新 compositor + renderer + canvas），再
-     `seek` 回原时间、恢复播放态——等价于"刷新页面"但不发网络请求。丢失通常在标签页仍隐藏时到达，故
-     重建**推迟到 `visibilitychange → visible`** 再做（给隐藏标签页新建的 GPU 设备可能又立刻丢失）。
+  1. **GPU 上下文/资源被回收**（主因）——整块 canvas 变黑、音频照常播放、只有刷新页面才恢复。浏览器
+     有两种回收方式，只有一种会 raise `device.lost`：
+     - **设备丢失**：WebGPU 的 `device.lost` promise **静默 resolve**（无异常、无事件、控制台无报错）；
+       WebGL 则在 canvas 上派发 `webglcontextlost`。
+     - **只回收资源、设备仍在**：浏览器释放了这个标签页的 GPU buffer/纹理，但 device 仍"存活"，于是
+       `device.lost` 永不 resolve，下一次 `Queue.Submit` 直接报 *"Buffer used in submit while
+       destroyed"*——这是一个**未捕获的 device error**（异步上报、不是抛出的异常，所以 `render()` 外面
+       的 try/catch 根本看不到，画面就那么黑了）。引擎自己的纹理淘汰**不会**触发它（`VideoClip` 在纹理被
+       销毁时回退 `Texture.EMPTY` 而非画已销毁纹理），所以一旦出现就是真正的外部资源丢失。
+     此后 PixiJS v8 的每次 `render` 都不出画且不会自恢复。`Compositor` 在 `init` 后 `watchContextLoss()`
+     同时挂三个信号：`renderer.gpu.device.lost`、device 的 `uncapturederror` 事件、canvas 的
+     `webglcontextlost`，任一触发即经 `onContextLost(cb)` 通知（`isContextLost` 可查；主动 `dispose()`
+     触发的 lost/error 被 `destroyed` 守卫忽略，重复的每帧 error 被 `contextLost` 一次性标志去重）。
+     **恢复靠重建而非续用**：CLI / Studio 预览页订阅 `onContextLost`，用留存的 `Composer` 就地重跑
+     `composer.preview()`（全新 compositor + renderer + canvas），再 `seek` 回原时间、恢复播放态——等价
+     "刷新页面"但不发网络请求。丢失通常在标签页仍隐藏时到达，故重建**推迟到 `visibilitychange → visible`**
+     再做（给隐藏标签页新建的 GPU 设备可能又立刻丢失）；并对自动重建设了上限（连续 3 次仍失败就提示手动
+     刷新，每次重新进入后台会重置计数），避免坏 GPU 把预览拖进重建热循环。
   2. **解码帧/纹理被回收**（次因）——已缓存的 `VideoFrame`、GPU 纹理乃至 WebCodecs 解码器可能被作废，
      但 `FrameCache.has()` 仍报告这些帧「在缓存里」，预览会把作废帧当成已就绪画上去且永不重解。
      `VideoSource.purge()` 清空 `FrameCache`（`clear()`：关帧 + 经 `onEvict` 释放纹理）、重置解码车道并

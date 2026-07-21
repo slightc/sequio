@@ -39,6 +39,10 @@ let preview: PreviewHandle | null = null;
 let composer: Composer | null = null;
 let lostSub: Subscription | null = null;
 let needsRebuild = false;
+// Cap automatic rebuilds so a persistently-broken GPU can't hot-loop; the count
+// resets each time the tab is backgrounded again (a fresh reclaim cycle).
+let rebuildAttempts = 0;
+const MAX_REBUILDS = 3;
 
 function updateTransport(t: number): void {
   if (!preview) return;
@@ -72,21 +76,30 @@ scrub.addEventListener('input', () => {
   });
 });
 
-// A browser reclaims a backgrounded tab's GPU memory after a while, silently
-// losing the WebGPU device (no error, no exception). PixiJS v8 doesn't recover,
-// so the whole canvas goes black — while audio, which is GPU-independent, keeps
-// playing — and only reloading the page fixes it. Rebuild the preview in place
+// A browser reclaims a backgrounded tab's GPU state after a while — either losing
+// the WebGPU device outright or just freeing its buffers (the next submit then
+// errors with "used in submit while destroyed"). Both are silent (no thrown
+// exception), PixiJS v8 doesn't recover, so the whole canvas goes black while
+// audio (GPU-independent) keeps playing, and only a page reload fixes it. The
+// engine surfaces all of that through onContextLost; rebuild the preview in place
 // instead: a fresh compositor + renderer + canvas from the retained Composer,
 // restoring the current time + play state. The loss usually arrives while the tab
 // is still hidden, so defer the rebuild until it's visible again (a new GPU device
-// for a hidden tab may just be lost again).
-document.addEventListener('visibilitychange', maybeRebuild);
+// for a hidden tab may just be lost again), and cap consecutive rebuilds.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') rebuildAttempts = 0; // new reclaim cycle
+  else maybeRebuild();
+});
 
 function maybeRebuild(): void {
-  if (needsRebuild && document.visibilityState === 'visible') {
-    needsRebuild = false;
-    void rebuildPreview();
+  if (!needsRebuild || document.visibilityState !== 'visible') return;
+  needsRebuild = false;
+  if (rebuildAttempts >= MAX_REBUILDS) {
+    log('GPU context keeps failing after several rebuilds — please reload the page.', 'err');
+    return;
   }
+  rebuildAttempts++;
+  void rebuildPreview();
 }
 
 /** Wire transport + context-loss handling onto a freshly-built preview. */

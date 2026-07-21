@@ -154,14 +154,23 @@ function main(): void {
   // while the tab is still hidden, so defer the rebuild until it's visible again.
   let needsRebuild = false;
   let lostSub: { unsubscribe(): void } | null = null;
+  let rebuildAttempts = 0;
+  const MAX_REBUILDS = 3;
 
   function maybeRebuild(): void {
-    if (needsRebuild && document.visibilityState === 'visible') {
-      needsRebuild = false;
-      void rebuildPreview();
+    if (!needsRebuild || document.visibilityState !== 'visible') return;
+    needsRebuild = false;
+    if (rebuildAttempts >= MAX_REBUILDS) {
+      log('GPU context keeps failing after several rebuilds — please reload the page.', 'err');
+      return;
     }
+    rebuildAttempts++;
+    void rebuildPreview();
   }
-  document.addEventListener('visibilitychange', maybeRebuild);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') rebuildAttempts = 0; // new reclaim cycle
+    else maybeRebuild();
+  });
 
   async function rebuildPreview(): Promise<void> {
     if (!composer || !preview) return;

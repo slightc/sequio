@@ -17,6 +17,13 @@ interface TextureManagerAware {
   adoptTextureManager(manager: TextureManager): void;
 }
 
+/** The subset of a WebGPU `GPUDevice` we touch for context-loss detection. */
+interface GpuDeviceLike {
+  lost?: Promise<unknown>;
+  addEventListener?: (type: string, cb: (ev: unknown) => void) => void;
+  removeEventListener?: (type: string, cb: (ev: unknown) => void) => void;
+}
+
 function isTextureManagerAware(source: unknown): source is TextureManagerAware {
   return typeof (source as TextureManagerAware).adoptTextureManager === 'function';
 }
@@ -273,25 +280,49 @@ export class Compositor implements Disposable {
     for (const cb of [...this.contextLostListeners]) cb();
   }
 
+  /** The WebGPU device we attached loss/error listeners to (for teardown). */
+  private gpuDevice: GpuDeviceLike | null = null;
+
   /**
-   * Watch the freshly-created renderer for context loss. WebGPU exposes a
-   * `device.lost` promise (resolves silently — no exception, no event); WebGL
-   * fires a `webglcontextlost` event on the canvas. Either way we surface it
-   * through {@link onContextLost}. PixiJS itself watches neither.
+   * Watch the freshly-created renderer for context loss. There are two ways a
+   * browser drops a backgrounded tab's GPU state, and only one raises `device.lost`:
+   *
+   * 1. **Device lost** — WebGPU resolves `device.lost` (silently — no exception,
+   *    no thrown error); WebGL fires `webglcontextlost` on the canvas.
+   * 2. **Resources reclaimed, device kept** — the browser frees the tab's GPU
+   *    buffers/textures but the device stays "alive", so `device.lost` never
+   *    resolves. The next `Queue.Submit` then fails with *"Buffer used in submit
+   *    while destroyed"*, surfaced as an **uncaptured device error** (async, not a
+   *    thrown exception — so a try/catch around `render()` can't see it, and the
+   *    canvas just goes black). We listen for `uncapturederror` and treat it as a
+   *    compromised context too. Our own texture eviction never trips this —
+   *    `VideoClip` falls back to `Texture.EMPTY` rather than drawing a destroyed
+   *    texture — so an uncaptured error means genuine external resource loss.
+   *
+   * Either way we surface it through {@link onContextLost}; PixiJS watches none of them.
    */
   private watchContextLoss(): void {
-    const renderer = this.renderer as unknown as
-      | { gpu?: { device?: { lost?: Promise<unknown> } } }
-      | null;
-    const lost = renderer?.gpu?.device?.lost;
-    if (lost && typeof lost.then === 'function') {
-      void lost.then(() => this.markContextLost());
+    const device = (this.renderer as unknown as { gpu?: { device?: GpuDeviceLike } } | null)?.gpu?.device;
+    this.gpuDevice = device ?? null;
+    if (device?.lost && typeof device.lost.then === 'function') {
+      void device.lost.then(() => this.markContextLost());
     }
+    device?.addEventListener?.('uncapturederror', this.onGpuUncapturedError);
     // WebGL fallback (and browsers without the device-lost promise).
     this.view.addEventListener?.('webglcontextlost', this.onGlContextLost);
   }
 
   private readonly onGlContextLost = (): void => this.markContextLost();
+
+  private readonly onGpuUncapturedError = (ev: unknown): void => {
+    if (this.contextLost || this.destroyed) return; // dedupe: a broken frame errors every submit
+    const err = (ev as { error?: { message?: string } } | null)?.error;
+    console.warn(
+      '[sequio] WebGPU uncaptured error — treating the render context as lost (will rebuild the preview):',
+      err?.message ?? err ?? ev,
+    );
+    this.markContextLost();
+  };
 
   // ── Track graph ────────────────────────────────────────────────────────
   addTrack(track: Track): void {
@@ -625,8 +656,10 @@ export class Compositor implements Disposable {
   }
 
   dispose(): void {
-    this.destroyed = true; // stop any pending post-decode repaint (and ignore the device-lost that our own teardown triggers)
+    this.destroyed = true; // stop any pending post-decode repaint (and ignore the device-lost/uncaptured-error our own teardown triggers)
     this.view.removeEventListener?.('webglcontextlost', this.onGlContextLost);
+    this.gpuDevice?.removeEventListener?.('uncapturederror', this.onGpuUncapturedError);
+    this.gpuDevice = null;
     this.contextLostListeners.clear();
     for (const effect of this.attachedEffects) effect.detach(this.stage);
     this.attachedEffects.clear();
