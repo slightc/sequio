@@ -6,7 +6,7 @@
  * uses. With `--watch`, the dev server issues a full-reload on any file change,
  * so this module simply re-runs from scratch on load.
  */
-import { Runtime, type PreviewHandle, type RuntimeBundle } from '@sequio/runtime';
+import { Runtime, type Composer, type PreviewHandle, type RuntimeBundle, type Subscription } from '@sequio/runtime';
 // Browser-safe subpath so the preview page resolves the same `cliExternals` in
 // both hosts: from source in this repo (alias in src/preview.ts) and from the
 // published `dist/externals.js` when installed from npm.
@@ -34,6 +34,11 @@ function fmt(t: number): string {
 }
 
 let preview: PreviewHandle | null = null;
+// Retained so we can rebuild the preview in place (a fresh compositor + renderer
+// + canvas) without a page reload when the GPU context is lost — see below.
+let composer: Composer | null = null;
+let lostSub: Subscription | null = null;
+let needsRebuild = false;
 
 function updateTransport(t: number): void {
   if (!preview) return;
@@ -67,14 +72,58 @@ scrub.addEventListener('input', () => {
   });
 });
 
-// A browser reclaims memory from a hidden tab (WebCodecs frames, GPU textures,
-// the decoder) after it's been backgrounded a while. On return, part of the
-// timeline strands on black — only ranges visited before backgrounding still show
-// — because the decode cache reports those reclaimed frames as present, so they
-// never re-decode. Repaint from scratch when the tab becomes visible again.
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') preview?.refresh();
-});
+// A browser reclaims a backgrounded tab's GPU memory after a while, silently
+// losing the WebGPU device (no error, no exception). PixiJS v8 doesn't recover,
+// so the whole canvas goes black — while audio, which is GPU-independent, keeps
+// playing — and only reloading the page fixes it. Rebuild the preview in place
+// instead: a fresh compositor + renderer + canvas from the retained Composer,
+// restoring the current time + play state. The loss usually arrives while the tab
+// is still hidden, so defer the rebuild until it's visible again (a new GPU device
+// for a hidden tab may just be lost again).
+document.addEventListener('visibilitychange', maybeRebuild);
+
+function maybeRebuild(): void {
+  if (needsRebuild && document.visibilityState === 'visible') {
+    needsRebuild = false;
+    void rebuildPreview();
+  }
+}
+
+/** Wire transport + context-loss handling onto a freshly-built preview. */
+function wirePreview(p: PreviewHandle): void {
+  p.clock.onTick((t) => updateTransport(t));
+  // Reaching the end auto-pauses the clock but fires no further tick, so
+  // refresh the transport (Play button label, scrub) on `ended` too.
+  p.clock.onEnded(() => updateTransport(p.clock.currentTime));
+  lostSub?.unsubscribe();
+  lostSub = p.onContextLost(() => {
+    needsRebuild = true;
+    log('GPU context lost (tab backgrounded) — rebuilding preview…');
+    maybeRebuild();
+  });
+}
+
+/** Tear down the current preview and rebuild it from the retained Composer,
+ *  restoring time + play state — the in-place equivalent of a page reload. */
+async function rebuildPreview(): Promise<void> {
+  if (!composer || !preview) return;
+  const t = preview.clock.currentTime;
+  const wasPlaying = preview.playing;
+  preview.dispose();
+  preview = null;
+  stageEl.replaceChildren();
+  try {
+    preview = await composer.preview(stageEl);
+    wirePreview(preview);
+    scrub.max = String(preview.duration);
+    preview.seek(t);
+    if (wasPlaying) preview.play();
+    updateTransport(preview.clock.currentTime);
+    log('Preview rebuilt after GPU context loss.', 'ok');
+  } catch (err) {
+    log(err instanceof Error ? (err.stack ?? err.message) : String(err), 'err');
+  }
+}
 
 async function boot(): Promise<void> {
   log('Loading composition…');
@@ -85,7 +134,7 @@ async function boot(): Promise<void> {
 
     fileEl.textContent = bundle.entry;
 
-    const composer = await new Runtime({
+    composer = await new Runtime({
       ...bundle,
       externals: cliExternals(),
       // Resolve `loadAsset('./clip.mp4')` by fetching the file the dev server
@@ -99,10 +148,7 @@ async function boot(): Promise<void> {
     scrub.max = String(preview.duration);
     scrub.disabled = false;
     playBtn.disabled = false;
-    preview.clock.onTick((t) => updateTransport(t));
-    // Reaching the end auto-pauses the clock but fires no further tick, so
-    // refresh the transport (Play button label, scrub) on `ended` too.
-    preview.clock.onEnded(() => updateTransport(preview!.clock.currentTime));
+    wirePreview(preview);
     updateTransport(0);
 
     const tracks = preview.built.compositor.getTracks();

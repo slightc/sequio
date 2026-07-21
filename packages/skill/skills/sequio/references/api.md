@@ -61,10 +61,13 @@ Times are **seconds** at the API boundary, quantized to frames internally via
 
 - `Compositor` (`CompositorOptions`) — root. `new Compositor({ width, height,
   fps?, background?, timebase?, createRenderer?, resolution? })`, then
-  `await init()`, `addTrack(track)`, `renderPreview(t)`. `reloadPreview(t)`
-  purges every source's decode/GPU caches and repaints — call it when a tab
-  returns from being hidden (the browser can reclaim a backgrounded tab's decoded
-  frames, leaving part of the timeline stranded on black).
+  `await init()`, `addTrack(track)`, `renderPreview(t)`. `onContextLost(cb)` /
+  `isContextLost` surface a lost GPU device — a browser reclaiming a backgrounded
+  tab's GPU memory silently kills the WebGPU device (no error), turning the whole
+  canvas black while audio keeps playing; recover by rebuilding the preview
+  (a fresh compositor + renderer + canvas). `reloadPreview(t)` purges every
+  source's decode/GPU caches and repaints (for the lesser case where frames were
+  reclaimed but the context survives).
 - Tracks: `Track`, `VisualTrack` (stacks by `.zIndex`), `AudioTrack`.
   `TextClip`, `ShapeClip`, `GroupClip`. Types: `TextStyleLike`, `TextStrokeLike`,
   `ShapeSpec`, `ShapeKind`, `MaskSpec`.

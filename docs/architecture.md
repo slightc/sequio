@@ -479,17 +479,27 @@ resolution 1)。
   demux**（URL 源还要再拉一次容器头 + packet 统计），导入明显变慢。`VideoSource.configureCache(
   cacheFrames, lookahead?)` 直接 `cache.setBudget()` + 重设 `lookahead`/`dropHorizon` 并同步进
   `options`，**不再二次 `load()`**；`fork()` 因读 `options` 仍继承新值，导出照样有界。
-- **后台回收后恢复（`purge` / `reloadPreview`）**：浏览器会在标签页后台放置一段时间后回收其内存——
-  已缓存的 `VideoFrame`、GPU 纹理乃至 WebCodecs 解码器都可能被回收作废，但 `FrameCache.has()` 仍报告
-  这些帧「在缓存里」。于是切回前台时，那一段 timerange 会**一直黑场**（预览把作废帧当成已就绪画上去，
-  又因缓存看起来是满的而永不重解），只有回后台前已上传过纹理的区间还有画面。`VideoSource.purge()`
-  清空 `FrameCache`（`clear()`：关帧 + 经 `onEvict` 释放纹理）、重置解码车道并 `backend.reset?.()`
-  （`ForwardDecodeCursor.invalidate()` 丢掉可能已死的迭代器，下次 `at()` 从关键帧重建）；
-  `Compositor.reloadPreview(t)` 递归对全图每个源 `purge()` 后按 `t` 重绘。`PreviewHandle.refresh()`
-  把它接出来，CLI / Studio 预览页在 `visibilitychange → visible` 时调用——强制干净重解而非停在黑场。
-  仅用于预览（会丢热缓存）；导出逐帧 `await prepare` 绝不走这条路。另外 `RealtimeClock` 对每次 rAF 的
-  时间步长设了 `MAX_REALTIME_STEP`（0.25s）上限：后台时 rAF 暂停，切回时那一大段时间差不会把播放头
-  瞬移到片尾（否则一回前台就 auto-end）。
+- **后台回收后恢复（`onContextLost` 重建 + `purge`）**：浏览器把标签页放到后台一段时间后会回收其
+  内存，这有两个层面的破坏：
+  1. **GPU 设备/渲染上下文丢失**（主因）——WebGPU 的 `device.lost` promise 会**静默 resolve**
+     （没有异常、没有事件，控制台无任何报错），此后 PixiJS v8 的每次 `render` 都变成空操作、**整个
+     canvas 一直黑**；而音频走 Web Audio 与 GPU 无关，仍在继续播放。这正是"整块黑、有声音、只有刷新
+     页面才恢复"的现象。PixiJS 自己既不监听 `device.lost` 也不会恢复。`Compositor` 在 `init` 后
+     `watchContextLoss()`：挂到 `renderer.gpu.device.lost`（WebGPU）与 canvas 的 `webglcontextlost`
+     事件（WebGL），任一触发即经 `onContextLost(cb)` 通知（`isContextLost` 可查；主动 `dispose()` 触发的
+     lost 会被 `destroyed` 守卫忽略）。**恢复靠重建而非续用**：CLI / Studio 预览页订阅 `onContextLost`，
+     用留存的 `Composer` 就地重跑 `composer.preview()`（全新 compositor + renderer + canvas），再
+     `seek` 回原时间、恢复播放态——等价于"刷新页面"但不发网络请求。丢失通常在标签页仍隐藏时到达，故
+     重建**推迟到 `visibilitychange → visible`** 再做（给隐藏标签页新建的 GPU 设备可能又立刻丢失）。
+  2. **解码帧/纹理被回收**（次因）——已缓存的 `VideoFrame`、GPU 纹理乃至 WebCodecs 解码器可能被作废，
+     但 `FrameCache.has()` 仍报告这些帧「在缓存里」，预览会把作废帧当成已就绪画上去且永不重解。
+     `VideoSource.purge()` 清空 `FrameCache`（`clear()`：关帧 + 经 `onEvict` 释放纹理）、重置解码车道并
+     `backend.reset?.()`（`ForwardDecodeCursor.invalidate()` 丢掉可能已死的迭代器，下次 `at()` 从关键帧
+     重建）；`Compositor.reloadPreview(t)` 递归对全图每个源 `purge()` 后按 `t` 重绘，`PreviewHandle.refresh()`
+     把它接出来供 host 调用。上下文丢失时的整页重建天然涵盖这条路（全新图会重解一切）。
+  两条都仅用于预览（会丢热缓存/重建 GPU），导出逐帧 `await prepare` 绝不走。另外 `RealtimeClock` 对每次 rAF
+  的时间步长设了 `MAX_REALTIME_STEP`（0.25s）上限：后台时 rAF 暂停，切回时那一大段时间差不会把播放头瞬移
+  到片尾（否则一回前台就 auto-end）。
 - **视频+音频共享一次 demux（`getMediabunnyDemux`）**：一个带声音的视频若用 `VideoSource` 解视频、
   又 `new AudioSource({ src })` 解音频，会各自 `new Input(new UrlSource(url))` **把同一个文件打开两遍**
   （URL 源即在网络面板里看到同名资源被 fetch 两次）。`VideoSource.getMediabunnyDemux()` 暴露默认

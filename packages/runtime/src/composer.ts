@@ -25,6 +25,7 @@ import {
   type Subscription,
   Timebase,
 } from '@sequio/engine';
+export type { Subscription } from '@sequio/engine';
 import {
   type Composition,
   type CompositionEnv,
@@ -70,6 +71,17 @@ export interface PreviewHandle {
    * `visibilitychange`; a host can call it on any resume-from-hidden.
    */
   refresh(): void;
+  /**
+   * Notified once when the GPU device / render context is lost — a browser
+   * reclaiming a backgrounded tab's GPU memory silently kills it, after which the
+   * whole canvas stays black (audio keeps playing) and only a rebuild recovers.
+   * A host wires this to reboot the preview from its {@link Composer} (dispose +
+   * `preview()` again, restoring time + play state). Fires immediately if already
+   * lost. Not fired on {@link dispose}.
+   */
+  onContextLost(cb: () => void): Subscription;
+  /** Whether the render context is currently lost (see {@link onContextLost}). */
+  readonly contextLost: boolean;
   readonly playing: boolean;
   dispose(): void;
 }
@@ -232,6 +244,12 @@ export class Composer {
         // have reclaimed them while the tab was hidden. Frame-snap the time first
         // so the repaint lands on the same frame the clock is showing.
         compositor.reloadPreview(clock.currentTime);
+      },
+      onContextLost(cb: () => void): Subscription {
+        return compositor.onContextLost(cb);
+      },
+      get contextLost() {
+        return compositor.isContextLost;
       },
       dispose() {
         playing = false;

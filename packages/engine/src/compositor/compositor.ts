@@ -1,6 +1,6 @@
 import { autoDetectRenderer, type AutoDetectOptions, Container, type Renderer, RenderTexture } from 'pixi.js';
 import { ensureEngineEnvSetup, getDefaultEngineEnv } from '../env';
-import type { Disposable } from '../core/disposable';
+import { createSubscription, type Disposable, type Subscription } from '../core/disposable';
 import type { Effect } from '../effects/effect';
 import { Timebase } from '../time/timebase';
 import { Reconciler, type RenderContext } from './reconciler';
@@ -164,6 +164,9 @@ export class Compositor implements Disposable {
   /** Bumped on every renderPreview so a stale post-decode repaint can be skipped. */
   private previewToken = 0;
   private destroyed = false;
+  /** True once the GPU device / render context is lost (see {@link onContextLost}). */
+  private contextLost = false;
+  private readonly contextLostListeners = new Set<() => void>();
 
   constructor(readonly options: CompositorOptions) {
     // Hold a (possibly detached) canvas synchronously so the object graph can
@@ -227,6 +230,7 @@ export class Compositor implements Disposable {
       // (WebGPU preferred, WebGL fallback) in a browser.
       const create = this.options.createRenderer ?? getDefaultEngineEnv().createRenderer ?? autoDetectRenderer;
       this.renderer = await create(options);
+      this.watchContextLoss();
     })();
     return this.initPromise;
   }
@@ -235,6 +239,59 @@ export class Compositor implements Disposable {
   get isInitialized(): boolean {
     return this.renderer !== null;
   }
+
+  /**
+   * Whether the GPU device / render context has been lost. A browser reclaims a
+   * backgrounded tab's GPU memory, silently losing the WebGPU device (or the WebGL
+   * context) — after which every `render` is a no-op and the whole canvas stays
+   * black (audio, which is GPU-independent, keeps playing). PixiJS v8 does not
+   * recover on its own, so the fix is to rebuild the preview (a new compositor +
+   * renderer + canvas) — see {@link onContextLost}.
+   */
+  get isContextLost(): boolean {
+    return this.contextLost;
+  }
+
+  /**
+   * Notified once when the GPU device / render context is lost. Fires immediately
+   * if it's already lost when you subscribe. A live preview wires this to rebuild
+   * itself (only a fresh renderer recovers). Not fired on intentional
+   * {@link dispose}. Losses often arrive while the tab is still hidden, so the
+   * consumer typically defers the rebuild until the tab is visible again.
+   */
+  onContextLost(cb: () => void): Subscription {
+    this.contextLostListeners.add(cb);
+    if (this.contextLost) cb();
+    return createSubscription(() => this.contextLostListeners.delete(cb));
+  }
+
+  /** Mark the context lost and notify, unless we're tearing down on purpose
+   *  (a deliberate `dispose()` also resolves the device-lost promise). */
+  private markContextLost(): void {
+    if (this.contextLost || this.destroyed) return;
+    this.contextLost = true;
+    for (const cb of [...this.contextLostListeners]) cb();
+  }
+
+  /**
+   * Watch the freshly-created renderer for context loss. WebGPU exposes a
+   * `device.lost` promise (resolves silently — no exception, no event); WebGL
+   * fires a `webglcontextlost` event on the canvas. Either way we surface it
+   * through {@link onContextLost}. PixiJS itself watches neither.
+   */
+  private watchContextLoss(): void {
+    const renderer = this.renderer as unknown as
+      | { gpu?: { device?: { lost?: Promise<unknown> } } }
+      | null;
+    const lost = renderer?.gpu?.device?.lost;
+    if (lost && typeof lost.then === 'function') {
+      void lost.then(() => this.markContextLost());
+    }
+    // WebGL fallback (and browsers without the device-lost promise).
+    this.view.addEventListener?.('webglcontextlost', this.onGlContextLost);
+  }
+
+  private readonly onGlContextLost = (): void => this.markContextLost();
 
   // ── Track graph ────────────────────────────────────────────────────────
   addTrack(track: Track): void {
@@ -568,7 +625,9 @@ export class Compositor implements Disposable {
   }
 
   dispose(): void {
-    this.destroyed = true; // stop any pending post-decode repaint
+    this.destroyed = true; // stop any pending post-decode repaint (and ignore the device-lost that our own teardown triggers)
+    this.view.removeEventListener?.('webglcontextlost', this.onGlContextLost);
+    this.contextLostListeners.clear();
     for (const effect of this.attachedEffects) effect.detach(this.stage);
     this.attachedEffects.clear();
     this.reconciler.clear(this.stage);

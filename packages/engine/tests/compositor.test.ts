@@ -255,6 +255,82 @@ describe('Compositor renderer seam', () => {
     expect(calls.length).toBe(1);
     c.dispose();
   });
+
+  /** A fake renderer exposing a WebGPU-style `gpu.device.lost` promise we control. */
+  function makeLostRenderer(): { renderer: Renderer; lose: () => void } {
+    let lose!: () => void;
+    const lost = new Promise<void>((resolve) => {
+      lose = resolve;
+    });
+    const renderer = {
+      gpu: { device: { lost } },
+      render: () => {},
+      destroy: () => {},
+    } as unknown as Renderer;
+    return { renderer, lose };
+  }
+
+  it('surfaces a lost WebGPU device through onContextLost + isContextLost', async () => {
+    const { renderer, lose } = makeLostRenderer();
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      createRenderer: async () => renderer,
+    });
+    await c.init();
+    const seen = vi.fn();
+    c.onContextLost(seen);
+    expect(c.isContextLost).toBe(false);
+
+    lose(); // the browser reclaims the tab's GPU memory
+    await Promise.resolve(); // let the device.lost.then microtask run
+    await Promise.resolve();
+
+    expect(c.isContextLost).toBe(true);
+    expect(seen).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+
+  it('onContextLost fires immediately if the context is already lost', async () => {
+    const { renderer, lose } = makeLostRenderer();
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      createRenderer: async () => renderer,
+    });
+    await c.init();
+    lose();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const late = vi.fn();
+    c.onContextLost(late); // subscribe AFTER the loss
+    expect(late).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+
+  it('does not report context loss for a deliberate dispose', async () => {
+    const { renderer, lose } = makeLostRenderer();
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      createRenderer: async () => renderer,
+    });
+    await c.init();
+    const seen = vi.fn();
+    c.onContextLost(seen);
+
+    c.dispose(); // tearing down our own renderer also resolves device.lost
+    lose();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(seen).not.toHaveBeenCalled();
+    expect(c.isContextLost).toBe(false);
+  });
 });
 
 describe('Reconciler', () => {
