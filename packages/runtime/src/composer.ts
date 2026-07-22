@@ -237,7 +237,16 @@ export class Composer {
         // drives `compositor.renderPreview` — so don't render a second time here
         // (a redundant repaint churns the preview token and can race the first).
         clock.seek(t);
-        if (playing) audioEngine.seek(clock.currentTime);
+        if (playing) {
+          audioEngine.seek(clock.currentTime);
+        } else {
+          // Paused: the first paint of a freshly-mounted group can measure a stale
+          // pivot (a child texture's size settles only after it uploads once),
+          // landing the group in the wrong place until the next render. Playback
+          // self-corrects each frame; a paused seek won't, so re-render once the
+          // decodes + a frame settle. This automates "seek again and it's fine".
+          compositor.scheduleSettleRender(clock.currentTime);
+        }
       },
       refresh() {
         // Purge decode/GPU caches and repaint the current frame — the browser may

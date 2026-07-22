@@ -1179,4 +1179,48 @@ describe('Compositor', () => {
     expect(top.disposed).toBe(1);
     expect(nested.disposed).toBe(1); // reached through the group
   });
+
+  it('scheduleSettleRender re-renders once after decode + a frame (paused-seek pivot settle)', async () => {
+    // A paused seek's first paint can measure a group pivot from getLocalBounds
+    // before a child texture has sized; this schedules one corrective re-render
+    // (after the decode settles and one frame later) so the pivot re-measures.
+    let raf: FrameRequestCallback | null = null;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      raf = cb;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {
+      raf = null;
+    });
+    try {
+      const renders: unknown[] = [];
+      const fakeRenderer = { render: (a: unknown) => renders.push(a), destroy: () => {} } as unknown as Renderer;
+      const c = new Compositor({
+        width: 320,
+        height: 240,
+        timebase: new Timebase(30),
+        createRenderer: async () => fakeRenderer,
+      });
+      await c.init();
+      const src = new SpySource();
+      const clip = new SourceClip(src);
+      clip.start = 0;
+      clip.end = 5;
+      const track = new VisualTrack();
+      track.add(clip);
+      c.addTrack(track);
+
+      renders.length = 0;
+      c.scheduleSettleRender(0.5);
+      expect(src.prepared.at(-1)).toBeCloseTo(0.5); // decode kicked for the settle
+      await new Promise((r) => setTimeout(r, 0)); // let prepare() resolve
+      expect(raf).not.toBeNull(); // decode settled → a frame is scheduled
+      expect(renders.length).toBe(0); // but nothing drawn until the frame fires
+      raf!(0);
+      expect(renders.length).toBe(1); // re-rendered exactly once
+      c.dispose();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

@@ -511,6 +511,15 @@ resolution 1)。
   两条都仅用于预览（会丢热缓存/重建 GPU），导出逐帧 `await prepare` 绝不走。另外 `RealtimeClock` 对每次 rAF
   的时间步长设了 `MAX_REALTIME_STEP`（0.25s）上限：后台时 rAF 暂停，切回时那一大段时间差不会把播放头瞬移
   到片尾（否则一回前台就 auto-end）。
+- **暂停 seek 的 pivot 结算（`scheduleSettleRender`）**：`Transform2D.applyTo` 给 Container/Group 是用
+  `getLocalBounds()` 把归一化 anchor 映射成 `pivot` 的（Sprite/Text 有原生 anchor，不测量）。而一个刚
+  挂载的 clip 的**纹理要在首次上传后才报告尺寸**（PixiJS `CanvasSource` 读 `resource.width`，`VideoFrame`
+  没有该字段；文字纹理同理），于是 group 首帧测到的 bounds 偏小、anchor/scale 的 pivot 落错——整组位置/缩放
+  错位（尤其 `punchIn` 这种绕中心缩放的"镜头推进"）。播放时每帧重绘会自动纠正，但**暂停下预览从不自绘**
+  （契约 #5），错位就一直卡着，直到再 seek 一下。`Compositor.scheduleSettleRender(t)` 把这个"再 seek 一下"
+  自动化：等这一帧的 `prepare(t)` 解码就绪、再过一个 rAF（此时纹理已上传、尺寸已知）后补渲一帧,让 pivot
+  用最终尺寸重新测量;`PreviewHandle.seek` 在**暂停**分支调用它(播放分支不调,靠逐帧自纠),每次 seek 至多多
+  一帧渲染,播放期零开销。`settleGen` 让更晚的 seek/dispose 作废在途的补渲。
 - **视频+音频共享一次 demux（`getMediabunnyDemux`）**：一个带声音的视频若用 `VideoSource` 解视频、
   又 `new AudioSource({ src })` 解音频，会各自 `new Input(new UrlSource(url))` **把同一个文件打开两遍**
   （URL 源即在网络面板里看到同名资源被 fetch 两次）。`VideoSource.getMediabunnyDemux()` 暴露默认

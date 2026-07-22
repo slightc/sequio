@@ -171,6 +171,9 @@ export class Compositor implements Disposable {
   /** Bumped on every renderPreview so a stale post-decode repaint can be skipped. */
   private previewToken = 0;
   private destroyed = false;
+  /** Pending settle re-render (paused seek); see {@link scheduleSettleRender}. */
+  private settleRaf: number | null = null;
+  private settleGen = 0;
   /** True once the GPU device / render context is lost (see {@link onContextLost}). */
   private contextLost = false;
   private readonly contextLostListeners = new Set<() => void>();
@@ -637,6 +640,42 @@ export class Compositor implements Disposable {
   }
 
   /**
+   * Re-render `t` once the decodes settle AND one frame later, so any group whose
+   * pivot is measured from `getLocalBounds()` re-measures with its children's
+   * FINAL sizes. The first paint of a freshly-mounted clip can measure its parent
+   * group's bounds before a child texture has sized — a `VideoFrame` (and some
+   * text) texture only reports its dimensions after it has uploaded once, so an
+   * anchor/scale pivot computed from those bounds is offset and the whole group
+   * lands in the wrong place. Playback re-renders every frame so it self-corrects,
+   * but a PAUSED preview never repaints on its own — the stale pivot would stick
+   * until you seek again. A preview calls this on a paused seek to automate that
+   * "seek again and it's fine" recovery. No-op without `requestAnimationFrame`
+   * (Node/export never seek a live preview).
+   */
+  scheduleSettleRender(t: number): void {
+    if (this.destroyed || typeof requestAnimationFrame !== 'function') return;
+    const gen = ++this.settleGen; // supersede any earlier pending settle
+    this.cancelSettle();
+    // Wait for the decode so the earlier render has uploaded (sized) the texture,
+    // then one frame later re-measure + repaint. Skipped if a newer settle/seek
+    // (or dispose) superseded this one.
+    void this.prepare(t).then(() => {
+      if (this.destroyed || gen !== this.settleGen) return;
+      this.settleRaf = requestAnimationFrame(() => {
+        this.settleRaf = null;
+        if (!this.destroyed && gen === this.settleGen) this.tryRenderSync(t);
+      });
+    }, () => {});
+  }
+
+  private cancelSettle(): void {
+    if (this.settleRaf != null) {
+      cancelAnimationFrame(this.settleRaf);
+      this.settleRaf = null;
+    }
+  }
+
+  /**
    * `renderSync` for the preview path, where a frame may be dropped (contract
    * #1). A transient throw — a `VideoFrame`/texture evicted and closed mid-churn
    * during rapid seeking, say — must not escape and freeze the RAF/seek loop on a
@@ -673,6 +712,8 @@ export class Compositor implements Disposable {
 
   dispose(): void {
     this.destroyed = true; // stop any pending post-decode repaint (and ignore the device-lost/uncaptured-error our own teardown triggers)
+    this.settleGen++; // invalidate any in-flight settle re-render
+    this.cancelSettle();
     this.view.removeEventListener?.('webglcontextlost', this.onGlContextLost);
     this.gpuDevice?.removeEventListener?.('uncapturederror', this.onGpuUncapturedError);
     this.gpuDevice = null;
