@@ -152,6 +152,36 @@ describe('VisualClip.maskShape', () => {
     expect(b.x).toBeCloseTo(50);
     expect(b.y).toBeCloseTo(30);
   });
+
+  it('does not re-tessellate a static mask every frame, but redraws when the spec changes', () => {
+    const clip = new GroupClip();
+    clip.maskShape = { kind: 'rect', width: 120, height: 200 };
+    const c = clip.mount() as Container;
+
+    clip.update(0); // first paint builds the geometry
+    const mask = c.mask as unknown as Graphics;
+    let clears = 0;
+    const realClear = mask.clear.bind(mask);
+    mask.clear = ((): Graphics => {
+      clears++;
+      return realClear();
+    }) as Graphics['clear'];
+
+    // Steady playback: the mask is unchanged, so it must not be rebuilt.
+    clip.update(0.1);
+    clip.update(0.2);
+    clip.update(0.3);
+    expect(clears).toBe(0);
+
+    // Changing the spec redraws exactly once for that change.
+    clip.maskShape = { kind: 'rect', width: 140, height: 200 };
+    clip.update(0.4);
+    expect(clears).toBe(1);
+    clip.update(0.5);
+    expect(clears).toBe(1);
+
+    clip.unmount();
+  });
 });
 
 describe('ImageSource', () => {
