@@ -1,6 +1,6 @@
 {
   "name": "@sequio/headless",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Route A server-side rendering for sequio: the serializable TimelineSpec protocol + transport-agnostic RPC, plus a headless Chrome (Puppeteer) worker that renders a TimelineSpec or a code bundle to a video file. Repo-internal harness — NOT published.",
   "type": "module",
   "private": true,
