@@ -76,4 +76,5 @@ export {
   type PreviewHandle,
   type RuntimeBundle,
   type BuiltComposition,
+  type Subscription,
 } from './composer';

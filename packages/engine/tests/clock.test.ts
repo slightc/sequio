@@ -151,6 +151,26 @@ describe('RealtimeClock (frame-gated preview)', () => {
     expect(ticks).toBe(3);
   });
 
+  it('a backgrounded-tab rAF stall does not teleport the playhead to the end', () => {
+    // A hidden tab pauses rAF; on resume the timestamp gap spans the whole hidden
+    // period. Advancing currentTime by it would jump straight to duration and
+    // auto-end. The step is capped so playback resumes ~where it left off.
+    const c = new RealtimeClock(tb);
+    c.duration = 100;
+    const ended = vi.fn();
+    c.onEnded(ended);
+    c.play();
+    refresh(1000); // t=0 (first frame of the run)
+    refresh(1100); // +100ms → normal frame, advances fully
+    expect(c.currentTime).toBeCloseTo(0.1);
+    // Tab hidden ~30s, then returns: a single 30-second rAF gap.
+    refresh(31_100); // +30s gap → capped at MAX_REALTIME_STEP (0.25s), not +30s
+    expect(c.currentTime).toBeCloseTo(0.35);
+    expect(c.ended).toBe(false);
+    expect(ended).not.toHaveBeenCalled();
+    c.pause();
+  });
+
   it('a seek before play does not double-render the first frame', () => {
     const c = new RealtimeClock(tb);
     const ticks: number[] = [];

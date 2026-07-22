@@ -25,6 +25,7 @@ import {
   type Subscription,
   Timebase,
 } from '@sequio/engine';
+export type { Subscription } from '@sequio/engine';
 import {
   type Composition,
   type CompositionEnv,
@@ -62,6 +63,25 @@ export interface PreviewHandle {
   play(): void;
   pause(): void;
   seek(t: number): void;
+  /**
+   * Drop all decoded frames + GPU textures and repaint the current frame fresh.
+   * Recovers the preview after a browser reclaims a hidden tab's decode/GPU
+   * memory (part of the timeline strands on black — only ranges visited before
+   * backgrounding keep showing). The CLI preview page wires this to
+   * `visibilitychange`; a host can call it on any resume-from-hidden.
+   */
+  refresh(): void;
+  /**
+   * Notified once when the GPU device / render context is lost — a browser
+   * reclaiming a backgrounded tab's GPU memory silently kills it, after which the
+   * whole canvas stays black (audio keeps playing) and only a rebuild recovers.
+   * A host wires this to reboot the preview from its {@link Composer} (dispose +
+   * `preview()` again, restoring time + play state). Fires immediately if already
+   * lost. Not fired on {@link dispose}.
+   */
+  onContextLost(cb: () => void): Subscription;
+  /** Whether the render context is currently lost (see {@link onContextLost}). */
+  readonly contextLost: boolean;
   readonly playing: boolean;
   dispose(): void;
 }
@@ -217,7 +237,28 @@ export class Composer {
         // drives `compositor.renderPreview` — so don't render a second time here
         // (a redundant repaint churns the preview token and can race the first).
         clock.seek(t);
-        if (playing) audioEngine.seek(clock.currentTime);
+        if (playing) {
+          audioEngine.seek(clock.currentTime);
+        } else {
+          // Paused: the first paint of a freshly-mounted group can measure a stale
+          // pivot (a child texture's size settles only after it uploads once),
+          // landing the group in the wrong place until the next render. Playback
+          // self-corrects each frame; a paused seek won't, so re-render once the
+          // decodes + a frame settle. This automates "seek again and it's fine".
+          compositor.scheduleSettleRender(clock.currentTime);
+        }
+      },
+      refresh() {
+        // Purge decode/GPU caches and repaint the current frame — the browser may
+        // have reclaimed them while the tab was hidden. Frame-snap the time first
+        // so the repaint lands on the same frame the clock is showing.
+        compositor.reloadPreview(clock.currentTime);
+      },
+      onContextLost(cb: () => void): Subscription {
+        return compositor.onContextLost(cb);
+      },
+      get contextLost() {
+        return compositor.isContextLost;
       },
       dispose() {
         playing = false;

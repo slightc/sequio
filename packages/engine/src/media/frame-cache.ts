@@ -76,8 +76,17 @@ export class FrameCache<T extends Closable = VideoFrame> implements Disposable {
     }
   }
 
-  dispose(): void {
+  /**
+   * Evict every resident frame (closing each) but keep the cache reusable — the
+   * budget and `onEvict` wiring stay intact, so a subsequent `put` refills it.
+   * Used by {@link VideoSource.purge} to force a fresh re-decode.
+   */
+  clear(): void {
     for (const idx of [...this.map.keys()]) this.release(idx);
     this.map.clear();
+  }
+
+  dispose(): void {
+    this.clear();
   }
 }

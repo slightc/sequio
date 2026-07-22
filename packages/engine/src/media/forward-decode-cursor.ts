@@ -102,6 +102,21 @@ export class ForwardDecodeCursor<S extends CursorSample> {
     this.iter = this.open(Math.max(0, sec));
   }
 
+  /**
+   * Drop the live iterator (and its decoder) without disposing the cursor — the
+   * next {@link at} rebuilds from a keyframe seek. A browser can reclaim a hidden
+   * tab's WebCodecs decoder while it's backgrounded, leaving the iterator dead;
+   * this lets {@link VideoSource.purge} recover it (the cursor stays reusable,
+   * unlike {@link dispose}, which is terminal).
+   */
+  invalidate(): void {
+    void this.iter?.return();
+    this.iter = null;
+    this.head?.close();
+    this.head = null;
+    this.cursorTs = -Infinity;
+  }
+
   /** Tear down the cursor, releasing the iterator's decoder and held frame. */
   dispose(): void {
     void this.iter?.return();

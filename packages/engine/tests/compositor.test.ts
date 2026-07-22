@@ -15,6 +15,7 @@ import { Timebase } from '../src/time/timebase';
 class SpySource extends VisualSource {
   adopted: TextureManager | null = null;
   prepared: number[] = [];
+  purged = 0;
   async load(): Promise<SourceMetadata> {
     return { width: 1, height: 1, duration: 5, hasAudio: false };
   }
@@ -24,7 +25,13 @@ class SpySource extends VisualSource {
   getTextureAt(): Texture | null {
     return null;
   }
-  dispose(): void {}
+  override purge(): void {
+    this.purged++;
+  }
+  disposed = 0;
+  dispose(): void {
+    this.disposed++;
+  }
   adoptTextureManager(manager: TextureManager): void {
     this.adopted = manager;
   }
@@ -250,6 +257,119 @@ describe('Compositor renderer seam', () => {
     c.renderSync(0);
     expect(calls.length).toBe(1);
     c.dispose();
+  });
+
+  /** A fake renderer exposing a WebGPU-style `gpu.device.lost` promise we control. */
+  function makeLostRenderer(): { renderer: Renderer; lose: () => void } {
+    let lose!: () => void;
+    const lost = new Promise<void>((resolve) => {
+      lose = resolve;
+    });
+    const renderer = {
+      gpu: { device: { lost } },
+      render: () => {},
+      destroy: () => {},
+    } as unknown as Renderer;
+    return { renderer, lose };
+  }
+
+  it('surfaces a lost WebGPU device through onContextLost + isContextLost', async () => {
+    const { renderer, lose } = makeLostRenderer();
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      createRenderer: async () => renderer,
+    });
+    await c.init();
+    const seen = vi.fn();
+    c.onContextLost(seen);
+    expect(c.isContextLost).toBe(false);
+
+    lose(); // the browser reclaims the tab's GPU memory
+    await Promise.resolve(); // let the device.lost.then microtask run
+    await Promise.resolve();
+
+    expect(c.isContextLost).toBe(true);
+    expect(seen).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+
+  it('treats a WebGPU uncaptured error as a lost context (reclaimed buffers, device kept)', async () => {
+    // Some browsers free a backgrounded tab's GPU buffers without resolving
+    // device.lost; the next submit raises an uncaptured "used in submit while
+    // destroyed" error instead. That must drive recovery too.
+    const listeners: Record<string, ((ev: unknown) => void)[]> = {};
+    const device = {
+      lost: new Promise<void>(() => {}), // never resolves
+      addEventListener: (t: string, cb: (ev: unknown) => void) => {
+        (listeners[t] ??= []).push(cb);
+      },
+      removeEventListener: () => {},
+    };
+    const renderer = { gpu: { device }, render: () => {}, destroy: () => {} } as unknown as Renderer;
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      createRenderer: async () => renderer,
+    });
+    await c.init();
+    const seen = vi.fn();
+    c.onContextLost(seen);
+    expect(c.isContextLost).toBe(false);
+
+    // Fire the uncaptured error (as the browser would on a bad submit).
+    for (const cb of listeners['uncapturederror'] ?? []) {
+      cb({ error: { message: 'Buffer used in submit while destroyed' } });
+    }
+    expect(c.isContextLost).toBe(true);
+    expect(seen).toHaveBeenCalledTimes(1);
+
+    // Repeated errors (every subsequent frame) don't re-fire the listeners.
+    for (const cb of listeners['uncapturederror'] ?? []) cb({ error: { message: 'again' } });
+    expect(seen).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+
+  it('onContextLost fires immediately if the context is already lost', async () => {
+    const { renderer, lose } = makeLostRenderer();
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      createRenderer: async () => renderer,
+    });
+    await c.init();
+    lose();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const late = vi.fn();
+    c.onContextLost(late); // subscribe AFTER the loss
+    expect(late).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+
+  it('does not report context loss for a deliberate dispose', async () => {
+    const { renderer, lose } = makeLostRenderer();
+    const c = new Compositor({
+      width: 320,
+      height: 240,
+      timebase: new Timebase(30),
+      createRenderer: async () => renderer,
+    });
+    await c.init();
+    const seen = vi.fn();
+    c.onContextLost(seen);
+
+    c.dispose(); // tearing down our own renderer also resolves device.lost
+    lose();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(seen).not.toHaveBeenCalled();
+    expect(c.isContextLost).toBe(false);
   });
 });
 
@@ -1000,5 +1120,107 @@ describe('Compositor', () => {
     // group inactive at timeline 0 → nested source untouched
     await c.prepare(0);
     expect(inner.prepared).toEqual([1]);
+  });
+
+  it('reloadPreview purges every source (incl. nested in groups) then repaints', async () => {
+    // The visibility-restore recovery: a browser that reclaimed a hidden tab's
+    // decode/GPU memory leaves stale-but-present frames, so reloadPreview drops
+    // them across the whole clip tree and repaints the current frame fresh.
+    const c = makeCompositor();
+    const top = new SpySource();
+    const topClip = new SourceClip(top);
+    topClip.start = 0;
+    topClip.end = 5;
+
+    const nested = new SpySource();
+    const nestedClip = new SourceClip(nested);
+    nestedClip.start = 0;
+    nestedClip.end = 5;
+    const group = new GroupClip();
+    group.start = 0;
+    group.end = 5;
+    group.add(nestedClip);
+
+    const track = new VisualTrack();
+    track.add(topClip);
+    track.add(group);
+    c.addTrack(track);
+
+    c.reloadPreview(0.5);
+    expect(top.purged).toBe(1); // top-level source purged
+    expect(nested.purged).toBe(1); // group-nested source purged too
+    expect(top.prepared.at(-1)).toBeCloseTo(0.5); // repainted at the requested time
+  });
+
+  it('dispose disposes every clip source (incl. group-nested) — no leaked frames', async () => {
+    // Rebuilding a live preview disposes the old compositor; if it doesn't dispose
+    // the clips' sources, their VideoFrames/VideoSamples leak (GC-only close).
+    const c = makeCompositor();
+    const top = new SpySource();
+    const topClip = new SourceClip(top);
+    topClip.start = 0;
+    topClip.end = 5;
+
+    const nested = new SpySource();
+    const nestedClip = new SourceClip(nested);
+    nestedClip.start = 0;
+    nestedClip.end = 5;
+    const group = new GroupClip();
+    group.start = 0;
+    group.end = 5;
+    group.add(nestedClip);
+
+    const track = new VisualTrack();
+    track.add(topClip);
+    track.add(group);
+    c.addTrack(track);
+
+    c.dispose();
+    expect(top.disposed).toBe(1);
+    expect(nested.disposed).toBe(1); // reached through the group
+  });
+
+  it('scheduleSettleRender re-renders once after decode + a frame (paused-seek pivot settle)', async () => {
+    // A paused seek's first paint can measure a group pivot from getLocalBounds
+    // before a child texture has sized; this schedules one corrective re-render
+    // (after the decode settles and one frame later) so the pivot re-measures.
+    let raf: FrameRequestCallback | null = null;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      raf = cb;
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', () => {
+      raf = null;
+    });
+    try {
+      const renders: unknown[] = [];
+      const fakeRenderer = { render: (a: unknown) => renders.push(a), destroy: () => {} } as unknown as Renderer;
+      const c = new Compositor({
+        width: 320,
+        height: 240,
+        timebase: new Timebase(30),
+        createRenderer: async () => fakeRenderer,
+      });
+      await c.init();
+      const src = new SpySource();
+      const clip = new SourceClip(src);
+      clip.start = 0;
+      clip.end = 5;
+      const track = new VisualTrack();
+      track.add(clip);
+      c.addTrack(track);
+
+      renders.length = 0;
+      c.scheduleSettleRender(0.5);
+      expect(src.prepared.at(-1)).toBeCloseTo(0.5); // decode kicked for the settle
+      await new Promise((r) => setTimeout(r, 0)); // let prepare() resolve
+      expect(raf).not.toBeNull(); // decode settled → a frame is scheduled
+      expect(renders.length).toBe(0); // but nothing drawn until the frame fires
+      raf!(0);
+      expect(renders.length).toBe(1); // re-rendered exactly once
+      c.dispose();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

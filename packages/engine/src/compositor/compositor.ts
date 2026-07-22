@@ -1,6 +1,6 @@
 import { autoDetectRenderer, type AutoDetectOptions, Container, type Renderer, RenderTexture } from 'pixi.js';
 import { ensureEngineEnvSetup, getDefaultEngineEnv } from '../env';
-import type { Disposable } from '../core/disposable';
+import { createSubscription, type Disposable, type Subscription } from '../core/disposable';
 import type { Effect } from '../effects/effect';
 import { Timebase } from '../time/timebase';
 import { Reconciler, type RenderContext } from './reconciler';
@@ -15,6 +15,13 @@ import { AudioEngine } from '../audio/audio-engine';
 /** A source that can adopt the compositor's shared GPU texture pool. */
 interface TextureManagerAware {
   adoptTextureManager(manager: TextureManager): void;
+}
+
+/** The subset of a WebGPU `GPUDevice` we touch for context-loss detection. */
+interface GpuDeviceLike {
+  lost?: Promise<unknown>;
+  addEventListener?: (type: string, cb: (ev: unknown) => void) => void;
+  removeEventListener?: (type: string, cb: (ev: unknown) => void) => void;
 }
 
 function isTextureManagerAware(source: unknown): source is TextureManagerAware {
@@ -164,6 +171,12 @@ export class Compositor implements Disposable {
   /** Bumped on every renderPreview so a stale post-decode repaint can be skipped. */
   private previewToken = 0;
   private destroyed = false;
+  /** Pending settle re-render (paused seek); see {@link scheduleSettleRender}. */
+  private settleRaf: number | null = null;
+  private settleGen = 0;
+  /** True once the GPU device / render context is lost (see {@link onContextLost}). */
+  private contextLost = false;
+  private readonly contextLostListeners = new Set<() => void>();
 
   constructor(readonly options: CompositorOptions) {
     // Hold a (possibly detached) canvas synchronously so the object graph can
@@ -227,6 +240,7 @@ export class Compositor implements Disposable {
       // (WebGPU preferred, WebGL fallback) in a browser.
       const create = this.options.createRenderer ?? getDefaultEngineEnv().createRenderer ?? autoDetectRenderer;
       this.renderer = await create(options);
+      this.watchContextLoss();
     })();
     return this.initPromise;
   }
@@ -235,6 +249,83 @@ export class Compositor implements Disposable {
   get isInitialized(): boolean {
     return this.renderer !== null;
   }
+
+  /**
+   * Whether the GPU device / render context has been lost. A browser reclaims a
+   * backgrounded tab's GPU memory, silently losing the WebGPU device (or the WebGL
+   * context) — after which every `render` is a no-op and the whole canvas stays
+   * black (audio, which is GPU-independent, keeps playing). PixiJS v8 does not
+   * recover on its own, so the fix is to rebuild the preview (a new compositor +
+   * renderer + canvas) — see {@link onContextLost}.
+   */
+  get isContextLost(): boolean {
+    return this.contextLost;
+  }
+
+  /**
+   * Notified once when the GPU device / render context is lost. Fires immediately
+   * if it's already lost when you subscribe. A live preview wires this to rebuild
+   * itself (only a fresh renderer recovers). Not fired on intentional
+   * {@link dispose}. Losses often arrive while the tab is still hidden, so the
+   * consumer typically defers the rebuild until the tab is visible again.
+   */
+  onContextLost(cb: () => void): Subscription {
+    this.contextLostListeners.add(cb);
+    if (this.contextLost) cb();
+    return createSubscription(() => this.contextLostListeners.delete(cb));
+  }
+
+  /** Mark the context lost and notify, unless we're tearing down on purpose
+   *  (a deliberate `dispose()` also resolves the device-lost promise). */
+  private markContextLost(): void {
+    if (this.contextLost || this.destroyed) return;
+    this.contextLost = true;
+    for (const cb of [...this.contextLostListeners]) cb();
+  }
+
+  /** The WebGPU device we attached loss/error listeners to (for teardown). */
+  private gpuDevice: GpuDeviceLike | null = null;
+
+  /**
+   * Watch the freshly-created renderer for context loss. There are two ways a
+   * browser drops a backgrounded tab's GPU state, and only one raises `device.lost`:
+   *
+   * 1. **Device lost** — WebGPU resolves `device.lost` (silently — no exception,
+   *    no thrown error); WebGL fires `webglcontextlost` on the canvas.
+   * 2. **Resources reclaimed, device kept** — the browser frees the tab's GPU
+   *    buffers/textures but the device stays "alive", so `device.lost` never
+   *    resolves. The next `Queue.Submit` then fails with *"Buffer used in submit
+   *    while destroyed"*, surfaced as an **uncaptured device error** (async, not a
+   *    thrown exception — so a try/catch around `render()` can't see it, and the
+   *    canvas just goes black). We listen for `uncapturederror` and treat it as a
+   *    compromised context too. Our own texture eviction never trips this —
+   *    `VideoClip` falls back to `Texture.EMPTY` rather than drawing a destroyed
+   *    texture — so an uncaptured error means genuine external resource loss.
+   *
+   * Either way we surface it through {@link onContextLost}; PixiJS watches none of them.
+   */
+  private watchContextLoss(): void {
+    const device = (this.renderer as unknown as { gpu?: { device?: GpuDeviceLike } } | null)?.gpu?.device;
+    this.gpuDevice = device ?? null;
+    if (device?.lost && typeof device.lost.then === 'function') {
+      void device.lost.then(() => this.markContextLost());
+    }
+    device?.addEventListener?.('uncapturederror', this.onGpuUncapturedError);
+    // WebGL fallback (and browsers without the device-lost promise).
+    this.view.addEventListener?.('webglcontextlost', this.onGlContextLost);
+  }
+
+  private readonly onGlContextLost = (): void => this.markContextLost();
+
+  private readonly onGpuUncapturedError = (ev: unknown): void => {
+    if (this.contextLost || this.destroyed) return; // dedupe: a broken frame errors every submit
+    const err = (ev as { error?: { message?: string } } | null)?.error;
+    console.warn(
+      '[sequio] WebGPU uncaptured error — treating the render context as lost (will rebuild the preview):',
+      err?.message ?? err ?? ev,
+    );
+    this.markContextLost();
+  };
 
   // ── Track graph ────────────────────────────────────────────────────────
   addTrack(track: Track): void {
@@ -276,6 +367,54 @@ export class Compositor implements Disposable {
       }
     }
     await Promise.all(jobs);
+  }
+
+  /**
+   * Drop every decoded frame + derived GPU texture across all visual sources and
+   * repaint `t` fresh. A browser that reclaims memory from a hidden tab can
+   * invalidate cached `VideoFrame`s (and the decoder) while the {@link FrameCache}
+   * still reports them present — so the preview serves them as black and, because
+   * the cache looks full, never re-decodes; only ranges whose textures were
+   * already uploaded (visited before backgrounding) keep showing. Call this when
+   * the tab becomes visible again to force a clean re-decode of the current frame.
+   *
+   * Preview-only recovery: it drops warm caches, so never call it on the export
+   * path (which awaits each `prepare` and must not lose decoded frames).
+   */
+  reloadPreview(t: number): void {
+    for (const track of this.tracks) {
+      if (track instanceof VisualTrack) this.purgeClipSources(track.clips);
+    }
+    this.renderPreview(t);
+  }
+
+  /** Recurse the clip tree (mirroring {@link collectPrepareJobs}) purging every
+   *  source's decode cache so a reclaimed frame re-decodes instead of drawing black. */
+  private purgeClipSources(clips: readonly VisualClip[]): void {
+    for (const clip of clips) {
+      if (clip instanceof GroupClip) {
+        this.purgeClipSources(clip.children);
+        continue;
+      }
+      const source = (clip as { source?: VisualSource }).source;
+      if (source instanceof VisualSource) source.purge();
+    }
+  }
+
+  /** Recurse the clip tree disposing every source — closes its cached `VideoFrame`s
+   *  and the decoder's held `VideoSample`s (contract #4). Without this, disposing a
+   *  compositor (e.g. rebuilding a live preview) leaks them: they only get closed by
+   *  GC, which logs "VideoFrame/VideoSample garbage collected without being closed"
+   *  and, across repeated rebuilds, can stall the decoder. */
+  private disposeClipSources(clips: readonly VisualClip[]): void {
+    for (const clip of clips) {
+      if (clip instanceof GroupClip) {
+        this.disposeClipSources(clip.children);
+        continue;
+      }
+      const source = (clip as { source?: VisualSource }).source;
+      if (source instanceof VisualSource) source.dispose();
+    }
   }
 
   /** The timeline's end in seconds: the largest clip end across visual tracks
@@ -501,6 +640,42 @@ export class Compositor implements Disposable {
   }
 
   /**
+   * Re-render `t` once the decodes settle AND one frame later, so any group whose
+   * pivot is measured from `getLocalBounds()` re-measures with its children's
+   * FINAL sizes. The first paint of a freshly-mounted clip can measure its parent
+   * group's bounds before a child texture has sized — a `VideoFrame` (and some
+   * text) texture only reports its dimensions after it has uploaded once, so an
+   * anchor/scale pivot computed from those bounds is offset and the whole group
+   * lands in the wrong place. Playback re-renders every frame so it self-corrects,
+   * but a PAUSED preview never repaints on its own — the stale pivot would stick
+   * until you seek again. A preview calls this on a paused seek to automate that
+   * "seek again and it's fine" recovery. No-op without `requestAnimationFrame`
+   * (Node/export never seek a live preview).
+   */
+  scheduleSettleRender(t: number): void {
+    if (this.destroyed || typeof requestAnimationFrame !== 'function') return;
+    const gen = ++this.settleGen; // supersede any earlier pending settle
+    this.cancelSettle();
+    // Wait for the decode so the earlier render has uploaded (sized) the texture,
+    // then one frame later re-measure + repaint. Skipped if a newer settle/seek
+    // (or dispose) superseded this one.
+    void this.prepare(t).then(() => {
+      if (this.destroyed || gen !== this.settleGen) return;
+      this.settleRaf = requestAnimationFrame(() => {
+        this.settleRaf = null;
+        if (!this.destroyed && gen === this.settleGen) this.tryRenderSync(t);
+      });
+    }, () => {});
+  }
+
+  private cancelSettle(): void {
+    if (this.settleRaf != null) {
+      cancelAnimationFrame(this.settleRaf);
+      this.settleRaf = null;
+    }
+  }
+
+  /**
    * `renderSync` for the preview path, where a frame may be dropped (contract
    * #1). A transient throw — a `VideoFrame`/texture evicted and closed mid-churn
    * during rapid seeking, say — must not escape and freeze the RAF/seek loop on a
@@ -536,10 +711,22 @@ export class Compositor implements Disposable {
   }
 
   dispose(): void {
-    this.destroyed = true; // stop any pending post-decode repaint
+    this.destroyed = true; // stop any pending post-decode repaint (and ignore the device-lost/uncaptured-error our own teardown triggers)
+    this.settleGen++; // invalidate any in-flight settle re-render
+    this.cancelSettle();
+    this.view.removeEventListener?.('webglcontextlost', this.onGlContextLost);
+    this.gpuDevice?.removeEventListener?.('uncapturederror', this.onGpuUncapturedError);
+    this.gpuDevice = null;
+    this.contextLostListeners.clear();
     for (const effect of this.attachedEffects) effect.detach(this.stage);
     this.attachedEffects.clear();
     this.reconciler.clear(this.stage);
+    // Dispose every clip's decoder BEFORE dropping the tracks, so cached
+    // VideoFrames + the decoder's VideoSamples are closed explicitly (not left to
+    // GC — which warns and, across preview rebuilds, can stall decode).
+    for (const track of this.tracks) {
+      if (track instanceof VisualTrack) this.disposeClipSources(track.clips);
+    }
     this.tracks.length = 0;
     this.audioEngine.dispose();
     if (this.ownsTextures) this.textures.dispose(); // keep a shared/injected pool alive

@@ -1,4 +1,4 @@
-import { Container } from 'pixi.js';
+import { Container, Sprite, Texture, TextureSource } from 'pixi.js';
 import { describe, expect, it } from 'vitest';
 import { VisualClip } from '../src/compositor/clip';
 import { GroupClip } from '../src/compositor/group-clip';
@@ -166,5 +166,57 @@ describe('GroupClip', () => {
     r.reconcileClips([outer], 3.5, stage); // inner lt 1.5 -> leaf inactive
     expect(leaf.unmountCount).toBe(1);
     expect(innerC.children.length).toBe(0);
+  });
+
+  it('a masked group measures its pivot on the CLIPPED bounds on the FIRST paint', () => {
+    // Regression: applyCommon synced the mask AFTER measuring the transform pivot,
+    // so the first paint of a freshly-mounted masked group (e.g. a coverImage /
+    // coverVideo panel, anchor [0,0]) measured the pivot on the UNMASKED content —
+    // a cover-cropped child that overflows the box has a negative min — and landed
+    // the group offset, snapping right only on the next render (the "seek lands the
+    // clip in the wrong place until you seek again" bug). Mask must be applied
+    // before the measure so the very first paint is already correct.
+    class SpriteClip extends VisualClip {
+      obj: Container | null = null;
+      constructor(private readonly tex: Texture) {
+        super();
+        this.start = 0;
+        this.end = 1e5;
+      }
+      override mount(): Container {
+        const s = new Sprite(this.tex);
+        s.anchor.set(0, 0);
+        this.obj = s;
+        return s;
+      }
+      override update(t: number): void {
+        if (this.obj) this.applyCommon(this.obj, t);
+      }
+      override unmount(): void {
+        this.obj?.destroy();
+        this.obj = null;
+      }
+    }
+
+    const group = new GroupClip();
+    group.start = 0;
+    group.end = 1e5;
+    group.transform.anchor.setStatic([0, 0]);
+    group.maskShape = { kind: 'rect', width: 500, height: 400 };
+    // A child larger than the box, offset negative (object-fit: cover centering).
+    const tex = new Texture({ source: new TextureSource({ width: 600, height: 400, resolution: 1 }) });
+    const child = new SpriteClip(tex);
+    child.transform.position.setStatic([-50, 0]); // overflows left of the box
+    group.add(child);
+
+    const stage = new Container();
+    const r = new Reconciler();
+    r.reconcileClips([group], 0, stage); // FIRST paint
+    const container = stage.children[0] as Container;
+
+    // anchor [0,0] → pivot = bounds.min. Masked bounds start at 0, so pivot is 0
+    // on the first paint (was -50, the unmasked child min, before the fix).
+    expect(container.pivot.x).toBe(0);
+    expect(container.pivot.y).toBe(0);
   });
 });

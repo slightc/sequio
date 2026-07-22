@@ -479,6 +479,51 @@ resolution 1)。
   demux**（URL 源还要再拉一次容器头 + packet 统计），导入明显变慢。`VideoSource.configureCache(
   cacheFrames, lookahead?)` 直接 `cache.setBudget()` + 重设 `lookahead`/`dropHorizon` 并同步进
   `options`，**不再二次 `load()`**；`fork()` 因读 `options` 仍继承新值，导出照样有界。
+- **后台回收后恢复（`onContextLost` 重建 + `purge`）**：浏览器把标签页放到后台一段时间后会回收其
+  内存，这有两个层面的破坏：
+  1. **GPU 上下文/资源被回收**（主因）——整块 canvas 变黑、音频照常播放、只有刷新页面才恢复。浏览器
+     有两种回收方式，只有一种会 raise `device.lost`：
+     - **设备丢失**：WebGPU 的 `device.lost` promise **静默 resolve**（无异常、无事件、控制台无报错）；
+       WebGL 则在 canvas 上派发 `webglcontextlost`。
+     - **只回收资源、设备仍在**：浏览器释放了这个标签页的 GPU buffer/纹理，但 device 仍"存活"，于是
+       `device.lost` 永不 resolve，下一次 `Queue.Submit` 直接报 *"Buffer used in submit while
+       destroyed"*——这是一个**未捕获的 device error**（异步上报、不是抛出的异常，所以 `render()` 外面
+       的 try/catch 根本看不到，画面就那么黑了）。引擎自己的纹理淘汰**不会**触发它（`VideoClip` 在纹理被
+       销毁时回退 `Texture.EMPTY` 而非画已销毁纹理），所以一旦出现就是真正的外部资源丢失。
+     此后 PixiJS v8 的每次 `render` 都不出画且不会自恢复。`Compositor` 在 `init` 后 `watchContextLoss()`
+     同时挂三个信号：`renderer.gpu.device.lost`、device 的 `uncapturederror` 事件、canvas 的
+     `webglcontextlost`，任一触发即经 `onContextLost(cb)` 通知（`isContextLost` 可查；主动 `dispose()`
+     触发的 lost/error 被 `destroyed` 守卫忽略，重复的每帧 error 被 `contextLost` 一次性标志去重）。
+     **恢复靠重建而非续用**：CLI / Studio 预览页订阅 `onContextLost`，用留存的 `Composer` 就地重跑
+     `composer.preview()`（全新 compositor + renderer + canvas），再 `seek` 回原时间、恢复播放态——等价
+     "刷新页面"但不发网络请求。丢失通常在标签页仍隐藏时到达，故重建**推迟到 `visibilitychange → visible`**
+     再做（给隐藏标签页新建的 GPU 设备可能又立刻丢失）；并对自动重建设了上限（连续 3 次仍失败就提示手动
+     刷新，每次重新进入后台会重置计数），避免坏 GPU 把预览拖进重建热循环。重建会 `dispose()` 旧
+     compositor，而 `Compositor.dispose()` 会**递归 clip 树 dispose 每个 source**（关闭其缓存的
+     `VideoFrame` 与解码器持有的 `VideoSample`）——否则反复重建会泄漏这些资源，只能等 GC 关闭并打印
+     "VideoFrame/VideoSample garbage collected without being closed" 告警，累积后还会拖慢解码（契约 #4）。
+  2. **解码帧/纹理被回收**（次因）——已缓存的 `VideoFrame`、GPU 纹理乃至 WebCodecs 解码器可能被作废，
+     但 `FrameCache.has()` 仍报告这些帧「在缓存里」，预览会把作废帧当成已就绪画上去且永不重解。
+     `VideoSource.purge()` 清空 `FrameCache`（`clear()`：关帧 + 经 `onEvict` 释放纹理）、重置解码车道并
+     `backend.reset?.()`（`ForwardDecodeCursor.invalidate()` 丢掉可能已死的迭代器，下次 `at()` 从关键帧
+     重建）；`Compositor.reloadPreview(t)` 递归对全图每个源 `purge()` 后按 `t` 重绘，`PreviewHandle.refresh()`
+     把它接出来供 host 调用。上下文丢失时的整页重建天然涵盖这条路（全新图会重解一切）。
+  两条都仅用于预览（会丢热缓存/重建 GPU），导出逐帧 `await prepare` 绝不走。另外 `RealtimeClock` 对每次 rAF
+  的时间步长设了 `MAX_REALTIME_STEP`（0.25s）上限：后台时 rAF 暂停，切回时那一大段时间差不会把播放头瞬移
+  到片尾（否则一回前台就 auto-end）。
+- **masked group 的首帧 pivot（`applyCommon` 里 mask 先于 measure）**：`Transform2D.applyTo` 给
+  Container/Group 是用 `getLocalBounds()` 把归一化 anchor 映射成 `pivot` 的（Sprite/Text 有原生 anchor，
+  不测量）；而 clip mask 会把 bounds 裁到（固定的）mask 区域。`VisualClip.applyCommon` **必须先 `syncMask`
+  再 `applyTo`**：否则一个刚挂载的 masked group（如 `coverImage`/`coverVideo` 面板，anchor `[0,0]`，里面是
+  按 `object-fit: cover` 溢出取景框、min 为负的图/视频）首帧会用**未裁剪**的 bounds 量 pivot → 整组偏移，
+  要到下一帧才归位——这正是"seek 后 clip 位置错、再 seek 一下才对"的根因（首帧错、次帧对，同一个 t）。把
+  mask 提前到 measure 之前，首帧就量在裁剪后的固定区域上、直接正确。滤镜（blur 等）仍在 `applyTo` **之后**
+  同步，免得 filter padding 把 pivot 带偏。（这是确定性的根因修复；单测见 `group-clip.test.ts`。）
+- **暂停 seek 的补渲兜底（`scheduleSettleRender`）**：除上面的确定性修复外，为兜住"某个可视 clip 在首帧还没
+  解码完（EMPTY 纹理）导致 bounds 偏小"这类解码时序问题——播放时每帧重绘会自纠，但**暂停下预览从不自绘**
+  （契约 #5）——`Compositor.scheduleSettleRender(t)` 在暂停 seek 后等 `prepare(t)` 解码就绪、再过一个 rAF
+  补渲一帧。`PreviewHandle.seek` 只在**暂停**分支调用它，每次 seek 至多多一帧渲染、播放期零开销；`settleGen`
+  让更晚的 seek/dispose 作废在途补渲。
 - **视频+音频共享一次 demux（`getMediabunnyDemux`）**：一个带声音的视频若用 `VideoSource` 解视频、
   又 `new AudioSource({ src })` 解音频，会各自 `new Input(new UrlSource(url))` **把同一个文件打开两遍**
   （URL 源即在网络面板里看到同名资源被 fetch 两次）。`VideoSource.getMediabunnyDemux()` 暴露默认

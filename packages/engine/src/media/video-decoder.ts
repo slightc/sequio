@@ -49,6 +49,15 @@ export interface VideoDecoderBackend {
    * it must not tear down the shared demux. Backends that can't fork omit this.
    */
   fork?(): VideoDecoderBackend;
+  /**
+   * Optional: drop the live decoder (but keep the opened demux) so the next
+   * {@link decode} rebuilds it from a fresh keyframe seek. A browser reclaims a
+   * hidden tab's WebCodecs decoder while it's backgrounded; {@link VideoSource.purge}
+   * calls this on visibility restore so a reclaimed decoder recovers instead of
+   * stranding the preview on a black frame. Backends with no reclaimable decoder
+   * omit it.
+   */
+  reset?(): void;
   /** Release the demuxer / decoder. */
   dispose(): void;
 }

@@ -146,6 +146,65 @@ function main(): void {
   const timeLabel = $<HTMLSpanElement>('time');
   const exportFormat = $<HTMLSelectElement>('export-format');
 
+  // A browser reclaims a backgrounded tab's GPU memory after a while, silently
+  // losing the WebGPU device (no error); PixiJS v8 doesn't recover, so the whole
+  // canvas goes black — audio keeps playing — until the page is reloaded. Rebuild
+  // the preview in place instead (fresh compositor + renderer + canvas from the
+  // retained Composer, restoring time + play state). The loss usually arrives
+  // while the tab is still hidden, so defer the rebuild until it's visible again.
+  let needsRebuild = false;
+  let lostSub: { unsubscribe(): void } | null = null;
+  let rebuildAttempts = 0;
+  const MAX_REBUILDS = 3;
+
+  function maybeRebuild(): void {
+    if (!needsRebuild || document.visibilityState !== 'visible') return;
+    needsRebuild = false;
+    if (rebuildAttempts >= MAX_REBUILDS) {
+      log('GPU context keeps failing after several rebuilds — please reload the page.', 'err');
+      return;
+    }
+    rebuildAttempts++;
+    void rebuildPreview();
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') rebuildAttempts = 0; // new reclaim cycle
+    else maybeRebuild();
+  });
+
+  async function rebuildPreview(): Promise<void> {
+    if (!composer || !preview) return;
+    const t = preview.clock.currentTime;
+    const wasPlaying = preview.playing;
+    tickSub?.unsubscribe();
+    tickSub = null;
+    preview.dispose();
+    preview = null;
+    stageEl.replaceChildren();
+    try {
+      preview = await composer.preview(stageEl);
+      wirePreview(preview);
+      scrub.max = String(preview.duration);
+      preview.seek(t);
+      if (wasPlaying) preview.play();
+      updateTransport(preview.clock.currentTime);
+      log('Preview rebuilt after GPU context loss.', 'ok');
+    } catch (err) {
+      log(String(err instanceof Error ? err.stack ?? err.message : err), 'err');
+    }
+  }
+
+  /** Wire the per-frame transport tick + context-loss rebuild onto a preview. */
+  function wirePreview(p: PreviewHandle): void {
+    tickSub = p.clock.onTick((t) => updateTransport(t));
+    lostSub?.unsubscribe();
+    lostSub = p.onContextLost(() => {
+      needsRebuild = true;
+      log('GPU context lost (tab backgrounded) — rebuilding preview…');
+      maybeRebuild();
+    });
+  }
+
   function log(message: string, kind: 'info' | 'ok' | 'err' = 'info'): void {
     logEl.textContent = message;
     logEl.className = `log${kind === 'ok' ? ' ok' : kind === 'err' ? ' err' : ''}`;
@@ -284,7 +343,7 @@ function main(): void {
       exportBtn.disabled = false;
       bundleBtn.disabled = false;
 
-      tickSub = preview.clock.onTick((t) => updateTransport(t));
+      wirePreview(preview);
       updateTransport(0);
 
       const tracks = preview.built.compositor.getTracks();

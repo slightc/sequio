@@ -195,6 +195,12 @@ engine 层 `EngineEnv` 与 runtime 层 `RuntimeEnv` 的分层、沙箱执行、h
 
 1. **客户端预览** —— `composer.preview(container)`：跑 builder 得到活的 `Compositor`，挂一个
    `RealtimeClock` 驱动 `renderPreview`，返回带 play/pause/seek 的 `PreviewHandle`。
+   `PreviewHandle.onContextLost(cb)` 会在 GPU 设备/渲染上下文丢失时通知：标签页被浏览器后台回收
+   内存后，WebGPU 的 `device.lost` 静默 resolve（无报错），PixiJS 不自恢复，于是**整块 canvas 一直黑、
+   音频却照常播放，只有刷新页面才恢复**。host 据此用留存的 `Composer` 就地重建预览（全新 compositor +
+   renderer + canvas）并 `seek` 回原时间——CLI/Studio 的预览页已这样接（重建推迟到标签页重新可见）。
+   另有 `PreviewHandle.refresh()` 走 `reloadPreview` 清空所有源的解码/纹理缓存并重绘，应对"帧被回收但
+   上下文尚在"的次要情形。
 2. **客户端导出** —— `composer.export(options)`：**再跑一次 builder**得到一张独立的图，跑引擎
    `Exporter` 导出视频 `Blob`（所以导出绝不打扰预览；与预览同一渲染核心，契约 #3）。
 3. **服务端渲染** —— `composer.toBundle()`：返回**源码文件本身**（`{ files, entry }`）。服务端
