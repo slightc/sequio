@@ -511,15 +511,19 @@ resolution 1)。
   两条都仅用于预览（会丢热缓存/重建 GPU），导出逐帧 `await prepare` 绝不走。另外 `RealtimeClock` 对每次 rAF
   的时间步长设了 `MAX_REALTIME_STEP`（0.25s）上限：后台时 rAF 暂停，切回时那一大段时间差不会把播放头瞬移
   到片尾（否则一回前台就 auto-end）。
-- **暂停 seek 的 pivot 结算（`scheduleSettleRender`）**：`Transform2D.applyTo` 给 Container/Group 是用
-  `getLocalBounds()` 把归一化 anchor 映射成 `pivot` 的（Sprite/Text 有原生 anchor，不测量）。而一个刚
-  挂载的 clip 的**纹理要在首次上传后才报告尺寸**（PixiJS `CanvasSource` 读 `resource.width`，`VideoFrame`
-  没有该字段；文字纹理同理），于是 group 首帧测到的 bounds 偏小、anchor/scale 的 pivot 落错——整组位置/缩放
-  错位（尤其 `punchIn` 这种绕中心缩放的"镜头推进"）。播放时每帧重绘会自动纠正，但**暂停下预览从不自绘**
-  （契约 #5），错位就一直卡着，直到再 seek 一下。`Compositor.scheduleSettleRender(t)` 把这个"再 seek 一下"
-  自动化：等这一帧的 `prepare(t)` 解码就绪、再过一个 rAF（此时纹理已上传、尺寸已知）后补渲一帧,让 pivot
-  用最终尺寸重新测量;`PreviewHandle.seek` 在**暂停**分支调用它(播放分支不调,靠逐帧自纠),每次 seek 至多多
-  一帧渲染,播放期零开销。`settleGen` 让更晚的 seek/dispose 作废在途的补渲。
+- **masked group 的首帧 pivot（`applyCommon` 里 mask 先于 measure）**：`Transform2D.applyTo` 给
+  Container/Group 是用 `getLocalBounds()` 把归一化 anchor 映射成 `pivot` 的（Sprite/Text 有原生 anchor，
+  不测量）；而 clip mask 会把 bounds 裁到（固定的）mask 区域。`VisualClip.applyCommon` **必须先 `syncMask`
+  再 `applyTo`**：否则一个刚挂载的 masked group（如 `coverImage`/`coverVideo` 面板，anchor `[0,0]`，里面是
+  按 `object-fit: cover` 溢出取景框、min 为负的图/视频）首帧会用**未裁剪**的 bounds 量 pivot → 整组偏移，
+  要到下一帧才归位——这正是"seek 后 clip 位置错、再 seek 一下才对"的根因（首帧错、次帧对，同一个 t）。把
+  mask 提前到 measure 之前，首帧就量在裁剪后的固定区域上、直接正确。滤镜（blur 等）仍在 `applyTo` **之后**
+  同步，免得 filter padding 把 pivot 带偏。（这是确定性的根因修复；单测见 `group-clip.test.ts`。）
+- **暂停 seek 的补渲兜底（`scheduleSettleRender`）**：除上面的确定性修复外，为兜住"某个可视 clip 在首帧还没
+  解码完（EMPTY 纹理）导致 bounds 偏小"这类解码时序问题——播放时每帧重绘会自纠，但**暂停下预览从不自绘**
+  （契约 #5）——`Compositor.scheduleSettleRender(t)` 在暂停 seek 后等 `prepare(t)` 解码就绪、再过一个 rAF
+  补渲一帧。`PreviewHandle.seek` 只在**暂停**分支调用它，每次 seek 至多多一帧渲染、播放期零开销；`settleGen`
+  让更晚的 seek/dispose 作废在途补渲。
 - **视频+音频共享一次 demux（`getMediabunnyDemux`）**：一个带声音的视频若用 `VideoSource` 解视频、
   又 `new AudioSource({ src })` 解音频，会各自 `new Input(new UrlSource(url))` **把同一个文件打开两遍**
   （URL 源即在网络面板里看到同名资源被 fetch 两次）。`VideoSource.getMediabunnyDemux()` 暴露默认

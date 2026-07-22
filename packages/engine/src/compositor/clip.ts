@@ -116,12 +116,20 @@ export abstract class VisualClip extends Clip {
   /** Apply transform, opacity, blend mode and effects onto `obj` at time `t`. */
   protected applyCommon(obj: Container, t: number): void {
     const sample = this.sampleAnimator(t);
+    // Attach/update the clip mask BEFORE measuring the transform pivot. For a
+    // Container/Group the pivot maps a normalized anchor onto `getLocalBounds()`,
+    // and a mask clips those bounds to the (fixed) mask region. If the mask were
+    // added afterwards, the FIRST paint of a freshly-mounted clip would measure
+    // the pivot on the UNMASKED bounds (e.g. a cover-cropped image that overflows
+    // its box) and land the group offset, snapping into place only on the next
+    // render — the "seek lands the clip wrong until you seek again" bug. Filters
+    // (blur, etc.) still sync AFTER, so their padding never shifts the pivot.
+    this.syncMask(obj);
     this.transform.applyTo(obj, t, sample);
     const alpha = this.opacity.valueAt(t);
     obj.alpha = sample?.alpha != null ? alpha * sample.alpha : alpha;
     obj.blendMode = this.blendMode;
     this.syncEffects(obj, t);
-    this.syncMask(obj);
   }
 
   /**
