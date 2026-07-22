@@ -1,6 +1,6 @@
 {
   "name": "@sequio/server",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "The server-side render environment for sequio: `serverEnv`, a pure-Node (PixiJS WebGPU / Dawn) bootstrap that runs the engine's render core outside a browser. The TimelineSpec protocol + RPC live in @sequio/headless; the code-bundle render helpers live in @sequio/cli.",
   "type": "module",
   "license": "MIT",
