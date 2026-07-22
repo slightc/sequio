@@ -97,6 +97,15 @@ export abstract class VisualClip extends Clip {
   maskShape: MaskSpec | null = null;
   private maskGraphics: Graphics | null = null;
   /**
+   * The resolved region last drawn into {@link maskGraphics}. The mask geometry
+   * is a pure function of the (rarely-changing) {@link MaskSpec}, so we snapshot
+   * it and skip the `clear()` + re-tessellate + GPU re-upload when nothing
+   * changed — otherwise every masked clip rebuilds its mask on every frame of the
+   * render hot path. `null` means "needs a (re)draw" (no mask yet, or the backing
+   * Graphics was just (re)created).
+   */
+  private drawnMask: { kind: string; x: number; y: number; w: number; h: number; radius: number } | null = null;
+  /**
    * Optional whole-clip animator, sampled at the clip's local time
    * (`t - start`) and composed over the base transform/opacity. Assign a
    * built-in {@link TweenAnimator} or bind GSAP via `gsapClipAnimator`. `null`
@@ -139,7 +148,10 @@ export abstract class VisualClip extends Clip {
    * means it never feeds back into the bounds it is measured from.
    */
   private syncMask(obj: Container): void {
-    if (this.maskGraphics && this.maskGraphics.destroyed) this.maskGraphics = null;
+    if (this.maskGraphics && this.maskGraphics.destroyed) {
+      this.maskGraphics = null;
+      this.drawnMask = null; // a fresh Graphics will need its geometry drawn
+    }
     if (!this.maskShape) {
       if (this.maskGraphics) {
         obj.mask = null;
@@ -147,12 +159,14 @@ export abstract class VisualClip extends Clip {
         this.maskGraphics.destroy();
         this.maskGraphics = null;
       }
+      this.drawnMask = null;
       return;
     }
     let g = this.maskGraphics;
     if (!g) {
       g = new Graphics();
       this.maskGraphics = g;
+      this.drawnMask = null; // fresh Graphics carries no geometry → force a draw
     }
     if (g.parent !== obj) {
       g.parent?.removeChild(g);
@@ -164,15 +178,26 @@ export abstract class VisualClip extends Clip {
     const y = (this.maskShape.y ?? 0) + inset;
     const w = Math.max(0, this.maskShape.width - inset * 2);
     const h = Math.max(0, this.maskShape.height - inset * 2);
+    const radius = this.maskShape.radius ?? 0;
+    const kind = this.maskShape.kind;
+    // Redraw only when the resolved region actually changed. The mask is a pure
+    // function of the MaskSpec (static local-space geometry), so re-tessellating
+    // + re-uploading it every frame is wasted work — skip it when unchanged so a
+    // masked clip costs nothing extra during steady playback (contract #5's spirit).
+    const prev = this.drawnMask;
+    if (prev && prev.kind === kind && prev.x === x && prev.y === y && prev.w === w && prev.h === h && prev.radius === radius) {
+      return;
+    }
     g.clear();
-    if (this.maskShape.kind === 'ellipse') {
+    if (kind === 'ellipse') {
       g.ellipse(x + w / 2, y + h / 2, w / 2, h / 2);
-    } else if (this.maskShape.radius) {
-      g.roundRect(x, y, w, h, Math.min(this.maskShape.radius, w / 2, h / 2));
+    } else if (radius) {
+      g.roundRect(x, y, w, h, Math.min(radius, w / 2, h / 2));
     } else {
       g.rect(x, y, w, h);
     }
     g.fill(0xffffff);
+    this.drawnMask = { kind, x, y, w, h, radius };
   }
 
   /** Sample the whole-clip {@link animator} at local time (`undefined` if none). */
